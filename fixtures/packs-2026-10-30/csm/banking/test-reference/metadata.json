@@ -1,0 +1,6909 @@
+{
+  "sector": "banking",
+  "title": "South African banking",
+  "prefix": "Banking",
+  "client": "FNB",
+  "brands": [
+    "FNB",
+    "Standard Bank",
+    "Absa",
+    "Nedbank",
+    "Capitec",
+    "Discovery Bank",
+    "GoTyme Bank (formerly TymeBank)"
+  ],
+  "channels": [
+    "Call centre",
+    "Branch",
+    "Digital self service",
+    "Messaging or live chat"
+  ],
+  "company_specs": [
+    {
+      "variable": "respondent_id",
+      "label": "Anonymous customer ID",
+      "question": "SYS",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "interview_date",
+      "label": "Interview date",
+      "question": "SYS",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "wave",
+      "label": "Wave",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company",
+      "label": "Main company",
+      "question": "S2",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "weight",
+      "label": "Synthetic customer weight",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "relative weight"
+    },
+    {
+      "variable": "age",
+      "label": "Age",
+      "question": "S1",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "years"
+    },
+    {
+      "variable": "age_band",
+      "label": "Age group",
+      "question": "S1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "gender",
+      "label": "Gender",
+      "question": "D1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "province",
+      "label": "Province",
+      "question": "D2",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "income",
+      "label": "Monthly household income",
+      "question": "D3",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "settlement",
+      "label": "Settlement",
+      "question": "D4",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "segment",
+      "label": "Synthetic demonstration segment",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "tenure_months",
+      "label": "Relationship tenure",
+      "question": "S2",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "months"
+    },
+    {
+      "variable": "company_csat5",
+      "label": "Overall company satisfaction",
+      "question": "R1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company_expectations5",
+      "label": "Company versus expectations",
+      "question": "R2",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "fairness5",
+      "label": "Treats customers fairly",
+      "question": "R5",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "trust5",
+      "label": "Trustworthy",
+      "question": "R5",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "recommend_0to10",
+      "label": "Likelihood to recommend",
+      "question": "L1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "continue5",
+      "label": "Intend to continue as main provider",
+      "question": "L2",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "switch_0to10",
+      "label": "Likelihood of switching main provider",
+      "question": "L3",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "price_switch5",
+      "label": "Would switch for better price",
+      "question": "L4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "grow_business5",
+      "label": "Intend to use more services",
+      "question": "L4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "complaint3m",
+      "label": "Complaint in past 3 months",
+      "question": "C1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company_driver_d01",
+      "label": "Services work accurately and reliably",
+      "question": "R3",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "importance_d01",
+      "label": "Importance of Services work accurately and reliably",
+      "question": "R4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company_driver_d02",
+      "label": "Help is provided promptly",
+      "question": "R3",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "importance_d02",
+      "label": "Importance of Help is provided promptly",
+      "question": "R4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company_driver_d03",
+      "label": "I feel confident about security",
+      "question": "R3",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "importance_d03",
+      "label": "Importance of I feel confident about security",
+      "question": "R4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company_driver_d04",
+      "label": "The bank understands my needs",
+      "question": "R3",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "importance_d04",
+      "label": "Importance of The bank understands my needs",
+      "question": "R4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company_driver_d05",
+      "label": "Banking channels are easy to access",
+      "question": "R3",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "importance_d05",
+      "label": "Importance of Banking channels are easy to access",
+      "question": "R4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company_driver_d06",
+      "label": "Fees represent good value",
+      "question": "R3",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "importance_d06",
+      "label": "Importance of Fees represent good value",
+      "question": "R4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company_reason_text",
+      "label": "Reason for company rating",
+      "question": "L5",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "product_p01",
+      "label": "Transactional account",
+      "question": "S3",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "products",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "product_p02",
+      "label": "Savings or investment account",
+      "question": "S3",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "products",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "product_p03",
+      "label": "Credit card",
+      "question": "S3",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "products",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "product_p04",
+      "label": "Loan or credit facility",
+      "question": "S3",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "products",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "complaint_reason_r01",
+      "label": "Fees or charges",
+      "question": "C2",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "complaint3m=1",
+      "mr_set": "complaint_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "complaint_reason_r02",
+      "label": "Payment or access failure",
+      "question": "C2",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "complaint3m=1",
+      "mr_set": "complaint_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "complaint_reason_r03",
+      "label": "Fraud or security concern",
+      "question": "C2",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "complaint3m=1",
+      "mr_set": "complaint_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "complaint_reason_r04",
+      "label": "Poor service",
+      "question": "C2",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "complaint3m=1",
+      "mr_set": "complaint_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "complaint_reason_r05",
+      "label": "Unclear information",
+      "question": "C2",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "complaint3m=1",
+      "mr_set": "complaint_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "complaint_reason_r06",
+      "label": "Other",
+      "question": "C2",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "complaint3m=1",
+      "mr_set": "complaint_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "complaint_resolution",
+      "label": "Complaint resolution",
+      "question": "C3",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "complaint3m=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "complaint_handling_csat5",
+      "label": "Complaint handling satisfaction",
+      "question": "C3",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "complaint3m=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_used_c01",
+      "label": "Call centre",
+      "question": "CH1",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "channel_use",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_contacts_c01",
+      "label": "Recalled interactions Call centre",
+      "question": "CH2",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "interactions"
+    },
+    {
+      "variable": "channel_used_c02",
+      "label": "Branch",
+      "question": "CH1",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "channel_use",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_contacts_c02",
+      "label": "Recalled interactions Branch",
+      "question": "CH2",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "interactions"
+    },
+    {
+      "variable": "channel_used_c03",
+      "label": "Digital self service",
+      "question": "CH1",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "channel_use",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_contacts_c03",
+      "label": "Recalled interactions Digital self service",
+      "question": "CH2",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "interactions"
+    },
+    {
+      "variable": "channel_used_c04",
+      "label": "Messaging or live chat",
+      "question": "CH1",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "channel_use",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_contacts_c04",
+      "label": "Recalled interactions Messaging or live chat",
+      "question": "CH2",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "interactions"
+    },
+    {
+      "variable": "channel_none",
+      "label": "No channel used in past 30 days",
+      "question": "CH1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "experience_preference5",
+      "label": "Recent experiences give a reason to choose this provider over another",
+      "question": "L6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "stay_reason_r01",
+      "label": "Genuine preference for this provider",
+      "question": "L7",
+      "data_type": "numeric",
+      "question_type": "multiple response",
+      "universe": "All records",
+      "mr_set": "reasons_staying",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "stay_reason_r02",
+      "label": "Habit or familiarity",
+      "question": "L7",
+      "data_type": "numeric",
+      "question_type": "multiple response",
+      "universe": "All records",
+      "mr_set": "reasons_staying",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "stay_reason_r03",
+      "label": "Contractual restriction or exit charge",
+      "question": "L7",
+      "data_type": "numeric",
+      "question_type": "multiple response",
+      "universe": "All records",
+      "mr_set": "reasons_staying",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "stay_reason_r04",
+      "label": "Time effort or inconvenience of switching",
+      "question": "L7",
+      "data_type": "numeric",
+      "question_type": "multiple response",
+      "universe": "All records",
+      "mr_set": "reasons_staying",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "stay_reason_r05",
+      "label": "Lack of suitable alternatives",
+      "question": "L7",
+      "data_type": "numeric",
+      "question_type": "multiple response",
+      "universe": "All records",
+      "mr_set": "reasons_staying",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "stay_reason_r06",
+      "label": "Other reason",
+      "question": "L7",
+      "data_type": "numeric",
+      "question_type": "multiple response",
+      "universe": "All records",
+      "mr_set": "reasons_staying",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "stay_none",
+      "label": "No stated reason for continuing current use",
+      "question": "L7",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "stay_dk",
+      "label": "Do not know reason for current use",
+      "question": "L7",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "stay_primary",
+      "label": "Main reason for continuing current use",
+      "question": "L8",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "Selected substantive reasons; None or Do not know carried from L7",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_recent30",
+      "label": "Attempted a specific service task with main provider in past 30 days",
+      "question": "J1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_id",
+      "label": "Independent anchored task journey ID",
+      "question": "SYS",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_task",
+      "label": "Task attempted in anchored journey",
+      "question": "J2a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_start_days_ago",
+      "label": "Days since first contact on anchored task",
+      "question": "J2b",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "days"
+    },
+    {
+      "variable": "journey_last_days_ago",
+      "label": "Days since most recent contact on anchored task",
+      "question": "J2c",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "days"
+    },
+    {
+      "variable": "journey_channel_c01",
+      "label": "Same task used Call centre",
+      "question": "J3a",
+      "data_type": "numeric",
+      "question_type": "multiple response",
+      "universe": "journey_recent30=1",
+      "mr_set": "journey_channels",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_channel_c02",
+      "label": "Same task used Branch",
+      "question": "J3a",
+      "data_type": "numeric",
+      "question_type": "multiple response",
+      "universe": "journey_recent30=1",
+      "mr_set": "journey_channels",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_channel_c03",
+      "label": "Same task used Digital self service",
+      "question": "J3a",
+      "data_type": "numeric",
+      "question_type": "multiple response",
+      "universe": "journey_recent30=1",
+      "mr_set": "journey_channels",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_channel_c04",
+      "label": "Same task used Messaging or live chat",
+      "question": "J3a",
+      "data_type": "numeric",
+      "question_type": "multiple response",
+      "universe": "journey_recent30=1",
+      "mr_set": "journey_channels",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_digital_mode",
+      "label": "Digital mode used in anchored journey",
+      "question": "J3b",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_channel_c03=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_sequence",
+      "label": "Ordered channel codes for contacts on the same task",
+      "question": "J3c",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_contacts",
+      "label": "Number of contacts on the same anchored task",
+      "question": "J3d",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "contacts"
+    },
+    {
+      "variable": "journey_multichannel",
+      "label": "Used at least two distinct channels on the same task",
+      "question": "DER",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "Count of journey_channel_c01-c04 selected >=2",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_transferred",
+      "label": "Transferred or directed between teams or channels on this task",
+      "question": "J4a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_repeat_info",
+      "label": "Required to repeat information already provided on this task",
+      "question": "J4b",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_status",
+      "label": "Outcome of the same anchored task at interview",
+      "question": "J5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_completed",
+      "label": "Completed task among known final outcomes",
+      "question": "DER",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_status in 1 2 3",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "1 if journey_status=1; 0 if 2 or 3; blank if pending or no journey",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_csat5",
+      "label": "Overall satisfaction with the end to end anchored task",
+      "question": "J6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_reassured5",
+      "label": "Anchored journey left customer reassured",
+      "question": "J7a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_valued5",
+      "label": "Anchored journey left customer valued",
+      "question": "J7b",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_frustrated5",
+      "label": "Anchored journey left customer frustrated",
+      "question": "J7c",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_anxious5",
+      "label": "Anchored journey left customer anxious",
+      "question": "J7d",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_emotion_why_text",
+      "label": "Reason for anchored journey emotional outcome",
+      "question": "J7e",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_preference5",
+      "label": "Anchored journey gives a reason to choose this provider",
+      "question": "J8",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "benchmark_recent_same_task30",
+      "label": "Personally used another provider for same task type in past 30 days",
+      "question": "B1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "benchmark_provider",
+      "label": "Other provider personally used for comparable task",
+      "question": "B2a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "benchmark_recent_same_task30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "benchmark_task",
+      "label": "Task type personally attempted with other provider",
+      "question": "B2b",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "benchmark_recent_same_task30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "benchmark_days_ago",
+      "label": "Days since comparable other provider experience",
+      "question": "B2c",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "benchmark_recent_same_task30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "days"
+    },
+    {
+      "variable": "benchmark_channel",
+      "label": "Channel of comparable other provider task experience",
+      "question": "B2d",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "benchmark_recent_same_task30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "benchmark_csat5",
+      "label": "Overall satisfaction with other provider comparable task",
+      "question": "B3",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "benchmark_recent_same_task30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "benchmark_gap5",
+      "label": "Main provider minus alternative paired task CSAT",
+      "question": "DER",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "Both journey_csat5 and benchmark_csat5 valid 1-5",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "journey_csat5 - benchmark_csat5; descriptive paired difference only",
+      "unit": "scale points"
+    }
+  ],
+  "channel_specs": [
+    {
+      "variable": "respondent_id",
+      "label": "Anonymous customer ID",
+      "question": "SYS",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "interview_date",
+      "label": "Interview date",
+      "question": "SYS",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "wave",
+      "label": "Wave",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company",
+      "label": "Main company",
+      "question": "S2",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "weight",
+      "label": "Synthetic customer weight",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "relative weight"
+    },
+    {
+      "variable": "age",
+      "label": "Age",
+      "question": "S1",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "years"
+    },
+    {
+      "variable": "age_band",
+      "label": "Age group",
+      "question": "S1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "gender",
+      "label": "Gender",
+      "question": "D1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "province",
+      "label": "Province",
+      "question": "D2",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "income",
+      "label": "Monthly household income",
+      "question": "D3",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "settlement",
+      "label": "Settlement",
+      "question": "D4",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "segment",
+      "label": "Synthetic demonstration segment",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "tenure_months",
+      "label": "Relationship tenure",
+      "question": "S2",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "months"
+    },
+    {
+      "variable": "experience_id",
+      "label": "Unique most recent channel experience",
+      "question": "SYS",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "contact_date",
+      "label": "Date of experience",
+      "question": "E1",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "days_ago",
+      "label": "Days before interview",
+      "question": "E1",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "days"
+    },
+    {
+      "variable": "channel",
+      "label": "Channel",
+      "question": "CH1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "digital_mode",
+      "label": "Digital mode",
+      "question": "E2",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=3",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "staff_contact",
+      "label": "Staff contact",
+      "question": "E2",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "primary_reason",
+      "label": "Primary need",
+      "question": "E1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "reasons_r01",
+      "label": "Payment or transfer",
+      "question": "E1",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "experience_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "reasons_r02",
+      "label": "Account balance or information",
+      "question": "E1",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "experience_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "reasons_r03",
+      "label": "Account or personal detail change",
+      "question": "E1",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "experience_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "reasons_r04",
+      "label": "Problem complaint or fraud concern",
+      "question": "E1",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "experience_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "reasons_r05",
+      "label": "Product advice or application",
+      "question": "E1",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "experience_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "reasons_r06",
+      "label": "Other",
+      "question": "E1",
+      "data_type": "numeric",
+      "question_type": "multiple_response",
+      "universe": "All records",
+      "mr_set": "experience_reasons",
+      "selected_value": 1,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_csat5",
+      "label": "Satisfaction with this experience",
+      "question": "E3",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "ease7",
+      "label": "Ease of getting what was needed",
+      "question": "E4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "task_completed",
+      "label": "Task completed",
+      "question": "E5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "problem_present",
+      "label": "Problem to resolve",
+      "question": "E5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "problem_resolution",
+      "label": "Problem resolution",
+      "question": "E5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "problem_present=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "contacts_same_need",
+      "label": "Contacts about this need including current",
+      "question": "E6",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "contacts"
+    },
+    {
+      "variable": "first_contact_resolution",
+      "label": "First contact resolution",
+      "question": "E6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "problem_present=1 and problem_resolution in 1,2,3",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "1 only when fully resolved and contacts_same_need=1",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_reason_text",
+      "label": "Reason for channel rating",
+      "question": "E7",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "driver_reliable_accurate",
+      "label": "Accuracy of information",
+      "question": "Q1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All channel experiences",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "driver_reliable_correct",
+      "label": "Correct handling of the task",
+      "question": "Q1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All channel experiences",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "driver_responsive_speed",
+      "label": "Speed of response",
+      "question": "Q1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All channel experiences",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "driver_responsive_updates",
+      "label": "Kept informed about progress",
+      "question": "Q1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All channel experiences",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "driver_assurance_knowledge",
+      "label": "Staff knowledge and competence",
+      "question": "Q1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "staff_contact=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "driver_assurance_confidence",
+      "label": "Confidence in safe handling",
+      "question": "Q1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All channel experiences",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "driver_empathy_understood",
+      "label": "Understanding of my needs",
+      "question": "Q1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "staff_contact=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "driver_empathy_respect",
+      "label": "Respectful treatment",
+      "question": "Q1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "staff_contact=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "driver_access_ease",
+      "label": "Ease of accessing the channel",
+      "question": "Q1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All channel experiences",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "driver_access_clarity",
+      "label": "Clarity of communication or interface",
+      "question": "Q1",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "All channel experiences",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "dimension_reliability",
+      "label": "Reliability two item mean",
+      "question": "Derived",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "Both corresponding items valid",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "Mean of two matching Q1 items, excluding 98/99; both required",
+      "unit": "1\u20135 mean"
+    },
+    {
+      "variable": "dimension_responsiveness",
+      "label": "Responsiveness two item mean",
+      "question": "Derived",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "Both corresponding items valid",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "Mean of two matching Q1 items, excluding 98/99; both required",
+      "unit": "1\u20135 mean"
+    },
+    {
+      "variable": "dimension_assurance",
+      "label": "Assurance two item mean",
+      "question": "Derived",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "Both corresponding items valid",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "Mean of two matching Q1 items, excluding 98/99; both required",
+      "unit": "1\u20135 mean"
+    },
+    {
+      "variable": "dimension_empathy",
+      "label": "Empathy two item mean",
+      "question": "Derived",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "Both corresponding items valid",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "Mean of two matching Q1 items, excluding 98/99; both required",
+      "unit": "1\u20135 mean"
+    },
+    {
+      "variable": "dimension_access_and_clarity",
+      "label": "Access and clarity two item mean",
+      "question": "Derived",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "Both corresponding items valid",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "Mean of two matching Q1 items, excluding 98/99; both required",
+      "unit": "1\u20135 mean"
+    },
+    {
+      "variable": "wait_minutes",
+      "label": "Wait before staff response",
+      "question": "Q2",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "staff_contact=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "minutes"
+    },
+    {
+      "variable": "handling_minutes",
+      "label": "Interaction duration",
+      "question": "Q2",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "minutes"
+    },
+    {
+      "variable": "digital_response_seconds",
+      "label": "Digital response time",
+      "question": "Q2",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "channel=3",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "seconds"
+    },
+    {
+      "variable": "transferred",
+      "label": "Transferred",
+      "question": "Q3/Q4",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "put_on_hold",
+      "label": "Put on hold",
+      "question": "Q3/Q4",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "callback_promised",
+      "label": "Callback promised",
+      "question": "Q3/Q4",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "used_ivr",
+      "label": "Used IVR",
+      "question": "Q3/Q4",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "number_transfers",
+      "label": "Number of transfers",
+      "question": "Q3",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "channel=1 and transferred=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "transfers"
+    },
+    {
+      "variable": "callback_outcome",
+      "label": "Callback outcome",
+      "question": "Q3",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "callback_promised=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "ivr_csat5",
+      "label": "IVR satisfaction",
+      "question": "Q4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "used_ivr=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "ivr_clarity5",
+      "label": "IVR clarity",
+      "question": "Q4",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "used_ivr=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "agent_introduced",
+      "label": "Staff introduced themselves",
+      "question": "Q5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "staff_contact=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "agent_polite",
+      "label": "Polite staff",
+      "question": "Q5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "staff_contact=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "preferred_language_assisted",
+      "label": "Preferred language assistance",
+      "question": "Q5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "staff_contact=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "branch_tidy5",
+      "label": "Physical facilities tidy",
+      "question": "Q6",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "channel=2",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "branch_accessible5",
+      "label": "Physical facilities accessible",
+      "question": "Q6",
+      "data_type": "numeric",
+      "question_type": "scale",
+      "universe": "channel=2",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_reassured5",
+      "label": "This latest channel experience left customer reassured",
+      "question": "E8a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_valued5",
+      "label": "This latest channel experience left customer valued",
+      "question": "E8b",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_frustrated5",
+      "label": "This latest channel experience left customer frustrated",
+      "question": "E8c",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_anxious5",
+      "label": "This latest channel experience left customer anxious",
+      "question": "E8d",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_emotion_why_text",
+      "label": "Reason for latest channel emotional outcome",
+      "question": "E8e",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_preference5",
+      "label": "This latest channel experience gives reason to choose provider",
+      "question": "E9",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    }
+  ],
+  "company_labels": [
+    [
+      "wave",
+      "Wave",
+      1,
+      "February 2026"
+    ],
+    [
+      "wave",
+      "Wave",
+      2,
+      "June 2026"
+    ],
+    [
+      "wave",
+      "Wave",
+      3,
+      "October 2026"
+    ],
+    [
+      "company",
+      "Main company",
+      1,
+      "FNB"
+    ],
+    [
+      "company",
+      "Main company",
+      2,
+      "Standard Bank"
+    ],
+    [
+      "company",
+      "Main company",
+      3,
+      "Absa"
+    ],
+    [
+      "company",
+      "Main company",
+      4,
+      "Nedbank"
+    ],
+    [
+      "company",
+      "Main company",
+      5,
+      "Capitec"
+    ],
+    [
+      "company",
+      "Main company",
+      6,
+      "Discovery Bank"
+    ],
+    [
+      "company",
+      "Main company",
+      7,
+      "GoTyme Bank (formerly TymeBank)"
+    ],
+    [
+      "age_band",
+      "Age group",
+      1,
+      "18\u201324"
+    ],
+    [
+      "age_band",
+      "Age group",
+      2,
+      "25\u201334"
+    ],
+    [
+      "age_band",
+      "Age group",
+      3,
+      "35\u201349"
+    ],
+    [
+      "age_band",
+      "Age group",
+      4,
+      "50\u201369"
+    ],
+    [
+      "gender",
+      "Gender",
+      1,
+      "Man"
+    ],
+    [
+      "gender",
+      "Gender",
+      2,
+      "Woman"
+    ],
+    [
+      "gender",
+      "Gender",
+      3,
+      "Another identity"
+    ],
+    [
+      "gender",
+      "Gender",
+      4,
+      "Prefer not to say"
+    ],
+    [
+      "province",
+      "Province",
+      1,
+      "Gauteng"
+    ],
+    [
+      "province",
+      "Province",
+      2,
+      "KwaZulu-Natal"
+    ],
+    [
+      "province",
+      "Province",
+      3,
+      "Western Cape"
+    ],
+    [
+      "province",
+      "Province",
+      4,
+      "Eastern Cape"
+    ],
+    [
+      "province",
+      "Province",
+      5,
+      "Limpopo"
+    ],
+    [
+      "province",
+      "Province",
+      6,
+      "Mpumalanga"
+    ],
+    [
+      "province",
+      "Province",
+      7,
+      "North West"
+    ],
+    [
+      "province",
+      "Province",
+      8,
+      "Free State"
+    ],
+    [
+      "province",
+      "Province",
+      9,
+      "Northern Cape"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      1,
+      "Below R15,000"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      2,
+      "R15,000\u2013R29,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      3,
+      "R30,000\u2013R49,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      4,
+      "R50,000\u2013R79,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      5,
+      "R80,000 or more"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      99,
+      "Prefer not to say"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      1,
+      "Metro or city"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      2,
+      "Town"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      3,
+      "Rural area"
+    ],
+    [
+      "segment",
+      "Synthetic demonstration segment",
+      1,
+      "Segment 1"
+    ],
+    [
+      "segment",
+      "Synthetic demonstration segment",
+      2,
+      "Segment 2"
+    ],
+    [
+      "segment",
+      "Synthetic demonstration segment",
+      3,
+      "Segment 3"
+    ],
+    [
+      "company_csat5",
+      "Overall company satisfaction",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "company_csat5",
+      "Overall company satisfaction",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "company_csat5",
+      "Overall company satisfaction",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "company_csat5",
+      "Overall company satisfaction",
+      4,
+      "Satisfied"
+    ],
+    [
+      "company_csat5",
+      "Overall company satisfaction",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "company_csat5",
+      "Overall company satisfaction",
+      99,
+      "Do not know"
+    ],
+    [
+      "company_expectations5",
+      "Company versus expectations",
+      1,
+      "Much worse"
+    ],
+    [
+      "company_expectations5",
+      "Company versus expectations",
+      2,
+      "Worse"
+    ],
+    [
+      "company_expectations5",
+      "Company versus expectations",
+      3,
+      "As expected"
+    ],
+    [
+      "company_expectations5",
+      "Company versus expectations",
+      4,
+      "Better"
+    ],
+    [
+      "company_expectations5",
+      "Company versus expectations",
+      5,
+      "Much better"
+    ],
+    [
+      "company_expectations5",
+      "Company versus expectations",
+      99,
+      "Do not know"
+    ],
+    [
+      "fairness5",
+      "Treats customers fairly",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "fairness5",
+      "Treats customers fairly",
+      2,
+      "Disagree"
+    ],
+    [
+      "fairness5",
+      "Treats customers fairly",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "fairness5",
+      "Treats customers fairly",
+      4,
+      "Agree"
+    ],
+    [
+      "fairness5",
+      "Treats customers fairly",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "fairness5",
+      "Treats customers fairly",
+      99,
+      "Do not know"
+    ],
+    [
+      "trust5",
+      "Trustworthy",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "trust5",
+      "Trustworthy",
+      2,
+      "Disagree"
+    ],
+    [
+      "trust5",
+      "Trustworthy",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "trust5",
+      "Trustworthy",
+      4,
+      "Agree"
+    ],
+    [
+      "trust5",
+      "Trustworthy",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "trust5",
+      "Trustworthy",
+      99,
+      "Do not know"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      0,
+      "0"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      1,
+      "1"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      2,
+      "2"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      3,
+      "3"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      4,
+      "4"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      5,
+      "5"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      6,
+      "6"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      7,
+      "7"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      8,
+      "8"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      9,
+      "9"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      10,
+      "10"
+    ],
+    [
+      "recommend_0to10",
+      "Likelihood to recommend",
+      99,
+      "Do not know"
+    ],
+    [
+      "continue5",
+      "Intend to continue as main provider",
+      1,
+      "Definitely not"
+    ],
+    [
+      "continue5",
+      "Intend to continue as main provider",
+      2,
+      "Probably not"
+    ],
+    [
+      "continue5",
+      "Intend to continue as main provider",
+      3,
+      "Might or might not"
+    ],
+    [
+      "continue5",
+      "Intend to continue as main provider",
+      4,
+      "Probably yes"
+    ],
+    [
+      "continue5",
+      "Intend to continue as main provider",
+      5,
+      "Definitely yes"
+    ],
+    [
+      "continue5",
+      "Intend to continue as main provider",
+      99,
+      "Do not know"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      0,
+      "0"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      1,
+      "1"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      2,
+      "2"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      3,
+      "3"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      4,
+      "4"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      5,
+      "5"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      6,
+      "6"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      7,
+      "7"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      8,
+      "8"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      9,
+      "9"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      10,
+      "10"
+    ],
+    [
+      "switch_0to10",
+      "Likelihood of switching main provider",
+      99,
+      "Do not know"
+    ],
+    [
+      "price_switch5",
+      "Would switch for better price",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "price_switch5",
+      "Would switch for better price",
+      2,
+      "Disagree"
+    ],
+    [
+      "price_switch5",
+      "Would switch for better price",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "price_switch5",
+      "Would switch for better price",
+      4,
+      "Agree"
+    ],
+    [
+      "price_switch5",
+      "Would switch for better price",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "price_switch5",
+      "Would switch for better price",
+      99,
+      "Do not know"
+    ],
+    [
+      "grow_business5",
+      "Intend to use more services",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "grow_business5",
+      "Intend to use more services",
+      2,
+      "Disagree"
+    ],
+    [
+      "grow_business5",
+      "Intend to use more services",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "grow_business5",
+      "Intend to use more services",
+      4,
+      "Agree"
+    ],
+    [
+      "grow_business5",
+      "Intend to use more services",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "grow_business5",
+      "Intend to use more services",
+      99,
+      "Do not know"
+    ],
+    [
+      "complaint3m",
+      "Complaint in past 3 months",
+      0,
+      "No"
+    ],
+    [
+      "complaint3m",
+      "Complaint in past 3 months",
+      1,
+      "Yes"
+    ],
+    [
+      "company_driver_d01",
+      "Services work accurately and reliably",
+      1,
+      "Very poor"
+    ],
+    [
+      "company_driver_d01",
+      "Services work accurately and reliably",
+      2,
+      "Poor"
+    ],
+    [
+      "company_driver_d01",
+      "Services work accurately and reliably",
+      3,
+      "Adequate"
+    ],
+    [
+      "company_driver_d01",
+      "Services work accurately and reliably",
+      4,
+      "Good"
+    ],
+    [
+      "company_driver_d01",
+      "Services work accurately and reliably",
+      5,
+      "Excellent"
+    ],
+    [
+      "company_driver_d01",
+      "Services work accurately and reliably",
+      98,
+      "Not applicable"
+    ],
+    [
+      "company_driver_d01",
+      "Services work accurately and reliably",
+      99,
+      "Do not know"
+    ],
+    [
+      "importance_d01",
+      "Importance of Services work accurately and reliably",
+      1,
+      "Not important"
+    ],
+    [
+      "importance_d01",
+      "Importance of Services work accurately and reliably",
+      2,
+      "Slightly important"
+    ],
+    [
+      "importance_d01",
+      "Importance of Services work accurately and reliably",
+      3,
+      "Moderately important"
+    ],
+    [
+      "importance_d01",
+      "Importance of Services work accurately and reliably",
+      4,
+      "Very important"
+    ],
+    [
+      "importance_d01",
+      "Importance of Services work accurately and reliably",
+      5,
+      "Extremely important"
+    ],
+    [
+      "importance_d01",
+      "Importance of Services work accurately and reliably",
+      99,
+      "Do not know"
+    ],
+    [
+      "company_driver_d02",
+      "Help is provided promptly",
+      1,
+      "Very poor"
+    ],
+    [
+      "company_driver_d02",
+      "Help is provided promptly",
+      2,
+      "Poor"
+    ],
+    [
+      "company_driver_d02",
+      "Help is provided promptly",
+      3,
+      "Adequate"
+    ],
+    [
+      "company_driver_d02",
+      "Help is provided promptly",
+      4,
+      "Good"
+    ],
+    [
+      "company_driver_d02",
+      "Help is provided promptly",
+      5,
+      "Excellent"
+    ],
+    [
+      "company_driver_d02",
+      "Help is provided promptly",
+      98,
+      "Not applicable"
+    ],
+    [
+      "company_driver_d02",
+      "Help is provided promptly",
+      99,
+      "Do not know"
+    ],
+    [
+      "importance_d02",
+      "Importance of Help is provided promptly",
+      1,
+      "Not important"
+    ],
+    [
+      "importance_d02",
+      "Importance of Help is provided promptly",
+      2,
+      "Slightly important"
+    ],
+    [
+      "importance_d02",
+      "Importance of Help is provided promptly",
+      3,
+      "Moderately important"
+    ],
+    [
+      "importance_d02",
+      "Importance of Help is provided promptly",
+      4,
+      "Very important"
+    ],
+    [
+      "importance_d02",
+      "Importance of Help is provided promptly",
+      5,
+      "Extremely important"
+    ],
+    [
+      "importance_d02",
+      "Importance of Help is provided promptly",
+      99,
+      "Do not know"
+    ],
+    [
+      "company_driver_d03",
+      "I feel confident about security",
+      1,
+      "Very poor"
+    ],
+    [
+      "company_driver_d03",
+      "I feel confident about security",
+      2,
+      "Poor"
+    ],
+    [
+      "company_driver_d03",
+      "I feel confident about security",
+      3,
+      "Adequate"
+    ],
+    [
+      "company_driver_d03",
+      "I feel confident about security",
+      4,
+      "Good"
+    ],
+    [
+      "company_driver_d03",
+      "I feel confident about security",
+      5,
+      "Excellent"
+    ],
+    [
+      "company_driver_d03",
+      "I feel confident about security",
+      98,
+      "Not applicable"
+    ],
+    [
+      "company_driver_d03",
+      "I feel confident about security",
+      99,
+      "Do not know"
+    ],
+    [
+      "importance_d03",
+      "Importance of I feel confident about security",
+      1,
+      "Not important"
+    ],
+    [
+      "importance_d03",
+      "Importance of I feel confident about security",
+      2,
+      "Slightly important"
+    ],
+    [
+      "importance_d03",
+      "Importance of I feel confident about security",
+      3,
+      "Moderately important"
+    ],
+    [
+      "importance_d03",
+      "Importance of I feel confident about security",
+      4,
+      "Very important"
+    ],
+    [
+      "importance_d03",
+      "Importance of I feel confident about security",
+      5,
+      "Extremely important"
+    ],
+    [
+      "importance_d03",
+      "Importance of I feel confident about security",
+      99,
+      "Do not know"
+    ],
+    [
+      "company_driver_d04",
+      "The bank understands my needs",
+      1,
+      "Very poor"
+    ],
+    [
+      "company_driver_d04",
+      "The bank understands my needs",
+      2,
+      "Poor"
+    ],
+    [
+      "company_driver_d04",
+      "The bank understands my needs",
+      3,
+      "Adequate"
+    ],
+    [
+      "company_driver_d04",
+      "The bank understands my needs",
+      4,
+      "Good"
+    ],
+    [
+      "company_driver_d04",
+      "The bank understands my needs",
+      5,
+      "Excellent"
+    ],
+    [
+      "company_driver_d04",
+      "The bank understands my needs",
+      98,
+      "Not applicable"
+    ],
+    [
+      "company_driver_d04",
+      "The bank understands my needs",
+      99,
+      "Do not know"
+    ],
+    [
+      "importance_d04",
+      "Importance of The bank understands my needs",
+      1,
+      "Not important"
+    ],
+    [
+      "importance_d04",
+      "Importance of The bank understands my needs",
+      2,
+      "Slightly important"
+    ],
+    [
+      "importance_d04",
+      "Importance of The bank understands my needs",
+      3,
+      "Moderately important"
+    ],
+    [
+      "importance_d04",
+      "Importance of The bank understands my needs",
+      4,
+      "Very important"
+    ],
+    [
+      "importance_d04",
+      "Importance of The bank understands my needs",
+      5,
+      "Extremely important"
+    ],
+    [
+      "importance_d04",
+      "Importance of The bank understands my needs",
+      99,
+      "Do not know"
+    ],
+    [
+      "company_driver_d05",
+      "Banking channels are easy to access",
+      1,
+      "Very poor"
+    ],
+    [
+      "company_driver_d05",
+      "Banking channels are easy to access",
+      2,
+      "Poor"
+    ],
+    [
+      "company_driver_d05",
+      "Banking channels are easy to access",
+      3,
+      "Adequate"
+    ],
+    [
+      "company_driver_d05",
+      "Banking channels are easy to access",
+      4,
+      "Good"
+    ],
+    [
+      "company_driver_d05",
+      "Banking channels are easy to access",
+      5,
+      "Excellent"
+    ],
+    [
+      "company_driver_d05",
+      "Banking channels are easy to access",
+      98,
+      "Not applicable"
+    ],
+    [
+      "company_driver_d05",
+      "Banking channels are easy to access",
+      99,
+      "Do not know"
+    ],
+    [
+      "importance_d05",
+      "Importance of Banking channels are easy to access",
+      1,
+      "Not important"
+    ],
+    [
+      "importance_d05",
+      "Importance of Banking channels are easy to access",
+      2,
+      "Slightly important"
+    ],
+    [
+      "importance_d05",
+      "Importance of Banking channels are easy to access",
+      3,
+      "Moderately important"
+    ],
+    [
+      "importance_d05",
+      "Importance of Banking channels are easy to access",
+      4,
+      "Very important"
+    ],
+    [
+      "importance_d05",
+      "Importance of Banking channels are easy to access",
+      5,
+      "Extremely important"
+    ],
+    [
+      "importance_d05",
+      "Importance of Banking channels are easy to access",
+      99,
+      "Do not know"
+    ],
+    [
+      "company_driver_d06",
+      "Fees represent good value",
+      1,
+      "Very poor"
+    ],
+    [
+      "company_driver_d06",
+      "Fees represent good value",
+      2,
+      "Poor"
+    ],
+    [
+      "company_driver_d06",
+      "Fees represent good value",
+      3,
+      "Adequate"
+    ],
+    [
+      "company_driver_d06",
+      "Fees represent good value",
+      4,
+      "Good"
+    ],
+    [
+      "company_driver_d06",
+      "Fees represent good value",
+      5,
+      "Excellent"
+    ],
+    [
+      "company_driver_d06",
+      "Fees represent good value",
+      98,
+      "Not applicable"
+    ],
+    [
+      "company_driver_d06",
+      "Fees represent good value",
+      99,
+      "Do not know"
+    ],
+    [
+      "importance_d06",
+      "Importance of Fees represent good value",
+      1,
+      "Not important"
+    ],
+    [
+      "importance_d06",
+      "Importance of Fees represent good value",
+      2,
+      "Slightly important"
+    ],
+    [
+      "importance_d06",
+      "Importance of Fees represent good value",
+      3,
+      "Moderately important"
+    ],
+    [
+      "importance_d06",
+      "Importance of Fees represent good value",
+      4,
+      "Very important"
+    ],
+    [
+      "importance_d06",
+      "Importance of Fees represent good value",
+      5,
+      "Extremely important"
+    ],
+    [
+      "importance_d06",
+      "Importance of Fees represent good value",
+      99,
+      "Do not know"
+    ],
+    [
+      "product_p01",
+      "Transactional account",
+      0,
+      "No"
+    ],
+    [
+      "product_p01",
+      "Transactional account",
+      1,
+      "Yes"
+    ],
+    [
+      "product_p02",
+      "Savings or investment account",
+      0,
+      "No"
+    ],
+    [
+      "product_p02",
+      "Savings or investment account",
+      1,
+      "Yes"
+    ],
+    [
+      "product_p03",
+      "Credit card",
+      0,
+      "No"
+    ],
+    [
+      "product_p03",
+      "Credit card",
+      1,
+      "Yes"
+    ],
+    [
+      "product_p04",
+      "Loan or credit facility",
+      0,
+      "No"
+    ],
+    [
+      "product_p04",
+      "Loan or credit facility",
+      1,
+      "Yes"
+    ],
+    [
+      "complaint_reason_r01",
+      "Fees or charges",
+      0,
+      "No"
+    ],
+    [
+      "complaint_reason_r01",
+      "Fees or charges",
+      1,
+      "Yes"
+    ],
+    [
+      "complaint_reason_r02",
+      "Payment or access failure",
+      0,
+      "No"
+    ],
+    [
+      "complaint_reason_r02",
+      "Payment or access failure",
+      1,
+      "Yes"
+    ],
+    [
+      "complaint_reason_r03",
+      "Fraud or security concern",
+      0,
+      "No"
+    ],
+    [
+      "complaint_reason_r03",
+      "Fraud or security concern",
+      1,
+      "Yes"
+    ],
+    [
+      "complaint_reason_r04",
+      "Poor service",
+      0,
+      "No"
+    ],
+    [
+      "complaint_reason_r04",
+      "Poor service",
+      1,
+      "Yes"
+    ],
+    [
+      "complaint_reason_r05",
+      "Unclear information",
+      0,
+      "No"
+    ],
+    [
+      "complaint_reason_r05",
+      "Unclear information",
+      1,
+      "Yes"
+    ],
+    [
+      "complaint_reason_r06",
+      "Other",
+      0,
+      "No"
+    ],
+    [
+      "complaint_reason_r06",
+      "Other",
+      1,
+      "Yes"
+    ],
+    [
+      "complaint_resolution",
+      "Complaint resolution",
+      1,
+      "Fully"
+    ],
+    [
+      "complaint_resolution",
+      "Complaint resolution",
+      2,
+      "Partly"
+    ],
+    [
+      "complaint_resolution",
+      "Complaint resolution",
+      3,
+      "Unresolved"
+    ],
+    [
+      "complaint_resolution",
+      "Complaint resolution",
+      9,
+      "In progress"
+    ],
+    [
+      "complaint_handling_csat5",
+      "Complaint handling satisfaction",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "complaint_handling_csat5",
+      "Complaint handling satisfaction",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "complaint_handling_csat5",
+      "Complaint handling satisfaction",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "complaint_handling_csat5",
+      "Complaint handling satisfaction",
+      4,
+      "Satisfied"
+    ],
+    [
+      "complaint_handling_csat5",
+      "Complaint handling satisfaction",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "complaint_handling_csat5",
+      "Complaint handling satisfaction",
+      99,
+      "Do not know"
+    ],
+    [
+      "channel_used_c01",
+      "Call centre",
+      0,
+      "No"
+    ],
+    [
+      "channel_used_c01",
+      "Call centre",
+      1,
+      "Yes"
+    ],
+    [
+      "channel_used_c02",
+      "Branch",
+      0,
+      "No"
+    ],
+    [
+      "channel_used_c02",
+      "Branch",
+      1,
+      "Yes"
+    ],
+    [
+      "channel_used_c03",
+      "Digital self service",
+      0,
+      "No"
+    ],
+    [
+      "channel_used_c03",
+      "Digital self service",
+      1,
+      "Yes"
+    ],
+    [
+      "channel_used_c04",
+      "Messaging or live chat",
+      0,
+      "No"
+    ],
+    [
+      "channel_used_c04",
+      "Messaging or live chat",
+      1,
+      "Yes"
+    ],
+    [
+      "channel_none",
+      "No channel used in past 30 days",
+      0,
+      "No"
+    ],
+    [
+      "channel_none",
+      "No channel used in past 30 days",
+      1,
+      "Yes"
+    ],
+    [
+      "experience_preference5",
+      "Recent experiences give a reason to choose this provider over another",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "experience_preference5",
+      "Recent experiences give a reason to choose this provider over another",
+      2,
+      "Disagree"
+    ],
+    [
+      "experience_preference5",
+      "Recent experiences give a reason to choose this provider over another",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "experience_preference5",
+      "Recent experiences give a reason to choose this provider over another",
+      4,
+      "Agree"
+    ],
+    [
+      "experience_preference5",
+      "Recent experiences give a reason to choose this provider over another",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "experience_preference5",
+      "Recent experiences give a reason to choose this provider over another",
+      99,
+      "Do not know"
+    ],
+    [
+      "stay_reason_r01",
+      "Genuine preference for this provider",
+      0,
+      "Not selected"
+    ],
+    [
+      "stay_reason_r01",
+      "Genuine preference for this provider",
+      1,
+      "Selected"
+    ],
+    [
+      "stay_reason_r02",
+      "Habit or familiarity",
+      0,
+      "Not selected"
+    ],
+    [
+      "stay_reason_r02",
+      "Habit or familiarity",
+      1,
+      "Selected"
+    ],
+    [
+      "stay_reason_r03",
+      "Contractual restriction or exit charge",
+      0,
+      "Not selected"
+    ],
+    [
+      "stay_reason_r03",
+      "Contractual restriction or exit charge",
+      1,
+      "Selected"
+    ],
+    [
+      "stay_reason_r04",
+      "Time effort or inconvenience of switching",
+      0,
+      "Not selected"
+    ],
+    [
+      "stay_reason_r04",
+      "Time effort or inconvenience of switching",
+      1,
+      "Selected"
+    ],
+    [
+      "stay_reason_r05",
+      "Lack of suitable alternatives",
+      0,
+      "Not selected"
+    ],
+    [
+      "stay_reason_r05",
+      "Lack of suitable alternatives",
+      1,
+      "Selected"
+    ],
+    [
+      "stay_reason_r06",
+      "Other reason",
+      0,
+      "Not selected"
+    ],
+    [
+      "stay_reason_r06",
+      "Other reason",
+      1,
+      "Selected"
+    ],
+    [
+      "stay_none",
+      "No stated reason for continuing current use",
+      0,
+      "Not selected"
+    ],
+    [
+      "stay_none",
+      "No stated reason for continuing current use",
+      1,
+      "Selected"
+    ],
+    [
+      "stay_dk",
+      "Do not know reason for current use",
+      0,
+      "Not selected"
+    ],
+    [
+      "stay_dk",
+      "Do not know reason for current use",
+      1,
+      "Selected"
+    ],
+    [
+      "stay_primary",
+      "Main reason for continuing current use",
+      1,
+      "Genuine preference for this provider"
+    ],
+    [
+      "stay_primary",
+      "Main reason for continuing current use",
+      2,
+      "Habit or familiarity"
+    ],
+    [
+      "stay_primary",
+      "Main reason for continuing current use",
+      3,
+      "Contractual restriction or exit charge"
+    ],
+    [
+      "stay_primary",
+      "Main reason for continuing current use",
+      4,
+      "Time effort or inconvenience of switching"
+    ],
+    [
+      "stay_primary",
+      "Main reason for continuing current use",
+      5,
+      "Lack of suitable alternatives"
+    ],
+    [
+      "stay_primary",
+      "Main reason for continuing current use",
+      6,
+      "Other reason"
+    ],
+    [
+      "stay_primary",
+      "Main reason for continuing current use",
+      97,
+      "None of these"
+    ],
+    [
+      "stay_primary",
+      "Main reason for continuing current use",
+      99,
+      "Do not know"
+    ],
+    [
+      "journey_recent30",
+      "Attempted a specific service task with main provider in past 30 days",
+      0,
+      "No"
+    ],
+    [
+      "journey_recent30",
+      "Attempted a specific service task with main provider in past 30 days",
+      1,
+      "Yes"
+    ],
+    [
+      "journey_task",
+      "Task attempted in anchored journey",
+      1,
+      "Payment or transfer"
+    ],
+    [
+      "journey_task",
+      "Task attempted in anchored journey",
+      2,
+      "Account balance or information"
+    ],
+    [
+      "journey_task",
+      "Task attempted in anchored journey",
+      3,
+      "Account or personal detail change"
+    ],
+    [
+      "journey_task",
+      "Task attempted in anchored journey",
+      4,
+      "Problem complaint or fraud concern"
+    ],
+    [
+      "journey_task",
+      "Task attempted in anchored journey",
+      5,
+      "Product advice or application"
+    ],
+    [
+      "journey_task",
+      "Task attempted in anchored journey",
+      6,
+      "Other"
+    ],
+    [
+      "journey_channel_c01",
+      "Same task used Call centre",
+      0,
+      "Not used"
+    ],
+    [
+      "journey_channel_c01",
+      "Same task used Call centre",
+      1,
+      "Used"
+    ],
+    [
+      "journey_channel_c02",
+      "Same task used Branch",
+      0,
+      "Not used"
+    ],
+    [
+      "journey_channel_c02",
+      "Same task used Branch",
+      1,
+      "Used"
+    ],
+    [
+      "journey_channel_c03",
+      "Same task used Digital self service",
+      0,
+      "Not used"
+    ],
+    [
+      "journey_channel_c03",
+      "Same task used Digital self service",
+      1,
+      "Used"
+    ],
+    [
+      "journey_channel_c04",
+      "Same task used Messaging or live chat",
+      0,
+      "Not used"
+    ],
+    [
+      "journey_channel_c04",
+      "Same task used Messaging or live chat",
+      1,
+      "Used"
+    ],
+    [
+      "journey_digital_mode",
+      "Digital mode used in anchored journey",
+      1,
+      "App"
+    ],
+    [
+      "journey_digital_mode",
+      "Digital mode used in anchored journey",
+      2,
+      "Website"
+    ],
+    [
+      "journey_digital_mode",
+      "Digital mode used in anchored journey",
+      3,
+      "Both app and website"
+    ],
+    [
+      "journey_multichannel",
+      "Used at least two distinct channels on the same task",
+      0,
+      "One channel"
+    ],
+    [
+      "journey_multichannel",
+      "Used at least two distinct channels on the same task",
+      1,
+      "Multiple channels"
+    ],
+    [
+      "journey_transferred",
+      "Transferred or directed between teams or channels on this task",
+      0,
+      "No"
+    ],
+    [
+      "journey_transferred",
+      "Transferred or directed between teams or channels on this task",
+      1,
+      "Yes"
+    ],
+    [
+      "journey_transferred",
+      "Transferred or directed between teams or channels on this task",
+      99,
+      "Do not know"
+    ],
+    [
+      "journey_repeat_info",
+      "Required to repeat information already provided on this task",
+      0,
+      "No"
+    ],
+    [
+      "journey_repeat_info",
+      "Required to repeat information already provided on this task",
+      1,
+      "Yes"
+    ],
+    [
+      "journey_repeat_info",
+      "Required to repeat information already provided on this task",
+      99,
+      "Do not know"
+    ],
+    [
+      "journey_status",
+      "Outcome of the same anchored task at interview",
+      1,
+      "Completed"
+    ],
+    [
+      "journey_status",
+      "Outcome of the same anchored task at interview",
+      2,
+      "Partly completed"
+    ],
+    [
+      "journey_status",
+      "Outcome of the same anchored task at interview",
+      3,
+      "Unresolved or abandoned"
+    ],
+    [
+      "journey_status",
+      "Outcome of the same anchored task at interview",
+      9,
+      "Still pending"
+    ],
+    [
+      "journey_completed",
+      "Completed task among known final outcomes",
+      0,
+      "Not completed"
+    ],
+    [
+      "journey_completed",
+      "Completed task among known final outcomes",
+      1,
+      "Completed"
+    ],
+    [
+      "journey_csat5",
+      "Overall satisfaction with the end to end anchored task",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "journey_csat5",
+      "Overall satisfaction with the end to end anchored task",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "journey_csat5",
+      "Overall satisfaction with the end to end anchored task",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "journey_csat5",
+      "Overall satisfaction with the end to end anchored task",
+      4,
+      "Satisfied"
+    ],
+    [
+      "journey_csat5",
+      "Overall satisfaction with the end to end anchored task",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "journey_csat5",
+      "Overall satisfaction with the end to end anchored task",
+      99,
+      "Do not know"
+    ],
+    [
+      "journey_reassured5",
+      "Anchored journey left customer reassured",
+      1,
+      "Not at all"
+    ],
+    [
+      "journey_reassured5",
+      "Anchored journey left customer reassured",
+      2,
+      "A little"
+    ],
+    [
+      "journey_reassured5",
+      "Anchored journey left customer reassured",
+      3,
+      "Moderately"
+    ],
+    [
+      "journey_reassured5",
+      "Anchored journey left customer reassured",
+      4,
+      "Very"
+    ],
+    [
+      "journey_reassured5",
+      "Anchored journey left customer reassured",
+      5,
+      "Extremely"
+    ],
+    [
+      "journey_reassured5",
+      "Anchored journey left customer reassured",
+      99,
+      "Do not know"
+    ],
+    [
+      "journey_valued5",
+      "Anchored journey left customer valued",
+      1,
+      "Not at all"
+    ],
+    [
+      "journey_valued5",
+      "Anchored journey left customer valued",
+      2,
+      "A little"
+    ],
+    [
+      "journey_valued5",
+      "Anchored journey left customer valued",
+      3,
+      "Moderately"
+    ],
+    [
+      "journey_valued5",
+      "Anchored journey left customer valued",
+      4,
+      "Very"
+    ],
+    [
+      "journey_valued5",
+      "Anchored journey left customer valued",
+      5,
+      "Extremely"
+    ],
+    [
+      "journey_valued5",
+      "Anchored journey left customer valued",
+      99,
+      "Do not know"
+    ],
+    [
+      "journey_frustrated5",
+      "Anchored journey left customer frustrated",
+      1,
+      "Not at all"
+    ],
+    [
+      "journey_frustrated5",
+      "Anchored journey left customer frustrated",
+      2,
+      "A little"
+    ],
+    [
+      "journey_frustrated5",
+      "Anchored journey left customer frustrated",
+      3,
+      "Moderately"
+    ],
+    [
+      "journey_frustrated5",
+      "Anchored journey left customer frustrated",
+      4,
+      "Very"
+    ],
+    [
+      "journey_frustrated5",
+      "Anchored journey left customer frustrated",
+      5,
+      "Extremely"
+    ],
+    [
+      "journey_frustrated5",
+      "Anchored journey left customer frustrated",
+      99,
+      "Do not know"
+    ],
+    [
+      "journey_anxious5",
+      "Anchored journey left customer anxious",
+      1,
+      "Not at all"
+    ],
+    [
+      "journey_anxious5",
+      "Anchored journey left customer anxious",
+      2,
+      "A little"
+    ],
+    [
+      "journey_anxious5",
+      "Anchored journey left customer anxious",
+      3,
+      "Moderately"
+    ],
+    [
+      "journey_anxious5",
+      "Anchored journey left customer anxious",
+      4,
+      "Very"
+    ],
+    [
+      "journey_anxious5",
+      "Anchored journey left customer anxious",
+      5,
+      "Extremely"
+    ],
+    [
+      "journey_anxious5",
+      "Anchored journey left customer anxious",
+      99,
+      "Do not know"
+    ],
+    [
+      "journey_preference5",
+      "Anchored journey gives a reason to choose this provider",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "journey_preference5",
+      "Anchored journey gives a reason to choose this provider",
+      2,
+      "Disagree"
+    ],
+    [
+      "journey_preference5",
+      "Anchored journey gives a reason to choose this provider",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "journey_preference5",
+      "Anchored journey gives a reason to choose this provider",
+      4,
+      "Agree"
+    ],
+    [
+      "journey_preference5",
+      "Anchored journey gives a reason to choose this provider",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "journey_preference5",
+      "Anchored journey gives a reason to choose this provider",
+      99,
+      "Do not know"
+    ],
+    [
+      "benchmark_recent_same_task30",
+      "Personally used another provider for same task type in past 30 days",
+      0,
+      "No"
+    ],
+    [
+      "benchmark_recent_same_task30",
+      "Personally used another provider for same task type in past 30 days",
+      1,
+      "Yes"
+    ],
+    [
+      "benchmark_recent_same_task30",
+      "Personally used another provider for same task type in past 30 days",
+      99,
+      "Do not know"
+    ],
+    [
+      "benchmark_provider",
+      "Other provider personally used for comparable task",
+      1,
+      "FNB"
+    ],
+    [
+      "benchmark_provider",
+      "Other provider personally used for comparable task",
+      2,
+      "Standard Bank"
+    ],
+    [
+      "benchmark_provider",
+      "Other provider personally used for comparable task",
+      3,
+      "Absa"
+    ],
+    [
+      "benchmark_provider",
+      "Other provider personally used for comparable task",
+      4,
+      "Nedbank"
+    ],
+    [
+      "benchmark_provider",
+      "Other provider personally used for comparable task",
+      5,
+      "Capitec"
+    ],
+    [
+      "benchmark_provider",
+      "Other provider personally used for comparable task",
+      6,
+      "Discovery Bank"
+    ],
+    [
+      "benchmark_provider",
+      "Other provider personally used for comparable task",
+      7,
+      "GoTyme Bank (formerly TymeBank)"
+    ],
+    [
+      "benchmark_task",
+      "Task type personally attempted with other provider",
+      1,
+      "Payment or transfer"
+    ],
+    [
+      "benchmark_task",
+      "Task type personally attempted with other provider",
+      2,
+      "Account balance or information"
+    ],
+    [
+      "benchmark_task",
+      "Task type personally attempted with other provider",
+      3,
+      "Account or personal detail change"
+    ],
+    [
+      "benchmark_task",
+      "Task type personally attempted with other provider",
+      4,
+      "Problem complaint or fraud concern"
+    ],
+    [
+      "benchmark_task",
+      "Task type personally attempted with other provider",
+      5,
+      "Product advice or application"
+    ],
+    [
+      "benchmark_task",
+      "Task type personally attempted with other provider",
+      6,
+      "Other"
+    ],
+    [
+      "benchmark_channel",
+      "Channel of comparable other provider task experience",
+      1,
+      "Call centre"
+    ],
+    [
+      "benchmark_channel",
+      "Channel of comparable other provider task experience",
+      2,
+      "Branch"
+    ],
+    [
+      "benchmark_channel",
+      "Channel of comparable other provider task experience",
+      3,
+      "Digital self service"
+    ],
+    [
+      "benchmark_channel",
+      "Channel of comparable other provider task experience",
+      4,
+      "Messaging or live chat"
+    ],
+    [
+      "benchmark_csat5",
+      "Overall satisfaction with other provider comparable task",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "benchmark_csat5",
+      "Overall satisfaction with other provider comparable task",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "benchmark_csat5",
+      "Overall satisfaction with other provider comparable task",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "benchmark_csat5",
+      "Overall satisfaction with other provider comparable task",
+      4,
+      "Satisfied"
+    ],
+    [
+      "benchmark_csat5",
+      "Overall satisfaction with other provider comparable task",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "benchmark_csat5",
+      "Overall satisfaction with other provider comparable task",
+      99,
+      "Do not know"
+    ]
+  ],
+  "channel_labels": [
+    [
+      "wave",
+      "Wave",
+      1,
+      "February 2026"
+    ],
+    [
+      "wave",
+      "Wave",
+      2,
+      "June 2026"
+    ],
+    [
+      "wave",
+      "Wave",
+      3,
+      "October 2026"
+    ],
+    [
+      "company",
+      "Main company",
+      1,
+      "FNB"
+    ],
+    [
+      "company",
+      "Main company",
+      2,
+      "Standard Bank"
+    ],
+    [
+      "company",
+      "Main company",
+      3,
+      "Absa"
+    ],
+    [
+      "company",
+      "Main company",
+      4,
+      "Nedbank"
+    ],
+    [
+      "company",
+      "Main company",
+      5,
+      "Capitec"
+    ],
+    [
+      "company",
+      "Main company",
+      6,
+      "Discovery Bank"
+    ],
+    [
+      "company",
+      "Main company",
+      7,
+      "GoTyme Bank (formerly TymeBank)"
+    ],
+    [
+      "age_band",
+      "Age group",
+      1,
+      "18\u201324"
+    ],
+    [
+      "age_band",
+      "Age group",
+      2,
+      "25\u201334"
+    ],
+    [
+      "age_band",
+      "Age group",
+      3,
+      "35\u201349"
+    ],
+    [
+      "age_band",
+      "Age group",
+      4,
+      "50\u201369"
+    ],
+    [
+      "gender",
+      "Gender",
+      1,
+      "Man"
+    ],
+    [
+      "gender",
+      "Gender",
+      2,
+      "Woman"
+    ],
+    [
+      "gender",
+      "Gender",
+      3,
+      "Another identity"
+    ],
+    [
+      "gender",
+      "Gender",
+      4,
+      "Prefer not to say"
+    ],
+    [
+      "province",
+      "Province",
+      1,
+      "Gauteng"
+    ],
+    [
+      "province",
+      "Province",
+      2,
+      "KwaZulu-Natal"
+    ],
+    [
+      "province",
+      "Province",
+      3,
+      "Western Cape"
+    ],
+    [
+      "province",
+      "Province",
+      4,
+      "Eastern Cape"
+    ],
+    [
+      "province",
+      "Province",
+      5,
+      "Limpopo"
+    ],
+    [
+      "province",
+      "Province",
+      6,
+      "Mpumalanga"
+    ],
+    [
+      "province",
+      "Province",
+      7,
+      "North West"
+    ],
+    [
+      "province",
+      "Province",
+      8,
+      "Free State"
+    ],
+    [
+      "province",
+      "Province",
+      9,
+      "Northern Cape"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      1,
+      "Below R15,000"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      2,
+      "R15,000\u2013R29,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      3,
+      "R30,000\u2013R49,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      4,
+      "R50,000\u2013R79,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      5,
+      "R80,000 or more"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      99,
+      "Prefer not to say"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      1,
+      "Metro or city"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      2,
+      "Town"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      3,
+      "Rural area"
+    ],
+    [
+      "segment",
+      "Synthetic demonstration segment",
+      1,
+      "Segment 1"
+    ],
+    [
+      "segment",
+      "Synthetic demonstration segment",
+      2,
+      "Segment 2"
+    ],
+    [
+      "segment",
+      "Synthetic demonstration segment",
+      3,
+      "Segment 3"
+    ],
+    [
+      "channel",
+      "Channel",
+      1,
+      "Call centre"
+    ],
+    [
+      "channel",
+      "Channel",
+      2,
+      "Branch"
+    ],
+    [
+      "channel",
+      "Channel",
+      3,
+      "Digital self service"
+    ],
+    [
+      "channel",
+      "Channel",
+      4,
+      "Messaging or live chat"
+    ],
+    [
+      "digital_mode",
+      "Digital mode",
+      1,
+      "App"
+    ],
+    [
+      "digital_mode",
+      "Digital mode",
+      2,
+      "Website"
+    ],
+    [
+      "staff_contact",
+      "Staff contact",
+      0,
+      "No"
+    ],
+    [
+      "staff_contact",
+      "Staff contact",
+      1,
+      "Yes"
+    ],
+    [
+      "primary_reason",
+      "Primary need",
+      1,
+      "Payment or transfer"
+    ],
+    [
+      "primary_reason",
+      "Primary need",
+      2,
+      "Account balance or information"
+    ],
+    [
+      "primary_reason",
+      "Primary need",
+      3,
+      "Account or personal detail change"
+    ],
+    [
+      "primary_reason",
+      "Primary need",
+      4,
+      "Problem complaint or fraud concern"
+    ],
+    [
+      "primary_reason",
+      "Primary need",
+      5,
+      "Product advice or application"
+    ],
+    [
+      "primary_reason",
+      "Primary need",
+      6,
+      "Other"
+    ],
+    [
+      "reasons_r01",
+      "Payment or transfer",
+      0,
+      "No"
+    ],
+    [
+      "reasons_r01",
+      "Payment or transfer",
+      1,
+      "Yes"
+    ],
+    [
+      "reasons_r02",
+      "Account balance or information",
+      0,
+      "No"
+    ],
+    [
+      "reasons_r02",
+      "Account balance or information",
+      1,
+      "Yes"
+    ],
+    [
+      "reasons_r03",
+      "Account or personal detail change",
+      0,
+      "No"
+    ],
+    [
+      "reasons_r03",
+      "Account or personal detail change",
+      1,
+      "Yes"
+    ],
+    [
+      "reasons_r04",
+      "Problem complaint or fraud concern",
+      0,
+      "No"
+    ],
+    [
+      "reasons_r04",
+      "Problem complaint or fraud concern",
+      1,
+      "Yes"
+    ],
+    [
+      "reasons_r05",
+      "Product advice or application",
+      0,
+      "No"
+    ],
+    [
+      "reasons_r05",
+      "Product advice or application",
+      1,
+      "Yes"
+    ],
+    [
+      "reasons_r06",
+      "Other",
+      0,
+      "No"
+    ],
+    [
+      "reasons_r06",
+      "Other",
+      1,
+      "Yes"
+    ],
+    [
+      "channel_csat5",
+      "Satisfaction with this experience",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "channel_csat5",
+      "Satisfaction with this experience",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "channel_csat5",
+      "Satisfaction with this experience",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "channel_csat5",
+      "Satisfaction with this experience",
+      4,
+      "Satisfied"
+    ],
+    [
+      "channel_csat5",
+      "Satisfaction with this experience",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "channel_csat5",
+      "Satisfaction with this experience",
+      99,
+      "Do not know"
+    ],
+    [
+      "ease7",
+      "Ease of getting what was needed",
+      1,
+      "Very difficult"
+    ],
+    [
+      "ease7",
+      "Ease of getting what was needed",
+      2,
+      "Difficult"
+    ],
+    [
+      "ease7",
+      "Ease of getting what was needed",
+      3,
+      "Somewhat difficult"
+    ],
+    [
+      "ease7",
+      "Ease of getting what was needed",
+      4,
+      "Neither"
+    ],
+    [
+      "ease7",
+      "Ease of getting what was needed",
+      5,
+      "Somewhat easy"
+    ],
+    [
+      "ease7",
+      "Ease of getting what was needed",
+      6,
+      "Easy"
+    ],
+    [
+      "ease7",
+      "Ease of getting what was needed",
+      7,
+      "Very easy"
+    ],
+    [
+      "ease7",
+      "Ease of getting what was needed",
+      99,
+      "Do not know"
+    ],
+    [
+      "task_completed",
+      "Task completed",
+      0,
+      "No"
+    ],
+    [
+      "task_completed",
+      "Task completed",
+      1,
+      "Yes"
+    ],
+    [
+      "task_completed",
+      "Task completed",
+      9,
+      "Pending"
+    ],
+    [
+      "problem_present",
+      "Problem to resolve",
+      0,
+      "No"
+    ],
+    [
+      "problem_present",
+      "Problem to resolve",
+      1,
+      "Yes"
+    ],
+    [
+      "problem_resolution",
+      "Problem resolution",
+      1,
+      "Fully"
+    ],
+    [
+      "problem_resolution",
+      "Problem resolution",
+      2,
+      "Partly"
+    ],
+    [
+      "problem_resolution",
+      "Problem resolution",
+      3,
+      "Unresolved"
+    ],
+    [
+      "problem_resolution",
+      "Problem resolution",
+      9,
+      "Pending"
+    ],
+    [
+      "first_contact_resolution",
+      "First contact resolution",
+      0,
+      "No"
+    ],
+    [
+      "first_contact_resolution",
+      "First contact resolution",
+      1,
+      "Yes"
+    ],
+    [
+      "driver_reliable_accurate",
+      "Accuracy of information",
+      1,
+      "Very poor"
+    ],
+    [
+      "driver_reliable_accurate",
+      "Accuracy of information",
+      2,
+      "Poor"
+    ],
+    [
+      "driver_reliable_accurate",
+      "Accuracy of information",
+      3,
+      "Adequate"
+    ],
+    [
+      "driver_reliable_accurate",
+      "Accuracy of information",
+      4,
+      "Good"
+    ],
+    [
+      "driver_reliable_accurate",
+      "Accuracy of information",
+      5,
+      "Excellent"
+    ],
+    [
+      "driver_reliable_accurate",
+      "Accuracy of information",
+      98,
+      "Not applicable"
+    ],
+    [
+      "driver_reliable_accurate",
+      "Accuracy of information",
+      99,
+      "Do not know"
+    ],
+    [
+      "driver_reliable_correct",
+      "Correct handling of the task",
+      1,
+      "Very poor"
+    ],
+    [
+      "driver_reliable_correct",
+      "Correct handling of the task",
+      2,
+      "Poor"
+    ],
+    [
+      "driver_reliable_correct",
+      "Correct handling of the task",
+      3,
+      "Adequate"
+    ],
+    [
+      "driver_reliable_correct",
+      "Correct handling of the task",
+      4,
+      "Good"
+    ],
+    [
+      "driver_reliable_correct",
+      "Correct handling of the task",
+      5,
+      "Excellent"
+    ],
+    [
+      "driver_reliable_correct",
+      "Correct handling of the task",
+      98,
+      "Not applicable"
+    ],
+    [
+      "driver_reliable_correct",
+      "Correct handling of the task",
+      99,
+      "Do not know"
+    ],
+    [
+      "driver_responsive_speed",
+      "Speed of response",
+      1,
+      "Very poor"
+    ],
+    [
+      "driver_responsive_speed",
+      "Speed of response",
+      2,
+      "Poor"
+    ],
+    [
+      "driver_responsive_speed",
+      "Speed of response",
+      3,
+      "Adequate"
+    ],
+    [
+      "driver_responsive_speed",
+      "Speed of response",
+      4,
+      "Good"
+    ],
+    [
+      "driver_responsive_speed",
+      "Speed of response",
+      5,
+      "Excellent"
+    ],
+    [
+      "driver_responsive_speed",
+      "Speed of response",
+      98,
+      "Not applicable"
+    ],
+    [
+      "driver_responsive_speed",
+      "Speed of response",
+      99,
+      "Do not know"
+    ],
+    [
+      "driver_responsive_updates",
+      "Kept informed about progress",
+      1,
+      "Very poor"
+    ],
+    [
+      "driver_responsive_updates",
+      "Kept informed about progress",
+      2,
+      "Poor"
+    ],
+    [
+      "driver_responsive_updates",
+      "Kept informed about progress",
+      3,
+      "Adequate"
+    ],
+    [
+      "driver_responsive_updates",
+      "Kept informed about progress",
+      4,
+      "Good"
+    ],
+    [
+      "driver_responsive_updates",
+      "Kept informed about progress",
+      5,
+      "Excellent"
+    ],
+    [
+      "driver_responsive_updates",
+      "Kept informed about progress",
+      98,
+      "Not applicable"
+    ],
+    [
+      "driver_responsive_updates",
+      "Kept informed about progress",
+      99,
+      "Do not know"
+    ],
+    [
+      "driver_assurance_knowledge",
+      "Staff knowledge and competence",
+      1,
+      "Very poor"
+    ],
+    [
+      "driver_assurance_knowledge",
+      "Staff knowledge and competence",
+      2,
+      "Poor"
+    ],
+    [
+      "driver_assurance_knowledge",
+      "Staff knowledge and competence",
+      3,
+      "Adequate"
+    ],
+    [
+      "driver_assurance_knowledge",
+      "Staff knowledge and competence",
+      4,
+      "Good"
+    ],
+    [
+      "driver_assurance_knowledge",
+      "Staff knowledge and competence",
+      5,
+      "Excellent"
+    ],
+    [
+      "driver_assurance_knowledge",
+      "Staff knowledge and competence",
+      98,
+      "Not applicable"
+    ],
+    [
+      "driver_assurance_knowledge",
+      "Staff knowledge and competence",
+      99,
+      "Do not know"
+    ],
+    [
+      "driver_assurance_confidence",
+      "Confidence in safe handling",
+      1,
+      "Very poor"
+    ],
+    [
+      "driver_assurance_confidence",
+      "Confidence in safe handling",
+      2,
+      "Poor"
+    ],
+    [
+      "driver_assurance_confidence",
+      "Confidence in safe handling",
+      3,
+      "Adequate"
+    ],
+    [
+      "driver_assurance_confidence",
+      "Confidence in safe handling",
+      4,
+      "Good"
+    ],
+    [
+      "driver_assurance_confidence",
+      "Confidence in safe handling",
+      5,
+      "Excellent"
+    ],
+    [
+      "driver_assurance_confidence",
+      "Confidence in safe handling",
+      98,
+      "Not applicable"
+    ],
+    [
+      "driver_assurance_confidence",
+      "Confidence in safe handling",
+      99,
+      "Do not know"
+    ],
+    [
+      "driver_empathy_understood",
+      "Understanding of my needs",
+      1,
+      "Very poor"
+    ],
+    [
+      "driver_empathy_understood",
+      "Understanding of my needs",
+      2,
+      "Poor"
+    ],
+    [
+      "driver_empathy_understood",
+      "Understanding of my needs",
+      3,
+      "Adequate"
+    ],
+    [
+      "driver_empathy_understood",
+      "Understanding of my needs",
+      4,
+      "Good"
+    ],
+    [
+      "driver_empathy_understood",
+      "Understanding of my needs",
+      5,
+      "Excellent"
+    ],
+    [
+      "driver_empathy_understood",
+      "Understanding of my needs",
+      98,
+      "Not applicable"
+    ],
+    [
+      "driver_empathy_understood",
+      "Understanding of my needs",
+      99,
+      "Do not know"
+    ],
+    [
+      "driver_empathy_respect",
+      "Respectful treatment",
+      1,
+      "Very poor"
+    ],
+    [
+      "driver_empathy_respect",
+      "Respectful treatment",
+      2,
+      "Poor"
+    ],
+    [
+      "driver_empathy_respect",
+      "Respectful treatment",
+      3,
+      "Adequate"
+    ],
+    [
+      "driver_empathy_respect",
+      "Respectful treatment",
+      4,
+      "Good"
+    ],
+    [
+      "driver_empathy_respect",
+      "Respectful treatment",
+      5,
+      "Excellent"
+    ],
+    [
+      "driver_empathy_respect",
+      "Respectful treatment",
+      98,
+      "Not applicable"
+    ],
+    [
+      "driver_empathy_respect",
+      "Respectful treatment",
+      99,
+      "Do not know"
+    ],
+    [
+      "driver_access_ease",
+      "Ease of accessing the channel",
+      1,
+      "Very poor"
+    ],
+    [
+      "driver_access_ease",
+      "Ease of accessing the channel",
+      2,
+      "Poor"
+    ],
+    [
+      "driver_access_ease",
+      "Ease of accessing the channel",
+      3,
+      "Adequate"
+    ],
+    [
+      "driver_access_ease",
+      "Ease of accessing the channel",
+      4,
+      "Good"
+    ],
+    [
+      "driver_access_ease",
+      "Ease of accessing the channel",
+      5,
+      "Excellent"
+    ],
+    [
+      "driver_access_ease",
+      "Ease of accessing the channel",
+      98,
+      "Not applicable"
+    ],
+    [
+      "driver_access_ease",
+      "Ease of accessing the channel",
+      99,
+      "Do not know"
+    ],
+    [
+      "driver_access_clarity",
+      "Clarity of communication or interface",
+      1,
+      "Very poor"
+    ],
+    [
+      "driver_access_clarity",
+      "Clarity of communication or interface",
+      2,
+      "Poor"
+    ],
+    [
+      "driver_access_clarity",
+      "Clarity of communication or interface",
+      3,
+      "Adequate"
+    ],
+    [
+      "driver_access_clarity",
+      "Clarity of communication or interface",
+      4,
+      "Good"
+    ],
+    [
+      "driver_access_clarity",
+      "Clarity of communication or interface",
+      5,
+      "Excellent"
+    ],
+    [
+      "driver_access_clarity",
+      "Clarity of communication or interface",
+      98,
+      "Not applicable"
+    ],
+    [
+      "driver_access_clarity",
+      "Clarity of communication or interface",
+      99,
+      "Do not know"
+    ],
+    [
+      "transferred",
+      "Transferred",
+      0,
+      "No"
+    ],
+    [
+      "transferred",
+      "Transferred",
+      1,
+      "Yes"
+    ],
+    [
+      "put_on_hold",
+      "Put on hold",
+      0,
+      "No"
+    ],
+    [
+      "put_on_hold",
+      "Put on hold",
+      1,
+      "Yes"
+    ],
+    [
+      "callback_promised",
+      "Callback promised",
+      0,
+      "No"
+    ],
+    [
+      "callback_promised",
+      "Callback promised",
+      1,
+      "Yes"
+    ],
+    [
+      "used_ivr",
+      "Used IVR",
+      0,
+      "No"
+    ],
+    [
+      "used_ivr",
+      "Used IVR",
+      1,
+      "Yes"
+    ],
+    [
+      "callback_outcome",
+      "Callback outcome",
+      1,
+      "On time"
+    ],
+    [
+      "callback_outcome",
+      "Callback outcome",
+      2,
+      "Late"
+    ],
+    [
+      "callback_outcome",
+      "Callback outcome",
+      3,
+      "Not received"
+    ],
+    [
+      "callback_outcome",
+      "Callback outcome",
+      9,
+      "Not yet due"
+    ],
+    [
+      "ivr_csat5",
+      "IVR satisfaction",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "ivr_csat5",
+      "IVR satisfaction",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "ivr_csat5",
+      "IVR satisfaction",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "ivr_csat5",
+      "IVR satisfaction",
+      4,
+      "Satisfied"
+    ],
+    [
+      "ivr_csat5",
+      "IVR satisfaction",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "ivr_csat5",
+      "IVR satisfaction",
+      99,
+      "Do not know"
+    ],
+    [
+      "ivr_clarity5",
+      "IVR clarity",
+      1,
+      "Very poor"
+    ],
+    [
+      "ivr_clarity5",
+      "IVR clarity",
+      2,
+      "Poor"
+    ],
+    [
+      "ivr_clarity5",
+      "IVR clarity",
+      3,
+      "Adequate"
+    ],
+    [
+      "ivr_clarity5",
+      "IVR clarity",
+      4,
+      "Good"
+    ],
+    [
+      "ivr_clarity5",
+      "IVR clarity",
+      5,
+      "Excellent"
+    ],
+    [
+      "ivr_clarity5",
+      "IVR clarity",
+      98,
+      "Not applicable"
+    ],
+    [
+      "ivr_clarity5",
+      "IVR clarity",
+      99,
+      "Do not know"
+    ],
+    [
+      "agent_introduced",
+      "Staff introduced themselves",
+      0,
+      "No"
+    ],
+    [
+      "agent_introduced",
+      "Staff introduced themselves",
+      1,
+      "Yes"
+    ],
+    [
+      "agent_polite",
+      "Polite staff",
+      0,
+      "No"
+    ],
+    [
+      "agent_polite",
+      "Polite staff",
+      1,
+      "Yes"
+    ],
+    [
+      "preferred_language_assisted",
+      "Preferred language assistance",
+      0,
+      "No"
+    ],
+    [
+      "preferred_language_assisted",
+      "Preferred language assistance",
+      1,
+      "Yes"
+    ],
+    [
+      "branch_tidy5",
+      "Physical facilities tidy",
+      1,
+      "Very poor"
+    ],
+    [
+      "branch_tidy5",
+      "Physical facilities tidy",
+      2,
+      "Poor"
+    ],
+    [
+      "branch_tidy5",
+      "Physical facilities tidy",
+      3,
+      "Adequate"
+    ],
+    [
+      "branch_tidy5",
+      "Physical facilities tidy",
+      4,
+      "Good"
+    ],
+    [
+      "branch_tidy5",
+      "Physical facilities tidy",
+      5,
+      "Excellent"
+    ],
+    [
+      "branch_tidy5",
+      "Physical facilities tidy",
+      98,
+      "Not applicable"
+    ],
+    [
+      "branch_tidy5",
+      "Physical facilities tidy",
+      99,
+      "Do not know"
+    ],
+    [
+      "branch_accessible5",
+      "Physical facilities accessible",
+      1,
+      "Very poor"
+    ],
+    [
+      "branch_accessible5",
+      "Physical facilities accessible",
+      2,
+      "Poor"
+    ],
+    [
+      "branch_accessible5",
+      "Physical facilities accessible",
+      3,
+      "Adequate"
+    ],
+    [
+      "branch_accessible5",
+      "Physical facilities accessible",
+      4,
+      "Good"
+    ],
+    [
+      "branch_accessible5",
+      "Physical facilities accessible",
+      5,
+      "Excellent"
+    ],
+    [
+      "branch_accessible5",
+      "Physical facilities accessible",
+      98,
+      "Not applicable"
+    ],
+    [
+      "branch_accessible5",
+      "Physical facilities accessible",
+      99,
+      "Do not know"
+    ],
+    [
+      "channel_reassured5",
+      "This latest channel experience left customer reassured",
+      1,
+      "Not at all"
+    ],
+    [
+      "channel_reassured5",
+      "This latest channel experience left customer reassured",
+      2,
+      "A little"
+    ],
+    [
+      "channel_reassured5",
+      "This latest channel experience left customer reassured",
+      3,
+      "Moderately"
+    ],
+    [
+      "channel_reassured5",
+      "This latest channel experience left customer reassured",
+      4,
+      "Very"
+    ],
+    [
+      "channel_reassured5",
+      "This latest channel experience left customer reassured",
+      5,
+      "Extremely"
+    ],
+    [
+      "channel_reassured5",
+      "This latest channel experience left customer reassured",
+      99,
+      "Do not know"
+    ],
+    [
+      "channel_valued5",
+      "This latest channel experience left customer valued",
+      1,
+      "Not at all"
+    ],
+    [
+      "channel_valued5",
+      "This latest channel experience left customer valued",
+      2,
+      "A little"
+    ],
+    [
+      "channel_valued5",
+      "This latest channel experience left customer valued",
+      3,
+      "Moderately"
+    ],
+    [
+      "channel_valued5",
+      "This latest channel experience left customer valued",
+      4,
+      "Very"
+    ],
+    [
+      "channel_valued5",
+      "This latest channel experience left customer valued",
+      5,
+      "Extremely"
+    ],
+    [
+      "channel_valued5",
+      "This latest channel experience left customer valued",
+      99,
+      "Do not know"
+    ],
+    [
+      "channel_frustrated5",
+      "This latest channel experience left customer frustrated",
+      1,
+      "Not at all"
+    ],
+    [
+      "channel_frustrated5",
+      "This latest channel experience left customer frustrated",
+      2,
+      "A little"
+    ],
+    [
+      "channel_frustrated5",
+      "This latest channel experience left customer frustrated",
+      3,
+      "Moderately"
+    ],
+    [
+      "channel_frustrated5",
+      "This latest channel experience left customer frustrated",
+      4,
+      "Very"
+    ],
+    [
+      "channel_frustrated5",
+      "This latest channel experience left customer frustrated",
+      5,
+      "Extremely"
+    ],
+    [
+      "channel_frustrated5",
+      "This latest channel experience left customer frustrated",
+      99,
+      "Do not know"
+    ],
+    [
+      "channel_anxious5",
+      "This latest channel experience left customer anxious",
+      1,
+      "Not at all"
+    ],
+    [
+      "channel_anxious5",
+      "This latest channel experience left customer anxious",
+      2,
+      "A little"
+    ],
+    [
+      "channel_anxious5",
+      "This latest channel experience left customer anxious",
+      3,
+      "Moderately"
+    ],
+    [
+      "channel_anxious5",
+      "This latest channel experience left customer anxious",
+      4,
+      "Very"
+    ],
+    [
+      "channel_anxious5",
+      "This latest channel experience left customer anxious",
+      5,
+      "Extremely"
+    ],
+    [
+      "channel_anxious5",
+      "This latest channel experience left customer anxious",
+      99,
+      "Do not know"
+    ],
+    [
+      "channel_preference5",
+      "This latest channel experience gives reason to choose provider",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "channel_preference5",
+      "This latest channel experience gives reason to choose provider",
+      2,
+      "Disagree"
+    ],
+    [
+      "channel_preference5",
+      "This latest channel experience gives reason to choose provider",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "channel_preference5",
+      "This latest channel experience gives reason to choose provider",
+      4,
+      "Agree"
+    ],
+    [
+      "channel_preference5",
+      "This latest channel experience gives reason to choose provider",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "channel_preference5",
+      "This latest channel experience gives reason to choose provider",
+      99,
+      "Do not know"
+    ]
+  ],
+  "dimensions": [
+    "Reliability",
+    "Responsiveness",
+    "Assurance",
+    "Empathy",
+    "Access and clarity"
+  ],
+  "metric_headers": [
+    "wave",
+    "dataset",
+    "company",
+    "channel",
+    "variable",
+    "statistic",
+    "expected",
+    "numerator",
+    "weighted_base",
+    "raw_base",
+    "unit"
+  ],
+  "grain": {
+    "Relationship": "one customer per wave, rating one main provider",
+    "Channel": "one most recent experience per customer per channel per wave",
+    "Noncustomer": "one independently sampled focal-provider noncustomer per wave; no focal experience ratings"
+  },
+  "source_note": "User CSM workbook provides 0\u201310 call-centre variables. New 5-point instrument is not a score conversion. User Word file is a general questionnaire template.",
+  "noncustomer_specs": [
+    {
+      "variable": "respondent_id",
+      "label": "Separate anonymous noncustomer ID",
+      "question": "SYS",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "interview_date",
+      "label": "Interview date",
+      "question": "SYS",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "wave",
+      "label": "Wave",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company",
+      "label": "Current main alternative provider",
+      "question": "N1a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "weight",
+      "label": "Synthetic supplemental sample weight",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "relative weight"
+    },
+    {
+      "variable": "age",
+      "label": "Age",
+      "question": "N1c",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "years"
+    },
+    {
+      "variable": "age_band",
+      "label": "Age group",
+      "question": "N1c",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "From age: 18-24=1; 25-34=2; 35-49=3; 50-69=4",
+      "unit": "code"
+    },
+    {
+      "variable": "gender",
+      "label": "Gender",
+      "question": "D1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "province",
+      "label": "Province",
+      "question": "D2",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "income",
+      "label": "Monthly household income",
+      "question": "D3",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "settlement",
+      "label": "Settlement",
+      "question": "D4",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "focal_company",
+      "label": "Provider the respondent does not currently use",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "current_focal_use",
+      "label": "Any current use of focal provider screened out",
+      "question": "N1b",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "focal_awareness",
+      "label": "Aware of focal provider before this interview",
+      "question": "N2",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "focal_consider5",
+      "label": "Would consider focal provider if choosing today",
+      "question": "N3",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_preferred_channel",
+      "label": "Preferred channel for future service task",
+      "question": "N4",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d01",
+      "label": "Expected focal performance Services work accurately and reliably",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d01",
+      "label": "Importance for future provider Services work accurately and reliably",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d02",
+      "label": "Expected focal performance Help is provided promptly",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d02",
+      "label": "Importance for future provider Help is provided promptly",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d03",
+      "label": "Expected focal performance I feel confident about security",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d03",
+      "label": "Importance for future provider I feel confident about security",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d04",
+      "label": "Expected focal performance The bank understands my needs",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d04",
+      "label": "Importance for future provider The bank understands my needs",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d05",
+      "label": "Expected focal performance Banking channels are easy to access",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d05",
+      "label": "Importance for future provider Banking channels are easy to access",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d06",
+      "label": "Expected focal performance Fees represent good value",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d06",
+      "label": "Importance for future provider Fees represent good value",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_reason_text",
+      "label": "What the respondent would need from a future provider",
+      "question": "N7",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "alternative_recent30",
+      "label": "Personally attempted task with current alternative in past 30 days",
+      "question": "N8",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "alternative_task",
+      "label": "Task personally attempted with current alternative",
+      "question": "N9a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "alternative_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "alternative_days_ago",
+      "label": "Days since alternative task experience",
+      "question": "N9b",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "alternative_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "days"
+    },
+    {
+      "variable": "alternative_channel",
+      "label": "Channel used for alternative recent task",
+      "question": "N9c",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "alternative_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "alternative_csat5",
+      "label": "CSAT with personally experienced alternative task only",
+      "question": "N10",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "alternative_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    }
+  ],
+  "noncustomer_labels": [
+    [
+      "wave",
+      "Wave",
+      1,
+      "February 2026"
+    ],
+    [
+      "wave",
+      "Wave",
+      2,
+      "June 2026"
+    ],
+    [
+      "wave",
+      "Wave",
+      3,
+      "October 2026"
+    ],
+    [
+      "company",
+      "Main company",
+      1,
+      "FNB"
+    ],
+    [
+      "company",
+      "Main company",
+      2,
+      "Standard Bank"
+    ],
+    [
+      "company",
+      "Main company",
+      3,
+      "Absa"
+    ],
+    [
+      "company",
+      "Main company",
+      4,
+      "Nedbank"
+    ],
+    [
+      "company",
+      "Main company",
+      5,
+      "Capitec"
+    ],
+    [
+      "company",
+      "Main company",
+      6,
+      "Discovery Bank"
+    ],
+    [
+      "company",
+      "Main company",
+      7,
+      "GoTyme Bank (formerly TymeBank)"
+    ],
+    [
+      "age_band",
+      "Age group",
+      1,
+      "18\u201324"
+    ],
+    [
+      "age_band",
+      "Age group",
+      2,
+      "25\u201334"
+    ],
+    [
+      "age_band",
+      "Age group",
+      3,
+      "35\u201349"
+    ],
+    [
+      "age_band",
+      "Age group",
+      4,
+      "50\u201369"
+    ],
+    [
+      "gender",
+      "Gender",
+      1,
+      "Man"
+    ],
+    [
+      "gender",
+      "Gender",
+      2,
+      "Woman"
+    ],
+    [
+      "gender",
+      "Gender",
+      3,
+      "Another identity"
+    ],
+    [
+      "gender",
+      "Gender",
+      4,
+      "Prefer not to say"
+    ],
+    [
+      "province",
+      "Province",
+      1,
+      "Gauteng"
+    ],
+    [
+      "province",
+      "Province",
+      2,
+      "KwaZulu-Natal"
+    ],
+    [
+      "province",
+      "Province",
+      3,
+      "Western Cape"
+    ],
+    [
+      "province",
+      "Province",
+      4,
+      "Eastern Cape"
+    ],
+    [
+      "province",
+      "Province",
+      5,
+      "Limpopo"
+    ],
+    [
+      "province",
+      "Province",
+      6,
+      "Mpumalanga"
+    ],
+    [
+      "province",
+      "Province",
+      7,
+      "North West"
+    ],
+    [
+      "province",
+      "Province",
+      8,
+      "Free State"
+    ],
+    [
+      "province",
+      "Province",
+      9,
+      "Northern Cape"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      1,
+      "Below R15,000"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      2,
+      "R15,000\u2013R29,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      3,
+      "R30,000\u2013R49,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      4,
+      "R50,000\u2013R79,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      5,
+      "R80,000 or more"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      99,
+      "Prefer not to say"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      1,
+      "Metro or city"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      2,
+      "Town"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      3,
+      "Rural area"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      1,
+      "FNB"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      2,
+      "Standard Bank"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      3,
+      "Absa"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      4,
+      "Nedbank"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      5,
+      "Capitec"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      6,
+      "Discovery Bank"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      7,
+      "GoTyme Bank (formerly TymeBank)"
+    ],
+    [
+      "current_focal_use",
+      "Any current use of focal provider screened out",
+      0,
+      "Not a current focal customer"
+    ],
+    [
+      "focal_awareness",
+      "Aware of focal provider before this interview",
+      0,
+      "No"
+    ],
+    [
+      "focal_awareness",
+      "Aware of focal provider before this interview",
+      1,
+      "Yes"
+    ],
+    [
+      "focal_awareness",
+      "Aware of focal provider before this interview",
+      99,
+      "Do not know"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      1,
+      "Definitely not"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      2,
+      "Probably not"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      3,
+      "Might or might not"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      4,
+      "Probably yes"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      5,
+      "Definitely yes"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_preferred_channel",
+      "Preferred channel for future service task",
+      1,
+      "Call centre"
+    ],
+    [
+      "expect_preferred_channel",
+      "Preferred channel for future service task",
+      2,
+      "Branch"
+    ],
+    [
+      "expect_preferred_channel",
+      "Preferred channel for future service task",
+      3,
+      "Digital self service"
+    ],
+    [
+      "expect_preferred_channel",
+      "Preferred channel for future service task",
+      4,
+      "Messaging or live chat"
+    ],
+    [
+      "expect_preferred_channel",
+      "Preferred channel for future service task",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      99,
+      "Do not know"
+    ],
+    [
+      "alternative_recent30",
+      "Personally attempted task with current alternative in past 30 days",
+      0,
+      "No"
+    ],
+    [
+      "alternative_recent30",
+      "Personally attempted task with current alternative in past 30 days",
+      1,
+      "Yes"
+    ],
+    [
+      "alternative_recent30",
+      "Personally attempted task with current alternative in past 30 days",
+      99,
+      "Do not know"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      1,
+      "Payment or transfer"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      2,
+      "Account balance or information"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      3,
+      "Account or personal detail change"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      4,
+      "Problem complaint or fraud concern"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      5,
+      "Product advice or application"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      6,
+      "Other"
+    ],
+    [
+      "alternative_channel",
+      "Channel used for alternative recent task",
+      1,
+      "Call centre"
+    ],
+    [
+      "alternative_channel",
+      "Channel used for alternative recent task",
+      2,
+      "Branch"
+    ],
+    [
+      "alternative_channel",
+      "Channel used for alternative recent task",
+      3,
+      "Digital self service"
+    ],
+    [
+      "alternative_channel",
+      "Channel used for alternative recent task",
+      4,
+      "Messaging or live chat"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      4,
+      "Satisfied"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      99,
+      "Do not know"
+    ]
+  ],
+  "noncustomer_mr": [],
+  "expansion_version": "2026-10-30 additive synthetic v3",
+  "synthetic_design": {
+    "original_current_customers_per_wave": 1000,
+    "supplemental_focal_noncustomers_per_wave": 500,
+    "noncustomer_definition": "Current sector user with no current focal-provider use of any kind",
+    "sample_pooling": "Never pool samples for prevalence or market share",
+    "journey_anchor": "Independent most recent specific task attempted in 30 days; latest channel records are not a common journey",
+    "comparison": "Personal actual use, same task type, same 30 days; descriptive only"
+  }
+}

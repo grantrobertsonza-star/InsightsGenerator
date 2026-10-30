@@ -1,0 +1,7 @@
+CSM banking and mobile additive expansion
+
+Read the sector research brief and matching Company, Channel or Noncustomer questionnaire. Original current-customer rows and values are preserved. Each sector retains 3 x 1,000 current customers and adds a separate 3 x 500 synthetic focal-noncustomer supplement.
+
+Import Respondents, Experiences and Noncustomers as separate grains. Optional test-reference JSON is not required. Read each dashboard guide and 03_Claude_Implementation_Instructions.docx for later implementation. No app change or Claude contact was made.
+
+All records and reported effects are fictional demonstrations. See CHANGELOG.md and preservation_report.json for exact scope and checks.

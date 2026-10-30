@@ -1,0 +1,52 @@
+{
+  "source_zip": "SA_Banking_Brand_Tracker_Pack(1).zip",
+  "xlsx": [
+    {
+      "file": "SA_Banking_Brand_Tracker_Pack/banks/Bank_Brand_Tracker_Wave_1.xlsx",
+      "original_cells_preserved": 513013,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "SA_Banking_Brand_Tracker_Pack/banks/Bank_Brand_Tracker_Wave_2.xlsx",
+      "original_cells_preserved": 513013,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "SA_Banking_Brand_Tracker_Pack/banks/Bank_Brand_Tracker_Wave_3.xlsx",
+      "original_cells_preserved": 513013,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "SA_Banking_Brand_Tracker_Pack/banks/Master_Codebook.xlsx",
+      "original_cells_preserved": 11630,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "SA_Banking_Brand_Tracker_Pack/banks/Reference_Metrics.xlsx",
+      "original_cells_preserved": 103968,
+      "sheet_names_and_panes_preserved": true
+    }
+  ],
+  "csv": [
+    {
+      "file": "SA_Banking_Brand_Tracker_Pack/banks/test-reference/Bank_Brand_Tracker_Wave_1.csv",
+      "original_rows_preserved_exactly": 1000,
+      "output_rows": 1000,
+      "restored_original_xlsx_rows": 0
+    },
+    {
+      "file": "SA_Banking_Brand_Tracker_Pack/banks/test-reference/Bank_Brand_Tracker_Wave_2.csv",
+      "original_rows_preserved_exactly": 371,
+      "output_rows": 1000,
+      "restored_original_xlsx_rows": 629
+    },
+    {
+      "file": "SA_Banking_Brand_Tracker_Pack/banks/test-reference/Bank_Brand_Tracker_Wave_3.csv",
+      "original_rows_preserved_exactly": 1000,
+      "output_rows": 1000,
+      "restored_original_xlsx_rows": 0
+    }
+  ],
+  "unchanged_pdf": [],
+  "status": "passed"
+}

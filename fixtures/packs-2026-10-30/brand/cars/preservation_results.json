@@ -1,0 +1,54 @@
+{
+  "source_zip": "CarTracker.zip",
+  "xlsx": [
+    {
+      "file": "CarTracker/BMW_Car_Brand_Tracker/Car_Brand_Tracker_Wave_1.xlsx",
+      "original_cells_preserved": 505350,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "CarTracker/BMW_Car_Brand_Tracker/Car_Brand_Tracker_Wave_2.xlsx",
+      "original_cells_preserved": 505350,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "CarTracker/BMW_Car_Brand_Tracker/Car_Brand_Tracker_Wave_3.xlsx",
+      "original_cells_preserved": 505350,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "CarTracker/BMW_Car_Brand_Tracker/Master_Codebook.xlsx",
+      "original_cells_preserved": 10974,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "CarTracker/BMW_Car_Brand_Tracker/Reference_Metrics.xlsx",
+      "original_cells_preserved": 94320,
+      "sheet_names_and_panes_preserved": true
+    }
+  ],
+  "csv": [
+    {
+      "file": "CarTracker/BMW_Car_Brand_Tracker/Car_Brand_Tracker_Wave_1.csv",
+      "original_rows_preserved_exactly": 1000,
+      "output_rows": 1000,
+      "restored_original_xlsx_rows": 0
+    },
+    {
+      "file": "CarTracker/BMW_Car_Brand_Tracker/Car_Brand_Tracker_Wave_2.csv",
+      "original_rows_preserved_exactly": 1000,
+      "output_rows": 1000,
+      "restored_original_xlsx_rows": 0
+    },
+    {
+      "file": "CarTracker/BMW_Car_Brand_Tracker/Car_Brand_Tracker_Wave_3.csv",
+      "original_rows_preserved_exactly": 1000,
+      "output_rows": 1000,
+      "restored_original_xlsx_rows": 0
+    }
+  ],
+  "unchanged_pdf": [
+    "CarTracker/BMW_Car_Brand_Tracker/Insights_Elevator_Brand_Dashboard_Visual_Plan (1).pdf"
+  ],
+  "status": "passed"
+}

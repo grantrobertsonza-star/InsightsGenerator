@@ -1,0 +1,544 @@
+variable,label,question,data_type,question_type,mr_set,selected_value,universe,derivation,unit
+respondent_id,Unique synthetic respondent ID,SYS,text,text,,,All eligible respondents,,identifier
+wave,Wave,SYS,numeric,categorical,,,All eligible respondents,,code
+fieldwork_date,Interview date,SYS,text,text,,,All eligible respondents,,ISO date
+synthetic,Synthetic record flag,SYS,numeric,categorical,,,All eligible respondents,,code
+weight,Relative synthetic analysis weight,SYS,numeric,continuous,,,All eligible respondents,,relative weight
+age,Age in years,S1,numeric,continuous,,,All eligible respondents,,years
+age_band,Age group,S1,numeric,categorical,,,All eligible respondents,,code
+choice_role,Vehicle choice responsibility,S2,numeric,categorical,,,All eligible respondents,,code
+last_acquired,Last household vehicle acquisition,S3,numeric,categorical,,,All eligible respondents,,code
+next_acquire,Expected next household acquisition,S4,numeric,categorical,,,All eligible respondents,,code
+gender,Gender,D1,numeric,categorical,,,All eligible respondents,,code
+province,Province,D2,numeric,categorical,,,All eligible respondents,,code
+settlement,Settlement,D3,numeric,categorical,,,All eligible respondents,,code
+income,Monthly household income before tax,D4,numeric,categorical,,,All eligible respondents,,code
+life_stage,Household life stage,D5,numeric,categorical,,,All eligible respondents,,code
+decision_style,Typical vehicle decision style,C1,numeric,categorical,,,All eligible respondents,,code
+topmind,First spontaneously recalled brand,A1,numeric,categorical,,,All eligible respondents,,code
+awareness_verbatim,Awareness verbatim,A1/A2,text,text,,,All eligible respondents,,code
+cep_order,Cep order,M1,text,text,,,All eligible respondents,,code
+brand_order,Brand order,A3,text,text,,,All eligible respondents,,code
+attribute_order,Attribute order,I1,text,text,,,All eligible respondents,,code
+advertising_verbatim,Advertising verbatim,AD1,text,text,,,All eligible respondents,,code
+cep_verbatim_c01,Brands recalled for Replacing an unreliable car,M1,text,text,,,All eligible respondents,,code
+relevant_c01,Replacing an unreliable car,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c01,Other brand recalled for Replacing an unreliable car,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c02,Brands recalled for Reducing fuel and running costs,M1,text,text,,,All eligible respondents,,code
+relevant_c02,Reducing fuel and running costs,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c02,Other brand recalled for Reducing fuel and running costs,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c03,Brands recalled for Needing more space for a growing family,M1,text,text,,,All eligible respondents,,code
+relevant_c03,Needing more space for a growing family,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c03,Other brand recalled for Needing more space for a growing family,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c04,Brands recalled for Making the daily commute easier,M1,text,text,,,All eligible respondents,,code
+relevant_c04,Making the daily commute easier,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c04,Other brand recalled for Making the daily commute easier,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c05,Brands recalled for Taking long-distance family trips,M1,text,text,,,All eligible respondents,,code
+relevant_c05,Taking long-distance family trips,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c05,Other brand recalled for Taking long-distance family trips,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c06,Brands recalled for Feeling safer on the road,M1,text,text,,,All eligible respondents,,code
+relevant_c06,Feeling safer on the road,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c06,Other brand recalled for Feeling safer on the road,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c07,Brands recalled for Marking a career or life achievement,M1,text,text,,,All eligible respondents,,code
+relevant_c07,Marking a career or life achievement,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c07,Other brand recalled for Marking a career or life achievement,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c08,Brands recalled for Enjoying the driving experience,M1,text,text,,,All eligible respondents,,code
+relevant_c08,Enjoying the driving experience,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c08,Other brand recalled for Enjoying the driving experience,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c09,Brands recalled for Choosing lower-emission transport,M1,text,text,,,All eligible respondents,,code
+relevant_c09,Choosing lower-emission transport,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c09,Other brand recalled for Choosing lower-emission transport,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c10,Brands recalled for Getting technology that simplifies driving,M1,text,text,,,All eligible respondents,,code
+relevant_c10,Getting technology that simplifies driving,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c10,Other brand recalled for Getting technology that simplifies driving,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c11,Brands recalled for Staying within a fixed monthly budget,M1,text,text,,,All eligible respondents,,code
+relevant_c11,Staying within a fixed monthly budget,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c11,Other brand recalled for Staying within a fixed monthly budget,M1,numeric,categorical,,,All eligible respondents,,code
+cep_verbatim_c12,Brands recalled for Driving on rough roads or outdoor trips,M1,text,text,,,All eligible respondents,,code
+relevant_c12,Driving on rough roads or outdoor trips,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code
+cep_other_c12,Other brand recalled for Driving on rough roads or outdoor trips,M1,numeric,categorical,,,All eligible respondents,,code
+relevant_none,No relevant situation,M2,numeric,categorical,,,All eligible respondents,,code
+unaided_b01,Spontaneous awareness Toyota,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code
+unaided_b02,Spontaneous awareness Volkswagen,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code
+unaided_b03,Spontaneous awareness Ford,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code
+unaided_b04,Spontaneous awareness Hyundai,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code
+unaided_b05,Spontaneous awareness Kia,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code
+unaided_b06,Spontaneous awareness Nissan,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code
+unaided_b07,Spontaneous awareness Suzuki,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code
+unaided_b08,Spontaneous awareness BMW,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code
+unaided_b09,Spontaneous awareness Mercedes-Benz,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code
+unaided_b10,Spontaneous awareness Haval,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code
+aware_b01,Prompted resolved recognition Toyota,A3,numeric,multiple_response,aware,1,All eligible respondents,,code
+aware_b02,Prompted resolved recognition Volkswagen,A3,numeric,multiple_response,aware,1,All eligible respondents,,code
+aware_b03,Prompted resolved recognition Ford,A3,numeric,multiple_response,aware,1,All eligible respondents,,code
+aware_b04,Prompted resolved recognition Hyundai,A3,numeric,multiple_response,aware,1,All eligible respondents,,code
+aware_b05,Prompted resolved recognition Kia,A3,numeric,multiple_response,aware,1,All eligible respondents,,code
+aware_b06,Prompted resolved recognition Nissan,A3,numeric,multiple_response,aware,1,All eligible respondents,,code
+aware_b07,Prompted resolved recognition Suzuki,A3,numeric,multiple_response,aware,1,All eligible respondents,,code
+aware_b08,Prompted resolved recognition BMW,A3,numeric,multiple_response,aware,1,All eligible respondents,,code
+aware_b09,Prompted resolved recognition Mercedes-Benz,A3,numeric,multiple_response,aware,1,All eligible respondents,,code
+aware_b10,Prompted resolved recognition Haval,A3,numeric,multiple_response,aware,1,All eligible respondents,,code
+consider_b01,Consideration Toyota,F1,numeric,multiple_response,consider,1,All eligible respondents,,code
+consider_b02,Consideration Volkswagen,F1,numeric,multiple_response,consider,1,All eligible respondents,,code
+consider_b03,Consideration Ford,F1,numeric,multiple_response,consider,1,All eligible respondents,,code
+consider_b04,Consideration Hyundai,F1,numeric,multiple_response,consider,1,All eligible respondents,,code
+consider_b05,Consideration Kia,F1,numeric,multiple_response,consider,1,All eligible respondents,,code
+consider_b06,Consideration Nissan,F1,numeric,multiple_response,consider,1,All eligible respondents,,code
+consider_b07,Consideration Suzuki,F1,numeric,multiple_response,consider,1,All eligible respondents,,code
+consider_b08,Consideration BMW,F1,numeric,multiple_response,consider,1,All eligible respondents,,code
+consider_b09,Consideration Mercedes-Benz,F1,numeric,multiple_response,consider,1,All eligible respondents,,code
+consider_b10,Consideration Haval,F1,numeric,multiple_response,consider,1,All eligible respondents,,code
+shortlist_b01,Serious shortlist Toyota,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code
+shortlist_b02,Serious shortlist Volkswagen,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code
+shortlist_b03,Serious shortlist Ford,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code
+shortlist_b04,Serious shortlist Hyundai,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code
+shortlist_b05,Serious shortlist Kia,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code
+shortlist_b06,Serious shortlist Nissan,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code
+shortlist_b07,Serious shortlist Suzuki,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code
+shortlist_b08,Serious shortlist BMW,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code
+shortlist_b09,Serious shortlist Mercedes-Benz,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code
+shortlist_b10,Serious shortlist Haval,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code
+firstchoice_b01,First choice Toyota,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+firstchoice_b02,First choice Volkswagen,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+firstchoice_b03,First choice Ford,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+firstchoice_b04,First choice Hyundai,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+firstchoice_b05,First choice Kia,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+firstchoice_b06,First choice Nissan,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+firstchoice_b07,First choice Suzuki,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+firstchoice_b08,First choice BMW,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+firstchoice_b09,First choice Mercedes-Benz,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+firstchoice_b10,First choice Haval,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+owner_b01,Current household ownership Toyota,O1,numeric,multiple_response,owner,1,All eligible respondents,,code
+owner_b02,Current household ownership Volkswagen,O1,numeric,multiple_response,owner,1,All eligible respondents,,code
+owner_b03,Current household ownership Ford,O1,numeric,multiple_response,owner,1,All eligible respondents,,code
+owner_b04,Current household ownership Hyundai,O1,numeric,multiple_response,owner,1,All eligible respondents,,code
+owner_b05,Current household ownership Kia,O1,numeric,multiple_response,owner,1,All eligible respondents,,code
+owner_b06,Current household ownership Nissan,O1,numeric,multiple_response,owner,1,All eligible respondents,,code
+owner_b07,Current household ownership Suzuki,O1,numeric,multiple_response,owner,1,All eligible respondents,,code
+owner_b08,Current household ownership BMW,O1,numeric,multiple_response,owner,1,All eligible respondents,,code
+owner_b09,Current household ownership Mercedes-Benz,O1,numeric,multiple_response,owner,1,All eligible respondents,,code
+owner_b10,Current household ownership Haval,O1,numeric,multiple_response,owner,1,All eligible respondents,,code
+bought12_b01,Past 12 month household acquisition Toyota,O3,numeric,multiple_response,bought12,1,All eligible respondents,,code
+bought12_b02,Past 12 month household acquisition Volkswagen,O3,numeric,multiple_response,bought12,1,All eligible respondents,,code
+bought12_b03,Past 12 month household acquisition Ford,O3,numeric,multiple_response,bought12,1,All eligible respondents,,code
+bought12_b04,Past 12 month household acquisition Hyundai,O3,numeric,multiple_response,bought12,1,All eligible respondents,,code
+bought12_b05,Past 12 month household acquisition Kia,O3,numeric,multiple_response,bought12,1,All eligible respondents,,code
+bought12_b06,Past 12 month household acquisition Nissan,O3,numeric,multiple_response,bought12,1,All eligible respondents,,code
+bought12_b07,Past 12 month household acquisition Suzuki,O3,numeric,multiple_response,bought12,1,All eligible respondents,,code
+bought12_b08,Past 12 month household acquisition BMW,O3,numeric,multiple_response,bought12,1,All eligible respondents,,code
+bought12_b09,Past 12 month household acquisition Mercedes-Benz,O3,numeric,multiple_response,bought12,1,All eligible respondents,,code
+bought12_b10,Past 12 month household acquisition Haval,O3,numeric,multiple_response,bought12,1,All eligible respondents,,code
+repeat12_b01,Repeat brand acquisition in past 12 months Toyota,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+repeat12_b02,Repeat brand acquisition in past 12 months Volkswagen,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+repeat12_b03,Repeat brand acquisition in past 12 months Ford,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+repeat12_b04,Repeat brand acquisition in past 12 months Hyundai,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+repeat12_b05,Repeat brand acquisition in past 12 months Kia,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+repeat12_b06,Repeat brand acquisition in past 12 months Nissan,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+repeat12_b07,Repeat brand acquisition in past 12 months Suzuki,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+repeat12_b08,Repeat brand acquisition in past 12 months BMW,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+repeat12_b09,Repeat brand acquisition in past 12 months Mercedes-Benz,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+repeat12_b10,Repeat brand acquisition in past 12 months Haval,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+ad_unaided_b01,Unprompted advertising recall after exposure Toyota,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code
+ad_unaided_b02,Unprompted advertising recall after exposure Volkswagen,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code
+ad_unaided_b03,Unprompted advertising recall after exposure Ford,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code
+ad_unaided_b04,Unprompted advertising recall after exposure Hyundai,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code
+ad_unaided_b05,Unprompted advertising recall after exposure Kia,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code
+ad_unaided_b06,Unprompted advertising recall after exposure Nissan,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code
+ad_unaided_b07,Unprompted advertising recall after exposure Suzuki,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code
+ad_unaided_b08,Unprompted advertising recall after exposure BMW,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code
+ad_unaided_b09,Unprompted advertising recall after exposure Mercedes-Benz,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code
+ad_unaided_b10,Unprompted advertising recall after exposure Haval,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code
+adrecall_b01,Prompted advertising recall Yes all sample Toyota,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+adrecall_b02,Prompted advertising recall Yes all sample Volkswagen,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+adrecall_b03,Prompted advertising recall Yes all sample Ford,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+adrecall_b04,Prompted advertising recall Yes all sample Hyundai,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+adrecall_b05,Prompted advertising recall Yes all sample Kia,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+adrecall_b06,Prompted advertising recall Yes all sample Nissan,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+adrecall_b07,Prompted advertising recall Yes all sample Suzuki,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+adrecall_b08,Prompted advertising recall Yes all sample BMW,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+adrecall_b09,Prompted advertising recall Yes all sample Mercedes-Benz,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+adrecall_b10,Prompted advertising recall Yes all sample Haval,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code
+aware_none,No tracked or other selection for aware,Derived,numeric,categorical,,,All eligible respondents,1 when relevant tracked indicators and any Other option are all zero,code
+consider_none,No tracked or other selection for consider,Derived,numeric,categorical,,,All eligible respondents,1 when relevant tracked indicators and any Other option are all zero,code
+shortlist_none,No tracked or other selection for shortlist,Derived,numeric,categorical,,,All eligible respondents,1 when relevant tracked indicators and any Other option are all zero,code
+owner_none,No tracked or other selection for owner,Derived,numeric,categorical,,,All eligible respondents,1 when relevant tracked indicators and any Other option are all zero,code
+bought12_none,No tracked or other selection for bought12,Derived,numeric,categorical,,,All eligible respondents,1 when relevant tracked indicators and any Other option are all zero,code
+owner_other,Other brand owner,O1/O3,numeric,categorical,,,All eligible respondents,,code
+bought12_other,Other brand bought12,O1/O3,numeric,categorical,,,All eligible respondents,,code
+first_choice,First choice brand,F3,numeric,categorical,,,All eligible respondents,,code
+main_brand,Brand of most used household vehicle,O2,numeric,categorical,,,Any current vehicle,,code
+acquisition_channel,Most recent acquisition channel,O5,numeric,categorical,,,last_acquired=1,,code
+acquisition_type,Most recent acquisition type,O6,numeric,categorical,,,last_acquired=1,,code
+journey_j01,Brand website,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code
+journey_j02,Motoring reviews,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code
+journey_j03,Dealer visit,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code
+journey_j04,Test drive,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code
+journey_j05,Online marketplace,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code
+journey_j06,Friends or family,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code
+journey_j07,Finance comparison,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code
+opinion_b01,Brand opinion Toyota,R1,numeric,categorical,,,aware_b01=1,,code
+repeat_b01,Previously acquired same brand Toyota,O4,numeric,categorical,,,bought12_b01=1,,code
+adprompt_b01,Prompted advertising recall Toyota,AD2,numeric,categorical,,,aware_b01=1,,code
+wom_b01,Word of mouth Toyota,W1,numeric,categorical,,,aware_b01=1,,code
+cep_c01_b01,Toyota recalled for Replacing an unreliable car,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code
+cep_c02_b01,Toyota recalled for Reducing fuel and running costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code
+cep_c03_b01,Toyota recalled for Needing more space for a growing family,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code
+cep_c04_b01,Toyota recalled for Making the daily commute easier,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code
+cep_c05_b01,Toyota recalled for Taking long-distance family trips,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code
+cep_c06_b01,Toyota recalled for Feeling safer on the road,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code
+cep_c07_b01,Toyota recalled for Marking a career or life achievement,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code
+cep_c08_b01,Toyota recalled for Enjoying the driving experience,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code
+cep_c09_b01,Toyota recalled for Choosing lower-emission transport,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code
+cep_c10_b01,Toyota recalled for Getting technology that simplifies driving,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code
+cep_c11_b01,Toyota recalled for Staying within a fixed monthly budget,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code
+cep_c12_b01,Toyota recalled for Driving on rough roads or outdoor trips,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code
+cep_links_b01,Number of CEP links Toyota,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links
+mental_b01,At least one CEP link Toyota,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code
+attr_a01_b01,Toyota associated with Reliable,I1,numeric,multiple_response,attr_a01,1,aware_b01=1,,code
+attr_a02_b01,Toyota associated with Affordable to run,I1,numeric,multiple_response,attr_a02,1,aware_b01=1,,code
+attr_a03_b01,Toyota associated with Good value for money,I1,numeric,multiple_response,attr_a03,1,aware_b01=1,,code
+attr_a04_b01,Toyota associated with Safe,I1,numeric,multiple_response,attr_a04,1,aware_b01=1,,code
+attr_a05_b01,Toyota associated with Comfortable,I1,numeric,multiple_response,attr_a05,1,aware_b01=1,,code
+attr_a06_b01,Toyota associated with Enjoyable to drive,I1,numeric,multiple_response,attr_a06,1,aware_b01=1,,code
+attr_a07_b01,Toyota associated with Advanced technology,I1,numeric,multiple_response,attr_a07,1,aware_b01=1,,code
+attr_a08_b01,Toyota associated with Premium quality,I1,numeric,multiple_response,attr_a08,1,aware_b01=1,,code
+attr_a09_b01,Toyota associated with Environmentally responsible,I1,numeric,multiple_response,attr_a09,1,aware_b01=1,,code
+attr_a10_b01,Toyota associated with Good dealer and aftersales support,I1,numeric,multiple_response,attr_a10,1,aware_b01=1,,code
+opinion_b02,Brand opinion Volkswagen,R1,numeric,categorical,,,aware_b02=1,,code
+repeat_b02,Previously acquired same brand Volkswagen,O4,numeric,categorical,,,bought12_b02=1,,code
+adprompt_b02,Prompted advertising recall Volkswagen,AD2,numeric,categorical,,,aware_b02=1,,code
+wom_b02,Word of mouth Volkswagen,W1,numeric,categorical,,,aware_b02=1,,code
+cep_c01_b02,Volkswagen recalled for Replacing an unreliable car,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code
+cep_c02_b02,Volkswagen recalled for Reducing fuel and running costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code
+cep_c03_b02,Volkswagen recalled for Needing more space for a growing family,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code
+cep_c04_b02,Volkswagen recalled for Making the daily commute easier,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code
+cep_c05_b02,Volkswagen recalled for Taking long-distance family trips,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code
+cep_c06_b02,Volkswagen recalled for Feeling safer on the road,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code
+cep_c07_b02,Volkswagen recalled for Marking a career or life achievement,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code
+cep_c08_b02,Volkswagen recalled for Enjoying the driving experience,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code
+cep_c09_b02,Volkswagen recalled for Choosing lower-emission transport,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code
+cep_c10_b02,Volkswagen recalled for Getting technology that simplifies driving,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code
+cep_c11_b02,Volkswagen recalled for Staying within a fixed monthly budget,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code
+cep_c12_b02,Volkswagen recalled for Driving on rough roads or outdoor trips,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code
+cep_links_b02,Number of CEP links Volkswagen,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links
+mental_b02,At least one CEP link Volkswagen,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code
+attr_a01_b02,Volkswagen associated with Reliable,I1,numeric,multiple_response,attr_a01,1,aware_b02=1,,code
+attr_a02_b02,Volkswagen associated with Affordable to run,I1,numeric,multiple_response,attr_a02,1,aware_b02=1,,code
+attr_a03_b02,Volkswagen associated with Good value for money,I1,numeric,multiple_response,attr_a03,1,aware_b02=1,,code
+attr_a04_b02,Volkswagen associated with Safe,I1,numeric,multiple_response,attr_a04,1,aware_b02=1,,code
+attr_a05_b02,Volkswagen associated with Comfortable,I1,numeric,multiple_response,attr_a05,1,aware_b02=1,,code
+attr_a06_b02,Volkswagen associated with Enjoyable to drive,I1,numeric,multiple_response,attr_a06,1,aware_b02=1,,code
+attr_a07_b02,Volkswagen associated with Advanced technology,I1,numeric,multiple_response,attr_a07,1,aware_b02=1,,code
+attr_a08_b02,Volkswagen associated with Premium quality,I1,numeric,multiple_response,attr_a08,1,aware_b02=1,,code
+attr_a09_b02,Volkswagen associated with Environmentally responsible,I1,numeric,multiple_response,attr_a09,1,aware_b02=1,,code
+attr_a10_b02,Volkswagen associated with Good dealer and aftersales support,I1,numeric,multiple_response,attr_a10,1,aware_b02=1,,code
+opinion_b03,Brand opinion Ford,R1,numeric,categorical,,,aware_b03=1,,code
+repeat_b03,Previously acquired same brand Ford,O4,numeric,categorical,,,bought12_b03=1,,code
+adprompt_b03,Prompted advertising recall Ford,AD2,numeric,categorical,,,aware_b03=1,,code
+wom_b03,Word of mouth Ford,W1,numeric,categorical,,,aware_b03=1,,code
+cep_c01_b03,Ford recalled for Replacing an unreliable car,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code
+cep_c02_b03,Ford recalled for Reducing fuel and running costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code
+cep_c03_b03,Ford recalled for Needing more space for a growing family,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code
+cep_c04_b03,Ford recalled for Making the daily commute easier,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code
+cep_c05_b03,Ford recalled for Taking long-distance family trips,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code
+cep_c06_b03,Ford recalled for Feeling safer on the road,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code
+cep_c07_b03,Ford recalled for Marking a career or life achievement,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code
+cep_c08_b03,Ford recalled for Enjoying the driving experience,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code
+cep_c09_b03,Ford recalled for Choosing lower-emission transport,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code
+cep_c10_b03,Ford recalled for Getting technology that simplifies driving,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code
+cep_c11_b03,Ford recalled for Staying within a fixed monthly budget,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code
+cep_c12_b03,Ford recalled for Driving on rough roads or outdoor trips,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code
+cep_links_b03,Number of CEP links Ford,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links
+mental_b03,At least one CEP link Ford,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code
+attr_a01_b03,Ford associated with Reliable,I1,numeric,multiple_response,attr_a01,1,aware_b03=1,,code
+attr_a02_b03,Ford associated with Affordable to run,I1,numeric,multiple_response,attr_a02,1,aware_b03=1,,code
+attr_a03_b03,Ford associated with Good value for money,I1,numeric,multiple_response,attr_a03,1,aware_b03=1,,code
+attr_a04_b03,Ford associated with Safe,I1,numeric,multiple_response,attr_a04,1,aware_b03=1,,code
+attr_a05_b03,Ford associated with Comfortable,I1,numeric,multiple_response,attr_a05,1,aware_b03=1,,code
+attr_a06_b03,Ford associated with Enjoyable to drive,I1,numeric,multiple_response,attr_a06,1,aware_b03=1,,code
+attr_a07_b03,Ford associated with Advanced technology,I1,numeric,multiple_response,attr_a07,1,aware_b03=1,,code
+attr_a08_b03,Ford associated with Premium quality,I1,numeric,multiple_response,attr_a08,1,aware_b03=1,,code
+attr_a09_b03,Ford associated with Environmentally responsible,I1,numeric,multiple_response,attr_a09,1,aware_b03=1,,code
+attr_a10_b03,Ford associated with Good dealer and aftersales support,I1,numeric,multiple_response,attr_a10,1,aware_b03=1,,code
+opinion_b04,Brand opinion Hyundai,R1,numeric,categorical,,,aware_b04=1,,code
+repeat_b04,Previously acquired same brand Hyundai,O4,numeric,categorical,,,bought12_b04=1,,code
+adprompt_b04,Prompted advertising recall Hyundai,AD2,numeric,categorical,,,aware_b04=1,,code
+wom_b04,Word of mouth Hyundai,W1,numeric,categorical,,,aware_b04=1,,code
+cep_c01_b04,Hyundai recalled for Replacing an unreliable car,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code
+cep_c02_b04,Hyundai recalled for Reducing fuel and running costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code
+cep_c03_b04,Hyundai recalled for Needing more space for a growing family,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code
+cep_c04_b04,Hyundai recalled for Making the daily commute easier,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code
+cep_c05_b04,Hyundai recalled for Taking long-distance family trips,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code
+cep_c06_b04,Hyundai recalled for Feeling safer on the road,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code
+cep_c07_b04,Hyundai recalled for Marking a career or life achievement,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code
+cep_c08_b04,Hyundai recalled for Enjoying the driving experience,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code
+cep_c09_b04,Hyundai recalled for Choosing lower-emission transport,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code
+cep_c10_b04,Hyundai recalled for Getting technology that simplifies driving,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code
+cep_c11_b04,Hyundai recalled for Staying within a fixed monthly budget,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code
+cep_c12_b04,Hyundai recalled for Driving on rough roads or outdoor trips,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code
+cep_links_b04,Number of CEP links Hyundai,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links
+mental_b04,At least one CEP link Hyundai,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code
+attr_a01_b04,Hyundai associated with Reliable,I1,numeric,multiple_response,attr_a01,1,aware_b04=1,,code
+attr_a02_b04,Hyundai associated with Affordable to run,I1,numeric,multiple_response,attr_a02,1,aware_b04=1,,code
+attr_a03_b04,Hyundai associated with Good value for money,I1,numeric,multiple_response,attr_a03,1,aware_b04=1,,code
+attr_a04_b04,Hyundai associated with Safe,I1,numeric,multiple_response,attr_a04,1,aware_b04=1,,code
+attr_a05_b04,Hyundai associated with Comfortable,I1,numeric,multiple_response,attr_a05,1,aware_b04=1,,code
+attr_a06_b04,Hyundai associated with Enjoyable to drive,I1,numeric,multiple_response,attr_a06,1,aware_b04=1,,code
+attr_a07_b04,Hyundai associated with Advanced technology,I1,numeric,multiple_response,attr_a07,1,aware_b04=1,,code
+attr_a08_b04,Hyundai associated with Premium quality,I1,numeric,multiple_response,attr_a08,1,aware_b04=1,,code
+attr_a09_b04,Hyundai associated with Environmentally responsible,I1,numeric,multiple_response,attr_a09,1,aware_b04=1,,code
+attr_a10_b04,Hyundai associated with Good dealer and aftersales support,I1,numeric,multiple_response,attr_a10,1,aware_b04=1,,code
+opinion_b05,Brand opinion Kia,R1,numeric,categorical,,,aware_b05=1,,code
+repeat_b05,Previously acquired same brand Kia,O4,numeric,categorical,,,bought12_b05=1,,code
+adprompt_b05,Prompted advertising recall Kia,AD2,numeric,categorical,,,aware_b05=1,,code
+wom_b05,Word of mouth Kia,W1,numeric,categorical,,,aware_b05=1,,code
+cep_c01_b05,Kia recalled for Replacing an unreliable car,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code
+cep_c02_b05,Kia recalled for Reducing fuel and running costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code
+cep_c03_b05,Kia recalled for Needing more space for a growing family,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code
+cep_c04_b05,Kia recalled for Making the daily commute easier,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code
+cep_c05_b05,Kia recalled for Taking long-distance family trips,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code
+cep_c06_b05,Kia recalled for Feeling safer on the road,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code
+cep_c07_b05,Kia recalled for Marking a career or life achievement,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code
+cep_c08_b05,Kia recalled for Enjoying the driving experience,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code
+cep_c09_b05,Kia recalled for Choosing lower-emission transport,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code
+cep_c10_b05,Kia recalled for Getting technology that simplifies driving,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code
+cep_c11_b05,Kia recalled for Staying within a fixed monthly budget,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code
+cep_c12_b05,Kia recalled for Driving on rough roads or outdoor trips,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code
+cep_links_b05,Number of CEP links Kia,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links
+mental_b05,At least one CEP link Kia,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code
+attr_a01_b05,Kia associated with Reliable,I1,numeric,multiple_response,attr_a01,1,aware_b05=1,,code
+attr_a02_b05,Kia associated with Affordable to run,I1,numeric,multiple_response,attr_a02,1,aware_b05=1,,code
+attr_a03_b05,Kia associated with Good value for money,I1,numeric,multiple_response,attr_a03,1,aware_b05=1,,code
+attr_a04_b05,Kia associated with Safe,I1,numeric,multiple_response,attr_a04,1,aware_b05=1,,code
+attr_a05_b05,Kia associated with Comfortable,I1,numeric,multiple_response,attr_a05,1,aware_b05=1,,code
+attr_a06_b05,Kia associated with Enjoyable to drive,I1,numeric,multiple_response,attr_a06,1,aware_b05=1,,code
+attr_a07_b05,Kia associated with Advanced technology,I1,numeric,multiple_response,attr_a07,1,aware_b05=1,,code
+attr_a08_b05,Kia associated with Premium quality,I1,numeric,multiple_response,attr_a08,1,aware_b05=1,,code
+attr_a09_b05,Kia associated with Environmentally responsible,I1,numeric,multiple_response,attr_a09,1,aware_b05=1,,code
+attr_a10_b05,Kia associated with Good dealer and aftersales support,I1,numeric,multiple_response,attr_a10,1,aware_b05=1,,code
+opinion_b06,Brand opinion Nissan,R1,numeric,categorical,,,aware_b06=1,,code
+repeat_b06,Previously acquired same brand Nissan,O4,numeric,categorical,,,bought12_b06=1,,code
+adprompt_b06,Prompted advertising recall Nissan,AD2,numeric,categorical,,,aware_b06=1,,code
+wom_b06,Word of mouth Nissan,W1,numeric,categorical,,,aware_b06=1,,code
+cep_c01_b06,Nissan recalled for Replacing an unreliable car,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code
+cep_c02_b06,Nissan recalled for Reducing fuel and running costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code
+cep_c03_b06,Nissan recalled for Needing more space for a growing family,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code
+cep_c04_b06,Nissan recalled for Making the daily commute easier,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code
+cep_c05_b06,Nissan recalled for Taking long-distance family trips,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code
+cep_c06_b06,Nissan recalled for Feeling safer on the road,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code
+cep_c07_b06,Nissan recalled for Marking a career or life achievement,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code
+cep_c08_b06,Nissan recalled for Enjoying the driving experience,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code
+cep_c09_b06,Nissan recalled for Choosing lower-emission transport,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code
+cep_c10_b06,Nissan recalled for Getting technology that simplifies driving,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code
+cep_c11_b06,Nissan recalled for Staying within a fixed monthly budget,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code
+cep_c12_b06,Nissan recalled for Driving on rough roads or outdoor trips,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code
+cep_links_b06,Number of CEP links Nissan,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links
+mental_b06,At least one CEP link Nissan,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code
+attr_a01_b06,Nissan associated with Reliable,I1,numeric,multiple_response,attr_a01,1,aware_b06=1,,code
+attr_a02_b06,Nissan associated with Affordable to run,I1,numeric,multiple_response,attr_a02,1,aware_b06=1,,code
+attr_a03_b06,Nissan associated with Good value for money,I1,numeric,multiple_response,attr_a03,1,aware_b06=1,,code
+attr_a04_b06,Nissan associated with Safe,I1,numeric,multiple_response,attr_a04,1,aware_b06=1,,code
+attr_a05_b06,Nissan associated with Comfortable,I1,numeric,multiple_response,attr_a05,1,aware_b06=1,,code
+attr_a06_b06,Nissan associated with Enjoyable to drive,I1,numeric,multiple_response,attr_a06,1,aware_b06=1,,code
+attr_a07_b06,Nissan associated with Advanced technology,I1,numeric,multiple_response,attr_a07,1,aware_b06=1,,code
+attr_a08_b06,Nissan associated with Premium quality,I1,numeric,multiple_response,attr_a08,1,aware_b06=1,,code
+attr_a09_b06,Nissan associated with Environmentally responsible,I1,numeric,multiple_response,attr_a09,1,aware_b06=1,,code
+attr_a10_b06,Nissan associated with Good dealer and aftersales support,I1,numeric,multiple_response,attr_a10,1,aware_b06=1,,code
+opinion_b07,Brand opinion Suzuki,R1,numeric,categorical,,,aware_b07=1,,code
+repeat_b07,Previously acquired same brand Suzuki,O4,numeric,categorical,,,bought12_b07=1,,code
+adprompt_b07,Prompted advertising recall Suzuki,AD2,numeric,categorical,,,aware_b07=1,,code
+wom_b07,Word of mouth Suzuki,W1,numeric,categorical,,,aware_b07=1,,code
+cep_c01_b07,Suzuki recalled for Replacing an unreliable car,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code
+cep_c02_b07,Suzuki recalled for Reducing fuel and running costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code
+cep_c03_b07,Suzuki recalled for Needing more space for a growing family,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code
+cep_c04_b07,Suzuki recalled for Making the daily commute easier,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code
+cep_c05_b07,Suzuki recalled for Taking long-distance family trips,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code
+cep_c06_b07,Suzuki recalled for Feeling safer on the road,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code
+cep_c07_b07,Suzuki recalled for Marking a career or life achievement,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code
+cep_c08_b07,Suzuki recalled for Enjoying the driving experience,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code
+cep_c09_b07,Suzuki recalled for Choosing lower-emission transport,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code
+cep_c10_b07,Suzuki recalled for Getting technology that simplifies driving,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code
+cep_c11_b07,Suzuki recalled for Staying within a fixed monthly budget,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code
+cep_c12_b07,Suzuki recalled for Driving on rough roads or outdoor trips,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code
+cep_links_b07,Number of CEP links Suzuki,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links
+mental_b07,At least one CEP link Suzuki,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code
+attr_a01_b07,Suzuki associated with Reliable,I1,numeric,multiple_response,attr_a01,1,aware_b07=1,,code
+attr_a02_b07,Suzuki associated with Affordable to run,I1,numeric,multiple_response,attr_a02,1,aware_b07=1,,code
+attr_a03_b07,Suzuki associated with Good value for money,I1,numeric,multiple_response,attr_a03,1,aware_b07=1,,code
+attr_a04_b07,Suzuki associated with Safe,I1,numeric,multiple_response,attr_a04,1,aware_b07=1,,code
+attr_a05_b07,Suzuki associated with Comfortable,I1,numeric,multiple_response,attr_a05,1,aware_b07=1,,code
+attr_a06_b07,Suzuki associated with Enjoyable to drive,I1,numeric,multiple_response,attr_a06,1,aware_b07=1,,code
+attr_a07_b07,Suzuki associated with Advanced technology,I1,numeric,multiple_response,attr_a07,1,aware_b07=1,,code
+attr_a08_b07,Suzuki associated with Premium quality,I1,numeric,multiple_response,attr_a08,1,aware_b07=1,,code
+attr_a09_b07,Suzuki associated with Environmentally responsible,I1,numeric,multiple_response,attr_a09,1,aware_b07=1,,code
+attr_a10_b07,Suzuki associated with Good dealer and aftersales support,I1,numeric,multiple_response,attr_a10,1,aware_b07=1,,code
+opinion_b08,Brand opinion BMW,R1,numeric,categorical,,,aware_b08=1,,code
+repeat_b08,Previously acquired same brand BMW,O4,numeric,categorical,,,bought12_b08=1,,code
+adprompt_b08,Prompted advertising recall BMW,AD2,numeric,categorical,,,aware_b08=1,,code
+wom_b08,Word of mouth BMW,W1,numeric,categorical,,,aware_b08=1,,code
+cep_c01_b08,BMW recalled for Replacing an unreliable car,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code
+cep_c02_b08,BMW recalled for Reducing fuel and running costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code
+cep_c03_b08,BMW recalled for Needing more space for a growing family,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code
+cep_c04_b08,BMW recalled for Making the daily commute easier,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code
+cep_c05_b08,BMW recalled for Taking long-distance family trips,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code
+cep_c06_b08,BMW recalled for Feeling safer on the road,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code
+cep_c07_b08,BMW recalled for Marking a career or life achievement,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code
+cep_c08_b08,BMW recalled for Enjoying the driving experience,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code
+cep_c09_b08,BMW recalled for Choosing lower-emission transport,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code
+cep_c10_b08,BMW recalled for Getting technology that simplifies driving,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code
+cep_c11_b08,BMW recalled for Staying within a fixed monthly budget,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code
+cep_c12_b08,BMW recalled for Driving on rough roads or outdoor trips,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code
+cep_links_b08,Number of CEP links BMW,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links
+mental_b08,At least one CEP link BMW,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code
+attr_a01_b08,BMW associated with Reliable,I1,numeric,multiple_response,attr_a01,1,aware_b08=1,,code
+attr_a02_b08,BMW associated with Affordable to run,I1,numeric,multiple_response,attr_a02,1,aware_b08=1,,code
+attr_a03_b08,BMW associated with Good value for money,I1,numeric,multiple_response,attr_a03,1,aware_b08=1,,code
+attr_a04_b08,BMW associated with Safe,I1,numeric,multiple_response,attr_a04,1,aware_b08=1,,code
+attr_a05_b08,BMW associated with Comfortable,I1,numeric,multiple_response,attr_a05,1,aware_b08=1,,code
+attr_a06_b08,BMW associated with Enjoyable to drive,I1,numeric,multiple_response,attr_a06,1,aware_b08=1,,code
+attr_a07_b08,BMW associated with Advanced technology,I1,numeric,multiple_response,attr_a07,1,aware_b08=1,,code
+attr_a08_b08,BMW associated with Premium quality,I1,numeric,multiple_response,attr_a08,1,aware_b08=1,,code
+attr_a09_b08,BMW associated with Environmentally responsible,I1,numeric,multiple_response,attr_a09,1,aware_b08=1,,code
+attr_a10_b08,BMW associated with Good dealer and aftersales support,I1,numeric,multiple_response,attr_a10,1,aware_b08=1,,code
+opinion_b09,Brand opinion Mercedes-Benz,R1,numeric,categorical,,,aware_b09=1,,code
+repeat_b09,Previously acquired same brand Mercedes-Benz,O4,numeric,categorical,,,bought12_b09=1,,code
+adprompt_b09,Prompted advertising recall Mercedes-Benz,AD2,numeric,categorical,,,aware_b09=1,,code
+wom_b09,Word of mouth Mercedes-Benz,W1,numeric,categorical,,,aware_b09=1,,code
+cep_c01_b09,Mercedes-Benz recalled for Replacing an unreliable car,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code
+cep_c02_b09,Mercedes-Benz recalled for Reducing fuel and running costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code
+cep_c03_b09,Mercedes-Benz recalled for Needing more space for a growing family,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code
+cep_c04_b09,Mercedes-Benz recalled for Making the daily commute easier,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code
+cep_c05_b09,Mercedes-Benz recalled for Taking long-distance family trips,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code
+cep_c06_b09,Mercedes-Benz recalled for Feeling safer on the road,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code
+cep_c07_b09,Mercedes-Benz recalled for Marking a career or life achievement,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code
+cep_c08_b09,Mercedes-Benz recalled for Enjoying the driving experience,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code
+cep_c09_b09,Mercedes-Benz recalled for Choosing lower-emission transport,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code
+cep_c10_b09,Mercedes-Benz recalled for Getting technology that simplifies driving,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code
+cep_c11_b09,Mercedes-Benz recalled for Staying within a fixed monthly budget,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code
+cep_c12_b09,Mercedes-Benz recalled for Driving on rough roads or outdoor trips,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code
+cep_links_b09,Number of CEP links Mercedes-Benz,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links
+mental_b09,At least one CEP link Mercedes-Benz,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code
+attr_a01_b09,Mercedes-Benz associated with Reliable,I1,numeric,multiple_response,attr_a01,1,aware_b09=1,,code
+attr_a02_b09,Mercedes-Benz associated with Affordable to run,I1,numeric,multiple_response,attr_a02,1,aware_b09=1,,code
+attr_a03_b09,Mercedes-Benz associated with Good value for money,I1,numeric,multiple_response,attr_a03,1,aware_b09=1,,code
+attr_a04_b09,Mercedes-Benz associated with Safe,I1,numeric,multiple_response,attr_a04,1,aware_b09=1,,code
+attr_a05_b09,Mercedes-Benz associated with Comfortable,I1,numeric,multiple_response,attr_a05,1,aware_b09=1,,code
+attr_a06_b09,Mercedes-Benz associated with Enjoyable to drive,I1,numeric,multiple_response,attr_a06,1,aware_b09=1,,code
+attr_a07_b09,Mercedes-Benz associated with Advanced technology,I1,numeric,multiple_response,attr_a07,1,aware_b09=1,,code
+attr_a08_b09,Mercedes-Benz associated with Premium quality,I1,numeric,multiple_response,attr_a08,1,aware_b09=1,,code
+attr_a09_b09,Mercedes-Benz associated with Environmentally responsible,I1,numeric,multiple_response,attr_a09,1,aware_b09=1,,code
+attr_a10_b09,Mercedes-Benz associated with Good dealer and aftersales support,I1,numeric,multiple_response,attr_a10,1,aware_b09=1,,code
+opinion_b10,Brand opinion Haval,R1,numeric,categorical,,,aware_b10=1,,code
+repeat_b10,Previously acquired same brand Haval,O4,numeric,categorical,,,bought12_b10=1,,code
+adprompt_b10,Prompted advertising recall Haval,AD2,numeric,categorical,,,aware_b10=1,,code
+wom_b10,Word of mouth Haval,W1,numeric,categorical,,,aware_b10=1,,code
+cep_c01_b10,Haval recalled for Replacing an unreliable car,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code
+cep_c02_b10,Haval recalled for Reducing fuel and running costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code
+cep_c03_b10,Haval recalled for Needing more space for a growing family,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code
+cep_c04_b10,Haval recalled for Making the daily commute easier,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code
+cep_c05_b10,Haval recalled for Taking long-distance family trips,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code
+cep_c06_b10,Haval recalled for Feeling safer on the road,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code
+cep_c07_b10,Haval recalled for Marking a career or life achievement,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code
+cep_c08_b10,Haval recalled for Enjoying the driving experience,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code
+cep_c09_b10,Haval recalled for Choosing lower-emission transport,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code
+cep_c10_b10,Haval recalled for Getting technology that simplifies driving,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code
+cep_c11_b10,Haval recalled for Staying within a fixed monthly budget,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code
+cep_c12_b10,Haval recalled for Driving on rough roads or outdoor trips,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code
+cep_links_b10,Number of CEP links Haval,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links
+mental_b10,At least one CEP link Haval,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code
+attr_a01_b10,Haval associated with Reliable,I1,numeric,multiple_response,attr_a01,1,aware_b10=1,,code
+attr_a02_b10,Haval associated with Affordable to run,I1,numeric,multiple_response,attr_a02,1,aware_b10=1,,code
+attr_a03_b10,Haval associated with Good value for money,I1,numeric,multiple_response,attr_a03,1,aware_b10=1,,code
+attr_a04_b10,Haval associated with Safe,I1,numeric,multiple_response,attr_a04,1,aware_b10=1,,code
+attr_a05_b10,Haval associated with Comfortable,I1,numeric,multiple_response,attr_a05,1,aware_b10=1,,code
+attr_a06_b10,Haval associated with Enjoyable to drive,I1,numeric,multiple_response,attr_a06,1,aware_b10=1,,code
+attr_a07_b10,Haval associated with Advanced technology,I1,numeric,multiple_response,attr_a07,1,aware_b10=1,,code
+attr_a08_b10,Haval associated with Premium quality,I1,numeric,multiple_response,attr_a08,1,aware_b10=1,,code
+attr_a09_b10,Haval associated with Environmentally responsible,I1,numeric,multiple_response,attr_a09,1,aware_b10=1,,code
+attr_a10_b10,Haval associated with Good dealer and aftersales support,I1,numeric,multiple_response,attr_a10,1,aware_b10=1,,code
+attr_none_a01,No brand associated with Reliable,I1,numeric,categorical,,,All eligible respondents,,code
+attr_dk_a01,Do not know for Reliable,I1,numeric,categorical,,,All eligible respondents,,code
+attr_none_a02,No brand associated with Affordable to run,I1,numeric,categorical,,,All eligible respondents,,code
+attr_dk_a02,Do not know for Affordable to run,I1,numeric,categorical,,,All eligible respondents,,code
+attr_none_a03,No brand associated with Good value for money,I1,numeric,categorical,,,All eligible respondents,,code
+attr_dk_a03,Do not know for Good value for money,I1,numeric,categorical,,,All eligible respondents,,code
+attr_none_a04,No brand associated with Safe,I1,numeric,categorical,,,All eligible respondents,,code
+attr_dk_a04,Do not know for Safe,I1,numeric,categorical,,,All eligible respondents,,code
+attr_none_a05,No brand associated with Comfortable,I1,numeric,categorical,,,All eligible respondents,,code
+attr_dk_a05,Do not know for Comfortable,I1,numeric,categorical,,,All eligible respondents,,code
+attr_none_a06,No brand associated with Enjoyable to drive,I1,numeric,categorical,,,All eligible respondents,,code
+attr_dk_a06,Do not know for Enjoyable to drive,I1,numeric,categorical,,,All eligible respondents,,code
+attr_none_a07,No brand associated with Advanced technology,I1,numeric,categorical,,,All eligible respondents,,code
+attr_dk_a07,Do not know for Advanced technology,I1,numeric,categorical,,,All eligible respondents,,code
+attr_none_a08,No brand associated with Premium quality,I1,numeric,categorical,,,All eligible respondents,,code
+attr_dk_a08,Do not know for Premium quality,I1,numeric,categorical,,,All eligible respondents,,code
+attr_none_a09,No brand associated with Environmentally responsible,I1,numeric,categorical,,,All eligible respondents,,code
+attr_dk_a09,Do not know for Environmentally responsible,I1,numeric,categorical,,,All eligible respondents,,code
+attr_none_a10,No brand associated with Good dealer and aftersales support,I1,numeric,categorical,,,All eligible respondents,,code
+attr_dk_a10,Do not know for Good dealer and aftersales support,I1,numeric,categorical,,,All eligible respondents,,code
+media_m01,YouTube,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m02,Facebook,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m03,Instagram,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m04,TikTok,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m05,X,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m06,LinkedIn,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m07,Broadcast television or DStv,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m08,Radio,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m09,Video streaming,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m10,Audio streaming or podcasts,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m11,Online news or motoring websites,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_m12,AI chatbots,P1,numeric,multiple_response,media,1,All eligible respondents,,code
+media_none,No listed media used,P1,numeric,categorical,,,All eligible respondents,,code
+nps_main,Recommendation likelihood of main brand,I2,numeric,scale,,,main_brand 1–10,,0–10
+n_aware,Recognised brand repertoire,Derived,numeric,continuous,,,All eligible respondents,Sum of tracked aware indicators; excludes Other,brands
+n_consider,Considered brand repertoire,Derived,numeric,continuous,,,All eligible respondents,Sum of tracked consider indicators; excludes Other,brands
+n_bought12,Acquired brand repertoire,Derived,numeric,continuous,,,All eligible respondents,Sum of tracked bought12 indicators; excludes Other,brands
+needsfit_b01,Toyota meets my personal needs for passenger vehicles.,E1,numeric,ordinal,,,Brand aware: aware_b01=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+needsfit_b02,Volkswagen meets my personal needs for passenger vehicles.,E1,numeric,ordinal,,,Brand aware: aware_b02=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+needsfit_b03,Ford meets my personal needs for passenger vehicles.,E1,numeric,ordinal,,,Brand aware: aware_b03=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+needsfit_b04,Hyundai meets my personal needs for passenger vehicles.,E1,numeric,ordinal,,,Brand aware: aware_b04=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+needsfit_b05,Kia meets my personal needs for passenger vehicles.,E1,numeric,ordinal,,,Brand aware: aware_b05=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+needsfit_b06,Nissan meets my personal needs for passenger vehicles.,E1,numeric,ordinal,,,Brand aware: aware_b06=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+needsfit_b07,Suzuki meets my personal needs for passenger vehicles.,E1,numeric,ordinal,,,Brand aware: aware_b07=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+needsfit_b08,BMW meets my personal needs for passenger vehicles.,E1,numeric,ordinal,,,Brand aware: aware_b08=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+needsfit_b09,Mercedes-Benz meets my personal needs for passenger vehicles.,E1,numeric,ordinal,,,Brand aware: aware_b09=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+needsfit_b10,Haval meets my personal needs for passenger vehicles.,E1,numeric,ordinal,,,Brand aware: aware_b10=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+different_b01,Toyota offers something meaningfully different from other passenger vehicles brands.,E2,numeric,ordinal,,,Brand aware: aware_b01=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+different_b02,Volkswagen offers something meaningfully different from other passenger vehicles brands.,E2,numeric,ordinal,,,Brand aware: aware_b02=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+different_b03,Ford offers something meaningfully different from other passenger vehicles brands.,E2,numeric,ordinal,,,Brand aware: aware_b03=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+different_b04,Hyundai offers something meaningfully different from other passenger vehicles brands.,E2,numeric,ordinal,,,Brand aware: aware_b04=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+different_b05,Kia offers something meaningfully different from other passenger vehicles brands.,E2,numeric,ordinal,,,Brand aware: aware_b05=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+different_b06,Nissan offers something meaningfully different from other passenger vehicles brands.,E2,numeric,ordinal,,,Brand aware: aware_b06=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+different_b07,Suzuki offers something meaningfully different from other passenger vehicles brands.,E2,numeric,ordinal,,,Brand aware: aware_b07=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+different_b08,BMW offers something meaningfully different from other passenger vehicles brands.,E2,numeric,ordinal,,,Brand aware: aware_b08=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+different_b09,Mercedes-Benz offers something meaningfully different from other passenger vehicles brands.,E2,numeric,ordinal,,,Brand aware: aware_b09=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+different_b10,Haval offers something meaningfully different from other passenger vehicles brands.,E2,numeric,ordinal,,,Brand aware: aware_b10=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+pricejustify_b01,"Compared with alternatives that meet similar needs, Toyota is worth its purchase or lease price for comparable vehicles.",E3,numeric,ordinal,,,Brand aware: aware_b01=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+pricejustify_b02,"Compared with alternatives that meet similar needs, Volkswagen is worth its purchase or lease price for comparable vehicles.",E3,numeric,ordinal,,,Brand aware: aware_b02=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+pricejustify_b03,"Compared with alternatives that meet similar needs, Ford is worth its purchase or lease price for comparable vehicles.",E3,numeric,ordinal,,,Brand aware: aware_b03=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+pricejustify_b04,"Compared with alternatives that meet similar needs, Hyundai is worth its purchase or lease price for comparable vehicles.",E3,numeric,ordinal,,,Brand aware: aware_b04=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+pricejustify_b05,"Compared with alternatives that meet similar needs, Kia is worth its purchase or lease price for comparable vehicles.",E3,numeric,ordinal,,,Brand aware: aware_b05=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+pricejustify_b06,"Compared with alternatives that meet similar needs, Nissan is worth its purchase or lease price for comparable vehicles.",E3,numeric,ordinal,,,Brand aware: aware_b06=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+pricejustify_b07,"Compared with alternatives that meet similar needs, Suzuki is worth its purchase or lease price for comparable vehicles.",E3,numeric,ordinal,,,Brand aware: aware_b07=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+pricejustify_b08,"Compared with alternatives that meet similar needs, BMW is worth its purchase or lease price for comparable vehicles.",E3,numeric,ordinal,,,Brand aware: aware_b08=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+pricejustify_b09,"Compared with alternatives that meet similar needs, Mercedes-Benz is worth its purchase or lease price for comparable vehicles.",E3,numeric,ordinal,,,Brand aware: aware_b09=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+pricejustify_b10,"Compared with alternatives that meet similar needs, Haval is worth its purchase or lease price for comparable vehicles.",E3,numeric,ordinal,,,Brand aware: aware_b10=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code
+choice_episode_eligible,Recent choice episode available: most recent household passenger vehicle purchase or lease in the past 12 months including new and used vehicles,E4 route,numeric,categorical,,,All eligible respondents,1 if last_acquired=1; otherwise 0. Does not equate current provider or ownership with most recent choice.,code
+choice_actual,Brand actually chosen for most recent household passenger vehicle purchase or lease in the past 12 months including new and used vehicles,E4,numeric,categorical,,,choice_episode_eligible=1; otherwise blank,,code
+choice_actual_other,Other actual brand name in the same recent choice episode,E4 other,text,text,,,choice_actual=96 only,,text
+choice_ideal,"Brand ideally preferred at the time for the same most recent household passenger vehicle purchase or lease in the past 12 months including new and used vehicles, before practical restrictions",E5,numeric,categorical,,,choice_episode_eligible=1; otherwise blank,,code
+choice_ideal_other,Other ideal brand name in the same recent choice episode,E5 other,text,text,,,choice_ideal=96 only,,text
+choice_gap,Ideal and actual brands differ within the same recent choice episode,Derived,numeric,categorical,,,Known actual and ideal named brands including resolved Other names; otherwise blank,"1 when actual and ideal differ; 0 when identical. For code 96 compare normalized named brands, never assume two Other codes match. 98 and 99 excluded.",code
+choice_barrier_r01,Choice gap reason: Purchase lease or running costs exceeded my budget,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code
+choice_barrier_r02,Choice gap reason: Preferred vehicle model or stock was not available,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code
+choice_barrier_r03,Choice gap reason: Finance approval deposit or eligibility requirements prevented it,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code
+choice_barrier_r04,Choice gap reason: The available model did not fit my household needs,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code
+choice_barrier_r05,Choice gap reason: Dealer distance access or delivery timing was inconvenient,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code
+choice_barrier_r06,Choice gap reason: Existing lease trade in or other commitments made switching difficult,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code
+choice_barrier_r07,Choice gap reason: Another household decision maker influenced the choice,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code
+choice_barrier_r08,Choice gap reason: New information changed my decision,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code
+choice_barrier_r09,Choice gap reason: Choosing a familiar brand or dealer was easier,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code
+choice_barrier_r10,Choice gap reason: Another reason,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code
+choice_barrier_none,No reason or practical constraint reported for the episode gap,E6,numeric,categorical,,,choice_gap=1 only; otherwise blank,,code
+choice_barrier_dk,Cannot recall why the ideal and actual choice differed,E6,numeric,categorical,,,choice_gap=1 only; otherwise blank,,code
+choice_barrier_other,Other reason for the same episode choice gap,E6 other,text,text,,,choice_gap=1 and choice_barrier_r10=1 only,,text

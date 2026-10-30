@@ -33,3 +33,19 @@ alike ("Donations", "Nature", "Domestic") are still answers. Tables built before
 selftest's batch 47 cases (banner, row, base, included, ordinary words); the first three fail on the old
 pattern.
 
+
+## Driver predictors carry their answer domain (Codex T2-F01, 30 October 2026)
+
+`driver_columns` returns, for the outcome and each predictor, `answerDomain`: `source` ("declared" when the file
+has an answer list with at least one substantive code, else "observed"), `min`, `max`, `count` (number of codes)
+and `integers`. A declared domain is the declared substantive codes (non-answers left out by `_non_answer_codes`)
+together with every observed answer, the same In/Out rule as above; an observed domain is the answers present. It
+is a summary, not a list, since a long numeric variable can have thousands of codes.
+
+`src/lib/driverPerformance.ts` reads the driver performance measure from it (whole file, each segment, and stated
+importance): every code 0 or 1 is an indicator (share); whole-number codes spanning 3 to 11 points are a scale (top
+two counted down from the domain's top, and the mean), where an observed domain also needs 3 or more different
+answers; anything else is a mean. Each result says `domainSource`. Before, the measure came from the answers present,
+so a declared 1 to 5 scale answered only 4 and 5 was a mean and a declared 0 to 10 scale answered only 0 and 1 was
+read as a 0/1 indicator with a 50% share instead of top two 0%. Pinned by the selftest's "T2-F01" checks,
+`driverPerformance.test.ts` and `driverPerformanceDomain.test.ts` (actual engine, weighted, segmented, restored).
