@@ -7,6 +7,7 @@
 
 import { isZeroToTenScale } from "./descriptiveFindings";
 import { brandFrameFromNames, DESIGN_VARIABLE, nameFamilies, nameWords, numberedBrandsWithoutNames, wordingOf } from "./trackerNameFamilies";
+import { recogniseBrandExtension, type BrandExtensionRecognition } from "./brandExtensionRoles";
 
 /** One variable as the recogniser reads it: what the data file and a confirmed codebook say about it. */
 export type RoleVariable = {
@@ -93,6 +94,9 @@ export type TrackerRecognition = {
   /** The channel of the most recent acquisition (findAcquisitionChannel, page 08). */
   acquisitionChannel: FoundQuestion;
   csm: CsmRoles;
+  /** The brand dashboard extension's constructs (needs fit, differentiation, price justification, the same-episode
+   * ideal and actual choice and its reasons): brandExtensionRoles.ts. Optional only for recognitions built by hand. */
+  brandExtension?: BrandExtensionRecognition;
   /** What the researcher must decide; never filled in by a guess. */
   questions: { id: string; text: string }[];
 };
@@ -137,8 +141,11 @@ export type FoundList =
 
 // ---- Rules ----------------------------------------------------------------------------------------------
 
-/** Answer labels that are never a brand, whatever their code. */
-const NON_BRAND = /^(other|others|other \(specify\)|none|none of (the|these)|no brand|no first choice|don'?t know|do not know|not sure|can'?t say|prefer not|refused|not applicable|n\/a|nothing)\b/i;
+/** Answer labels that are never a brand, whatever their code. "Cannot recall" and "No particular ideal brand" (the
+ * brand dashboard extension's same-episode questions, r6brandext) are statuses, not brands: without them the recall
+ * answer read as an eleventh brand, named in another question's wording ("Cannot recall why ..."), and the episode
+ * question became the brand list. */
+const NON_BRAND = /^(other|others|other \(specify\)|none|none of (the|these)|no brand|no first choice|no particular|don'?t know|do not know|not sure|can'?t say|cannot (recall|remember|say)|can'?t (recall|remember)|do not (recall|remember)|don'?t (recall|remember)|prefer not|refused|not applicable|n\/a|nothing)\b/i;
 
 const clean = (s: string) => s.normalize("NFKC").trim().replace(/\s+/g, " ");
 const lower = (s: string) => clean(s).toLowerCase();
@@ -199,7 +206,7 @@ function brandNames(label: string): string[] {
   return out;
 }
 
-function brandNamed(label: string, frame: BrandFrame): string | null {
+export function brandNamed(label: string, frame: BrandFrame): string | null {
   const words = (x: string) => ` ${lower(x).replace(/[^\p{L}\p{N}&+.'-]+/gu, " ")} `;
   const l = words(label);
   const hits = frame.brands.filter((b) => brandNames(b.label).some((n) => l.includes(words(n))));
@@ -212,7 +219,7 @@ function brandNamed(label: string, frame: BrandFrame): string | null {
 }
 
 /** The question's wording once each member's brand name is taken out: the same for every member of a per-brand question. */
-function stemOf(label: string, brand: { label: string }): string {
+export function stemOf(label: string, brand: { label: string }): string {
   let out = label;
   for (const n of brandNames(brand.label).sort((a, b) => b.length - a.length)) out = out.replace(new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), " ");
   return clean(out);
@@ -313,6 +320,11 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
     }
   }
 
+  // The brand dashboard extension's constructs are recognised by their own owner; a rating it claims is not a funnel
+  // measure, so it raises no "What does ... measure" question (r6brandext).
+  const brandExtension = recogniseBrandExtension(variables, brandFrame);
+  for (let i = measures.length - 1; i >= 0; i--) if (measures[i].byBrand.some((b) => brandExtension.claimed.includes(b.variable))) measures.splice(i, 1);
+
   if (brandFrame) {
     const frame = brandFrame;
     // A funnel stage claimed by two questions is the researcher's choice. Advertising, word of mouth and
@@ -344,7 +356,7 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   const mediaUse = findMediaList(askedOnce);
   const decisionStyle = findDecisionStyle(askedOnce);
   const acquisitionChannel = findAcquisitionChannel(askedOnce);
-  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, advertisingRecall, ageGroups, mediaUse, decisionStyle, acquisitionChannel, csm, questions };
+  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, advertisingRecall, ageGroups, mediaUse, decisionStyle, acquisitionChannel, csm, brandExtension, questions };
 }
 
 /** A single-choice question's own wording, when it has an answer list of two or more answers that is not yes/no and
@@ -496,7 +508,7 @@ export function findAdvertisingRecall(usable: RoleVariable[], frame: BrandFrame)
 
 /** A variable's own wording: its label without a leading copy of its name ("relevant_c01. Replacing an unreliable car",
  * as a CSV with a linked codebook reads, gives "Replacing an unreliable car"); "" when it has no label. */
-function labelAfterName(v: Pick<RoleVariable, "name" | "label">): string {
+export function labelAfterName(v: Pick<RoleVariable, "name" | "label">): string {
   return v.label ? v.label.trim().replace(new RegExp(`^${v.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[.:\\-]\\s+`), "") : "";
 }
 
@@ -650,7 +662,7 @@ function recogniseFromNames(usable: RoleVariable[], measures: PerBrandMeasure[],
   return frame;
 }
 
-function isYesNo(v: RoleVariable): boolean {
+export function isYesNo(v: RoleVariable): boolean {
   const codes = Object.keys(v.valueLabels ?? {});
   return codes.length > 0 && codes.length <= 2 && codes.every((c) => c === "0" || c === "1");
 }

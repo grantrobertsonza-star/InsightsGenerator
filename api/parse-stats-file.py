@@ -2950,7 +2950,8 @@ def _p_two_sided_design(z: float, dsg) -> float:
 
 
 def _se_prop(p, n_eff):
-    return math.sqrt(p * (1 - p) / n_eff)
+    # max(0, ...): a share of 1 plus a rounding residue must not fail the square root (see prop_row).
+    return math.sqrt(max(0.0, p * (1 - p)) / n_eff)
 
 
 def value_labels(file_bytes: bytes, source_filename: str, args=None) -> dict:
@@ -5679,7 +5680,11 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 yk = (sel_mask & vm).astype(float)
                 tk = dsg.totals(np.where(vm, wv * (yk - pj) / sw, 0.0))
             if not math.isnan(pj) and n >= MIN_BASE_SUPPRESS and n_eff > 0:
-                se_k = math.sqrt(dsg.var_totals(tk)) if (dsg is not None and tk is not None) else math.sqrt(pj * (1 - pj) / n_eff)
+                # max(0, ...): with fractional weights a share of everyone sums to 1 plus a rounding residue
+                # (1.0000000000000002), and p(1 - p) was then a tiny negative number whose square root failed the
+                # whole table ("math domain error") whenever every respondent in a filtered base gave one answer
+                # (r6brandext: reasons among a brand's ideal preferrers). The share itself is unchanged.
+                se_k = math.sqrt(dsg.var_totals(tk)) if (dsg is not None and tk is not None) else math.sqrt(max(0.0, pj * (1 - pj)) / n_eff)
                 ses.append(round(se_k * 100, 2))
                 ses_exact.append(se_k * 100)
             else:
