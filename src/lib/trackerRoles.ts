@@ -321,9 +321,14 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   }
 
   // The brand dashboard extension's constructs are recognised by their own owner; a rating it claims is not a funnel
-  // measure, so it raises no "What does ... measure" question (r6brandext).
+  // measure (no "What does ... measure" question) and not an association item ("meets my needs for banking" has
+  // "for" in it, rule 4), r6brandext.
   const brandExtension = recogniseBrandExtension(variables, brandFrame);
-  for (let i = measures.length - 1; i >= 0; i--) if (measures[i].byBrand.some((b) => brandExtension.claimed.includes(b.variable))) measures.splice(i, 1);
+  const extensionClaimed = new Set(brandExtension.claimed);
+  for (let i = measures.length - 1; i >= 0; i--) if (measures[i].byBrand.some((b) => extensionClaimed.has(b.variable))) measures.splice(i, 1);
+  for (const m of measures) m.outside = m.outside.filter((v) => !extensionClaimed.has(v));
+  for (const g of grids) g.items = g.items.filter((it) => !it.byBrand.some((b) => extensionClaimed.has(b.variable)));
+  for (let i = grids.length - 1; i >= 0; i--) if (grids[i].items.length === 0) grids.splice(i, 1);
 
   if (brandFrame) {
     const frame = brandFrame;

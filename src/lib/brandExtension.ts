@@ -194,6 +194,8 @@ export type BrandExtension = {
   documentId: string;
   weighted: boolean;
   weightVar: string | null;
+  /** Whether the file has a weight at all (the page offers weighted only then). */
+  weightAvailable: boolean;
   weightNote: string | null;
   audience: { variable: string; label: string; code: string; codeLabel: string } | null;
   brands: { code: string; label: string }[];
@@ -868,6 +870,7 @@ export async function loadBrandExtension(tenantId: string, runId: string, docume
     documentId,
     weighted: weightVar !== null,
     weightVar,
+    weightAvailable: dashboard.weightVar !== null,
     weightNote,
     audience,
     brands,
@@ -882,5 +885,42 @@ export async function loadBrandExtension(tenantId: string, runId: string, docume
   };
 }
 
-/** Top-two-box per brand and construct for every wave of the project, in wave order (independent samples). */
-export type ExtensionTrend = { waves: { documentId: string; wave: string; values: Record<RatingConstruct, { code: string; topTwo: number | null; n: number }[]> }[] };
+/** One wave's top-two-box per brand and construct, or why that wave has none. */
+export type TrendWave = {
+  documentId: string;
+  wave: string;
+  values: Record<RatingConstruct, { code: string; topTwo: number | null; n: number; smallBase: SmallBase }[] | null>;
+  /** The same wording and answer codes as the wave being viewed (else the wave's figure is not joined to the trend). */
+  comparable: Record<RatingConstruct, boolean>;
+  error?: string;
+};
+
+/**
+ * Top-two-box per brand and construct for every wave of the project, in wave order. Waves are independent samples:
+ * the trend is descriptive (no paired test). A wave is joined to the trend for a construct only when its question has
+ * the same wording and the same answer codes as the wave being viewed; otherwise it is listed as not comparable. A wave
+ * that cannot be read is listed with its error, never left out silently.
+ */
+export async function loadBrandExtensionTrend(tenantId: string, runId: string, documentId: string, options: ExtensionOptions = {}): Promise<{ waves: TrendWave[] }> {
+  const { loadProjectWaves } = await import("./waveFiles");
+  const waves = (await loadProjectWaves(tenantId, runId)).included;
+  const here = await loadBrandExtension(tenantId, runId, documentId, options);
+  const signature = (m: RatingModule) => (m.status === "ok" ? JSON.stringify([m.family.wording, m.family.scale.map((s) => s.code), m.family.cannotJudge.map((s) => s.code)]) : null);
+  const out: TrendWave[] = [];
+  for (const w of waves) {
+    try {
+      const ext = w.documentId === documentId ? here : await loadBrandExtension(tenantId, runId, w.documentId, { weighted: options.weighted ?? here.weighted, audience: null });
+      const values = {} as TrendWave["values"];
+      const comparable = {} as TrendWave["comparable"];
+      for (const c of RATING_CONSTRUCTS) {
+        const m = ext.ratings[c];
+        comparable[c] = m.status === "ok" && signature(m) === signature(here.ratings[c]);
+        values[c] = m.status === "ok" ? m.brands.map((b) => ({ code: b.code, topTwo: b.topTwo, n: b.valid.n ?? 0, smallBase: b.smallBase })) : null;
+      }
+      out.push({ documentId: w.documentId, wave: w.wave, values, comparable });
+    } catch (e) {
+      out.push({ documentId: w.documentId, wave: w.wave, values: { needs_fit: null, differentiation: null, price_justification: null }, comparable: { needs_fit: false, differentiation: false, price_justification: false }, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { waves: out };
+}

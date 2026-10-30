@@ -426,8 +426,8 @@ export function recogniseBrandExtension(variables: RoleVariable[], frame: BrandF
     if (d.status === "needs_review") d.candidates.forEach((cand) => cand.variables.forEach((x) => claimed.add(x)));
   };
   for (const c of RATING_CONSTRUCTS) claim(ratings[c], (f: RatingFamily) => f.byBrand.map((b) => b.variable));
-  claim(episode, (e: EpisodeQuestions) => [e.actual.variable, e.ideal.variable]);
-  claim(reasons, (r: ReasonQuestions) => [...r.options.map((o) => o.variable), ...(r.none ? [r.none.variable] : []), ...(r.cannotRecall ? [r.cannotRecall.variable] : [])]);
+  claim(episode, (e: EpisodeQuestions) => [e.actual.variable, e.ideal.variable, ...[e.actualOther, e.idealOther, e.eligibility?.variable, e.gap?.variable].filter((x): x is string => !!x)]);
+  claim(reasons, (r: ReasonQuestions) => [...r.options.map((o) => o.variable), ...[r.none?.variable, r.cannotRecall?.variable, r.otherText].filter((x): x is string => !!x)]);
   return { ratings, episode, reasons, claimed: [...claimed] };
 }
 

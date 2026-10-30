@@ -1087,5 +1087,21 @@ check("decision 9: a zero-padded identifier below two title rows keeps its own p
 _pad3 = psf.read_table(_title_book([["Respondents"], ["Prepared by", "Acme"], ["id", "score"], [7, 5], [12, 6]], id_format="0000"), "pad3.xlsx", {"headerRowsSkipped": 2})
 check("decision 9: a zero-padded identifier below a chosen header row keeps its own padding", [r["id"] for r in _pad3["rows"]] == ["0007", "0012"], str(_pad3["rows"]))
 
+# r6brandext: everyone in a filtered base giving one answer, with fractional weights. Their weighted share is 1 plus a
+# rounding residue, so p(1 - p) was a tiny negative number and the square root failed the whole table ("math domain
+# error"). The share stays exactly the one answer's, and the table is returned.
+# The case is the banking pack's wave 1 (fixtures/packs-2026-10-30/brand/banks), where it was found: respondents who
+# ideally preferred African Bank (choice_ideal 5) and chose another brand (choice_gap 1), all twelve giving gap 1.
+_fw = pd.read_csv(os.path.join(HERE, "..", "fixtures", "packs-2026-10-30", "brand", "banks", "test-reference", "Bank_Brand_Tracker_Wave_1.csv"), usecols=["choice_gap", "choice_ideal", "weight"]).rename(columns={"choice_gap": "g", "choice_ideal": "b", "weight": "w"})
+_fw_sel = (_fw.g == 1) & (_fw.b == 5)
+_fw_buf = io.BytesIO()
+_fw.to_csv(_fw_buf, index=False)
+try:
+    _fw_t = psf.crosstab(_fw_buf.getvalue(), "fw.csv", {"columnVars": [], "rowItems": [{"key": "g", "label": "g", "vars": ["g"]}], "weightVar": "w", "excludeDk": False, "filters": [{"variable": "g", "op": "between", "min": 1, "max": 1}, {"variable": "b", "op": "between", "min": 5, "max": 5}]})
+    _fw_row = [r for r in _fw_t["questions"][0]["rows"] if r.get("rawCode") == "1"][0]
+    check("r6brandext: one answer from everyone in a weighted filtered base is 100%, not a failed table", abs(_fw_row["total"]["pctExact"] - 100) < 1e-9 and abs(_fw_row["total"]["countExact"] - float(_fw.w[_fw_sel].sum())) < 1e-9, str(_fw_row["total"]))
+except ValueError as exc:
+    check("r6brandext: one answer from everyone in a weighted filtered base is 100%, not a failed table", False, str(exc))
+
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

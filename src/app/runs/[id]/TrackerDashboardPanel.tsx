@@ -24,6 +24,8 @@ import type { CompanyBox, CompanyNps, CsmTile, CsmTileId } from "@/lib/trackerCs
 import type { FunnelStage } from "@/lib/trackerRoles";
 import { searchVariables } from "@/lib/variableSearch";
 import { QuestionPicker, variableText } from "./QuestionPicker";
+// r6brandext: the brand dashboard extension's pages, grouped apart from the dashboard's own (BrandExtensionViews.tsx).
+import BrandExtensionPage, { BrandExtensionMenu } from "./BrandExtensionViews";
 
 export type TrackerDashboardKind = "brand" | "csm";
 
@@ -1799,7 +1801,8 @@ export default function TrackerDashboardPanel({
       </div>
       <div className="flex min-h-0 flex-1">
         {kind === "brand" && (
-          <nav aria-label="Brand tracking sections" className="hidden w-56 shrink-0 flex-col gap-1 border-r border-slate-200 bg-white px-3 py-5 lg:flex">
+          <div className="hidden w-56 shrink-0 flex-col border-r border-slate-200 bg-white px-3 py-5 lg:flex">
+          <nav aria-label="Brand tracking sections" className="flex flex-col gap-1">
             <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Workspace</p>
             <p className="px-2 text-lg font-bold text-slate-900">Brand tracking</p>
             <p className="mb-4 truncate px-2 text-xs text-slate-500">{focal ? `${focal.label} / ${overview?.wave ?? ""}` : filename}</p>
@@ -1816,6 +1819,8 @@ export default function TrackerDashboardPanel({
               </button>
             ))}
           </nav>
+          <BrandExtensionMenu section={section} first={BRAND_SECTIONS.length} onOpen={setSection} variant="sidebar" />
+          </div>
         )}
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex max-w-[84rem] flex-col gap-5 px-6 py-6">
@@ -1848,7 +1853,10 @@ export default function TrackerDashboardPanel({
                 ))}
               </div>
             )}
-            {kind === "brand" ? (section === 1 ? momentsView : section === 2 ? associationsView : section === 3 ? advertisingView : section === 4 ? audienceView : section === 5 ? categoryView : brandView) : csmView}
+            {kind === "brand" && <BrandExtensionMenu section={section} first={BRAND_SECTIONS.length} onOpen={setSection} variant="tabs" />}
+            {kind === "brand" && section >= BRAND_SECTIONS.length ? (
+              <BrandExtensionPage runId={runId} documentId={documentId} page={section === BRAND_SECTIONS.length ? "ratings" : "choice"} reloadToken={overview} initialBrands={[...(focal ? [focal.code] : []), ...shown.filter((c) => c !== focal?.code)]} />
+            ) : kind === "brand" ? (section === 1 ? momentsView : section === 2 ? associationsView : section === 3 ? advertisingView : section === 4 ? audienceView : section === 5 ? categoryView : brandView) : csmView}
           </div>
         </div>
       </div>
