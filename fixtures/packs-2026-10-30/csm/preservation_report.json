@@ -1,0 +1,89 @@
+{
+  "status": "passed",
+  "method": "Every original addressed cell in the used ranges, including structural blanks, in all 16 original workbooks compared by exact sheet/cell address after final export; original string IDs compared exactly. Every original reference-results dictionary preserved.",
+  "original_cells_checked": 1022586,
+  "workbooks": [
+    {
+      "workbook": "mobile/Mobile_CSM_Relationship_Wave_1.xlsx",
+      "original_cells_checked": 58632,
+      "status": "preserved"
+    },
+    {
+      "workbook": "mobile/Mobile_CSM_Channel_Wave_1.xlsx",
+      "original_cells_checked": 98970,
+      "status": "preserved"
+    },
+    {
+      "workbook": "mobile/Mobile_CSM_Channel_Wave_2.xlsx",
+      "original_cells_checked": 99165,
+      "status": "preserved"
+    },
+    {
+      "workbook": "mobile/Mobile_CSM_Relationship_Wave_3.xlsx",
+      "original_cells_checked": 58632,
+      "status": "preserved"
+    },
+    {
+      "workbook": "mobile/Mobile_CSM_Channel_Wave_3.xlsx",
+      "original_cells_checked": 104105,
+      "status": "preserved"
+    },
+    {
+      "workbook": "mobile/Mobile_CSM_Relationship_Wave_2.xlsx",
+      "original_cells_checked": 58632,
+      "status": "preserved"
+    },
+    {
+      "workbook": "mobile/Master_CSM_Codebook.xlsx",
+      "original_cells_checked": 3094,
+      "status": "preserved"
+    },
+    {
+      "workbook": "mobile/CSM_Reference_Metrics.xlsx",
+      "original_cells_checked": 20128,
+      "status": "preserved"
+    },
+    {
+      "workbook": "banking/Banking_CSM_Relationship_Wave_3.xlsx",
+      "original_cells_checked": 58636,
+      "status": "preserved"
+    },
+    {
+      "workbook": "banking/Banking_CSM_Channel_Wave_2.xlsx",
+      "original_cells_checked": 109049,
+      "status": "preserved"
+    },
+    {
+      "workbook": "banking/Banking_CSM_Relationship_Wave_1.xlsx",
+      "original_cells_checked": 58636,
+      "status": "preserved"
+    },
+    {
+      "workbook": "banking/Banking_CSM_Channel_Wave_3.xlsx",
+      "original_cells_checked": 103589,
+      "status": "preserved"
+    },
+    {
+      "workbook": "banking/Banking_CSM_Relationship_Wave_2.xlsx",
+      "original_cells_checked": 58636,
+      "status": "preserved"
+    },
+    {
+      "workbook": "banking/Master_CSM_Codebook.xlsx",
+      "original_cells_checked": 3104,
+      "status": "preserved"
+    },
+    {
+      "workbook": "banking/Banking_CSM_Channel_Wave_1.xlsx",
+      "original_cells_checked": 106579,
+      "status": "preserved"
+    },
+    {
+      "workbook": "banking/CSM_Reference_Metrics.xlsx",
+      "original_cells_checked": 22999,
+      "status": "preserved"
+    }
+  ],
+  "metadata": "Master, embedded and CSV codebook definitions match optional JSON exactly after normalising empty cells.",
+  "embedded_variable_definitions_checked": 1218
+}

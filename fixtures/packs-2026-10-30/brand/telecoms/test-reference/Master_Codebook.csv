@@ -1,0 +1,552 @@
+variable,label,question,data_type,question_type,mr_set,selected_value,universe,derivation,unit,option_label
+respondent_id,Unique synthetic respondent ID,SYS,text,text,,,All eligible respondents,,identifier,Unique synthetic respondent ID
+wave,Wave,SYS,numeric,categorical,,,All eligible respondents,,code,Wave
+fieldwork_date,Interview date,SYS,text,text,,,All eligible respondents,,ISO date,Interview date
+synthetic,Synthetic record flag,SYS,numeric,categorical,,,All eligible respondents,,code,Synthetic record flag
+weight,Relative synthetic analysis weight,SYS,numeric,continuous,,,All eligible respondents,,relative weight,Relative synthetic analysis weight
+age,Age in years,S1,numeric,continuous,,,All eligible respondents,,years,Age in years
+age_band,Age group,S1,numeric,categorical,,,All eligible respondents,,code,Age group
+choice_role,Category choice responsibility,S2,numeric,categorical,,,All eligible respondents,,code,Category choice responsibility
+last_acquired,Most recent new SIM or eSIM connection activation,S3,numeric,categorical,,,All eligible respondents,,code,Most recent new SIM or eSIM connection activation
+next_acquire,Expected next category start,S4,numeric,categorical,,,All eligible respondents,,code,Expected next category start
+gender,Gender,D1,numeric,categorical,,,All eligible respondents,,code,Gender
+province,Province,D2,numeric,categorical,,,All eligible respondents,,code,Province
+settlement,Settlement,D3,numeric,categorical,,,All eligible respondents,,code,Settlement
+income,Monthly household income before tax,D4,numeric,categorical,,,All eligible respondents,,code,Monthly household income before tax
+life_stage,Household life stage,D5,numeric,categorical,,,All eligible respondents,,code,Household life stage
+decision_style,Category decision style,C1,numeric,categorical,,,All eligible respondents,,code,Category decision style
+topmind,First spontaneously recalled brand,A1,numeric,categorical,,,All eligible respondents,,code,First spontaneously recalled brand
+awareness_verbatim,Awareness verbatim,A1/A2,text,text,,,All eligible respondents,,code,Awareness verbatim
+cep_order,Cep order,M1,text,text,,,All eligible respondents,,code,Cep order
+brand_order,Brand order,A3,text,text,,,All eligible respondents,,code,Brand order
+attribute_order,Attribute order,I1,text,text,,,All eligible respondents,,code,Attribute order
+advertising_verbatim,Advertising verbatim,AD1,text,text,,,All eligible respondents,,code,Advertising verbatim
+cep_verbatim_c01,Brands recalled for Needing reliable signal where I live,M1,text,text,,,All eligible respondents,,code,Brands recalled for Needing reliable signal where I live
+relevant_c01,Needing reliable signal where I live,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Needing reliable signal where I live
+cep_other_c01,Other brand recalled for Needing reliable signal where I live,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Needing reliable signal where I live
+cep_verbatim_c02,Brands recalled for Reducing monthly airtime and data costs,M1,text,text,,,All eligible respondents,,code,Brands recalled for Reducing monthly airtime and data costs
+relevant_c02,Reducing monthly airtime and data costs,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Reducing monthly airtime and data costs
+cep_other_c02,Other brand recalled for Reducing monthly airtime and data costs,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Reducing monthly airtime and data costs
+cep_verbatim_c03,Brands recalled for Starting a new job or course,M1,text,text,,,All eligible respondents,,code,Brands recalled for Starting a new job or course
+relevant_c03,Starting a new job or course,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Starting a new job or course
+cep_other_c03,Other brand recalled for Starting a new job or course,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Starting a new job or course
+cep_verbatim_c04,Brands recalled for Replacing an unsatisfactory mobile provider,M1,text,text,,,All eligible respondents,,code,Brands recalled for Replacing an unsatisfactory mobile provider
+relevant_c04,Replacing an unsatisfactory mobile provider,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Replacing an unsatisfactory mobile provider
+cep_other_c04,Other brand recalled for Replacing an unsatisfactory mobile provider,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Replacing an unsatisfactory mobile provider
+cep_verbatim_c05,Brands recalled for Buying a new smartphone,M1,text,text,,,All eligible respondents,,code,Brands recalled for Buying a new smartphone
+relevant_c05,Buying a new smartphone,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Buying a new smartphone
+cep_other_c05,Other brand recalled for Buying a new smartphone,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Buying a new smartphone
+cep_verbatim_c06,Brands recalled for Staying connected with family,M1,text,text,,,All eligible respondents,,code,Brands recalled for Staying connected with family
+relevant_c06,Staying connected with family,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Staying connected with family
+cep_other_c06,Other brand recalled for Staying connected with family,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Staying connected with family
+cep_verbatim_c07,Brands recalled for Working or studying online,M1,text,text,,,All eligible respondents,,code,Brands recalled for Working or studying online
+relevant_c07,Working or studying online,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Working or studying online
+cep_other_c07,Other brand recalled for Working or studying online,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Working or studying online
+cep_verbatim_c08,Brands recalled for Streaming video or music on the move,M1,text,text,,,All eligible respondents,,code,Brands recalled for Streaming video or music on the move
+relevant_c08,Streaming video or music on the move,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Streaming video or music on the move
+cep_other_c08,Other brand recalled for Streaming video or music on the move,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Streaming video or music on the move
+cep_verbatim_c09,Brands recalled for Travelling within South Africa,M1,text,text,,,All eligible respondents,,code,Brands recalled for Travelling within South Africa
+relevant_c09,Travelling within South Africa,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Travelling within South Africa
+cep_other_c09,Other brand recalled for Travelling within South Africa,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Travelling within South Africa
+cep_verbatim_c10,Brands recalled for Travelling internationally,M1,text,text,,,All eligible respondents,,code,Brands recalled for Travelling internationally
+relevant_c10,Travelling internationally,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Travelling internationally
+cep_other_c10,Other brand recalled for Travelling internationally,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Travelling internationally
+cep_verbatim_c11,Brands recalled for Running out of data unexpectedly,M1,text,text,,,All eligible respondents,,code,Brands recalled for Running out of data unexpectedly
+relevant_c11,Running out of data unexpectedly,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Running out of data unexpectedly
+cep_other_c11,Other brand recalled for Running out of data unexpectedly,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Running out of data unexpectedly
+cep_verbatim_c12,Brands recalled for Adding a second SIM or data connection,M1,text,text,,,All eligible respondents,,code,Brands recalled for Adding a second SIM or data connection
+relevant_c12,Adding a second SIM or data connection,M2,numeric,multiple_response,category_situations,1,All eligible respondents,,code,Adding a second SIM or data connection
+cep_other_c12,Other brand recalled for Adding a second SIM or data connection,M1,numeric,categorical,,,All eligible respondents,,code,Other brand recalled for Adding a second SIM or data connection
+relevant_none,No relevant situation,M2,numeric,categorical,,,All eligible respondents,,code,No relevant situation
+unaided_b01,Spontaneous awareness MTN,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code,MTN
+unaided_b02,Spontaneous awareness Telkom Mobile,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code,Telkom Mobile
+unaided_b03,Spontaneous awareness Cell C,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code,Cell C
+unaided_b04,Spontaneous awareness FNB Connect,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code,FNB Connect
+unaided_b05,Spontaneous awareness Capitec Connect,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code,Capitec Connect
+unaided_b06,Spontaneous awareness Standard Bank Connect,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code,Standard Bank Connect
+unaided_b07,Spontaneous awareness Melon Mobile,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code,Melon Mobile
+unaided_b08,Spontaneous awareness Vodacom,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code,Vodacom
+unaided_b09,Spontaneous awareness Afrihost Air Mobile,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code,Afrihost Air Mobile
+unaided_b10,Spontaneous awareness Mr Price Mobile,A1/A2,numeric,multiple_response,unaided,1,All eligible respondents,,code,Mr Price Mobile
+aware_b01,Prompted resolved recognition MTN,A3,numeric,multiple_response,aware,1,All eligible respondents,,code,MTN
+aware_b02,Prompted resolved recognition Telkom Mobile,A3,numeric,multiple_response,aware,1,All eligible respondents,,code,Telkom Mobile
+aware_b03,Prompted resolved recognition Cell C,A3,numeric,multiple_response,aware,1,All eligible respondents,,code,Cell C
+aware_b04,Prompted resolved recognition FNB Connect,A3,numeric,multiple_response,aware,1,All eligible respondents,,code,FNB Connect
+aware_b05,Prompted resolved recognition Capitec Connect,A3,numeric,multiple_response,aware,1,All eligible respondents,,code,Capitec Connect
+aware_b06,Prompted resolved recognition Standard Bank Connect,A3,numeric,multiple_response,aware,1,All eligible respondents,,code,Standard Bank Connect
+aware_b07,Prompted resolved recognition Melon Mobile,A3,numeric,multiple_response,aware,1,All eligible respondents,,code,Melon Mobile
+aware_b08,Prompted resolved recognition Vodacom,A3,numeric,multiple_response,aware,1,All eligible respondents,,code,Vodacom
+aware_b09,Prompted resolved recognition Afrihost Air Mobile,A3,numeric,multiple_response,aware,1,All eligible respondents,,code,Afrihost Air Mobile
+aware_b10,Prompted resolved recognition Mr Price Mobile,A3,numeric,multiple_response,aware,1,All eligible respondents,,code,Mr Price Mobile
+consider_b01,Consideration MTN,F1,numeric,multiple_response,consider,1,All eligible respondents,,code,MTN
+consider_b02,Consideration Telkom Mobile,F1,numeric,multiple_response,consider,1,All eligible respondents,,code,Telkom Mobile
+consider_b03,Consideration Cell C,F1,numeric,multiple_response,consider,1,All eligible respondents,,code,Cell C
+consider_b04,Consideration FNB Connect,F1,numeric,multiple_response,consider,1,All eligible respondents,,code,FNB Connect
+consider_b05,Consideration Capitec Connect,F1,numeric,multiple_response,consider,1,All eligible respondents,,code,Capitec Connect
+consider_b06,Consideration Standard Bank Connect,F1,numeric,multiple_response,consider,1,All eligible respondents,,code,Standard Bank Connect
+consider_b07,Consideration Melon Mobile,F1,numeric,multiple_response,consider,1,All eligible respondents,,code,Melon Mobile
+consider_b08,Consideration Vodacom,F1,numeric,multiple_response,consider,1,All eligible respondents,,code,Vodacom
+consider_b09,Consideration Afrihost Air Mobile,F1,numeric,multiple_response,consider,1,All eligible respondents,,code,Afrihost Air Mobile
+consider_b10,Consideration Mr Price Mobile,F1,numeric,multiple_response,consider,1,All eligible respondents,,code,Mr Price Mobile
+shortlist_b01,Serious shortlist MTN,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code,MTN
+shortlist_b02,Serious shortlist Telkom Mobile,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code,Telkom Mobile
+shortlist_b03,Serious shortlist Cell C,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code,Cell C
+shortlist_b04,Serious shortlist FNB Connect,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code,FNB Connect
+shortlist_b05,Serious shortlist Capitec Connect,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code,Capitec Connect
+shortlist_b06,Serious shortlist Standard Bank Connect,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code,Standard Bank Connect
+shortlist_b07,Serious shortlist Melon Mobile,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code,Melon Mobile
+shortlist_b08,Serious shortlist Vodacom,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code,Vodacom
+shortlist_b09,Serious shortlist Afrihost Air Mobile,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code,Afrihost Air Mobile
+shortlist_b10,Serious shortlist Mr Price Mobile,F2,numeric,multiple_response,shortlist,1,All eligible respondents,,code,Mr Price Mobile
+firstchoice_b01,First choice MTN,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,First choice MTN
+firstchoice_b02,First choice Telkom Mobile,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,First choice Telkom Mobile
+firstchoice_b03,First choice Cell C,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,First choice Cell C
+firstchoice_b04,First choice FNB Connect,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,First choice FNB Connect
+firstchoice_b05,First choice Capitec Connect,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,First choice Capitec Connect
+firstchoice_b06,First choice Standard Bank Connect,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,First choice Standard Bank Connect
+firstchoice_b07,First choice Melon Mobile,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,First choice Melon Mobile
+firstchoice_b08,First choice Vodacom,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,First choice Vodacom
+firstchoice_b09,First choice Afrihost Air Mobile,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,First choice Afrihost Air Mobile
+firstchoice_b10,First choice Mr Price Mobile,F3,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,First choice Mr Price Mobile
+current_b01,Current category relationship MTN,O1,numeric,multiple_response,current,1,All eligible respondents,,code,MTN
+current_b02,Current category relationship Telkom Mobile,O1,numeric,multiple_response,current,1,All eligible respondents,,code,Telkom Mobile
+current_b03,Current category relationship Cell C,O1,numeric,multiple_response,current,1,All eligible respondents,,code,Cell C
+current_b04,Current category relationship FNB Connect,O1,numeric,multiple_response,current,1,All eligible respondents,,code,FNB Connect
+current_b05,Current category relationship Capitec Connect,O1,numeric,multiple_response,current,1,All eligible respondents,,code,Capitec Connect
+current_b06,Current category relationship Standard Bank Connect,O1,numeric,multiple_response,current,1,All eligible respondents,,code,Standard Bank Connect
+current_b07,Current category relationship Melon Mobile,O1,numeric,multiple_response,current,1,All eligible respondents,,code,Melon Mobile
+current_b08,Current category relationship Vodacom,O1,numeric,multiple_response,current,1,All eligible respondents,,code,Vodacom
+current_b09,Current category relationship Afrihost Air Mobile,O1,numeric,multiple_response,current,1,All eligible respondents,,code,Afrihost Air Mobile
+current_b10,Current category relationship Mr Price Mobile,O1,numeric,multiple_response,current,1,All eligible respondents,,code,Mr Price Mobile
+started90_b01,Past 90 days category start MTN,O3,numeric,multiple_response,started90,1,All eligible respondents,,code,MTN
+started90_b02,Past 90 days category start Telkom Mobile,O3,numeric,multiple_response,started90,1,All eligible respondents,,code,Telkom Mobile
+started90_b03,Past 90 days category start Cell C,O3,numeric,multiple_response,started90,1,All eligible respondents,,code,Cell C
+started90_b04,Past 90 days category start FNB Connect,O3,numeric,multiple_response,started90,1,All eligible respondents,,code,FNB Connect
+started90_b05,Past 90 days category start Capitec Connect,O3,numeric,multiple_response,started90,1,All eligible respondents,,code,Capitec Connect
+started90_b06,Past 90 days category start Standard Bank Connect,O3,numeric,multiple_response,started90,1,All eligible respondents,,code,Standard Bank Connect
+started90_b07,Past 90 days category start Melon Mobile,O3,numeric,multiple_response,started90,1,All eligible respondents,,code,Melon Mobile
+started90_b08,Past 90 days category start Vodacom,O3,numeric,multiple_response,started90,1,All eligible respondents,,code,Vodacom
+started90_b09,Past 90 days category start Afrihost Air Mobile,O3,numeric,multiple_response,started90,1,All eligible respondents,,code,Afrihost Air Mobile
+started90_b10,Past 90 days category start Mr Price Mobile,O3,numeric,multiple_response,started90,1,All eligible respondents,,code,Mr Price Mobile
+repeat_event_b01,Recent start with prior same-brand relationship MTN,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Recent start with prior same-brand relationship MTN
+repeat_event_b02,Recent start with prior same-brand relationship Telkom Mobile,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Recent start with prior same-brand relationship Telkom Mobile
+repeat_event_b03,Recent start with prior same-brand relationship Cell C,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Recent start with prior same-brand relationship Cell C
+repeat_event_b04,Recent start with prior same-brand relationship FNB Connect,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Recent start with prior same-brand relationship FNB Connect
+repeat_event_b05,Recent start with prior same-brand relationship Capitec Connect,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Recent start with prior same-brand relationship Capitec Connect
+repeat_event_b06,Recent start with prior same-brand relationship Standard Bank Connect,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Recent start with prior same-brand relationship Standard Bank Connect
+repeat_event_b07,Recent start with prior same-brand relationship Melon Mobile,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Recent start with prior same-brand relationship Melon Mobile
+repeat_event_b08,Recent start with prior same-brand relationship Vodacom,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Recent start with prior same-brand relationship Vodacom
+repeat_event_b09,Recent start with prior same-brand relationship Afrihost Air Mobile,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Recent start with prior same-brand relationship Afrihost Air Mobile
+repeat_event_b10,Recent start with prior same-brand relationship Mr Price Mobile,O4,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Recent start with prior same-brand relationship Mr Price Mobile
+ad_unaided_b01,Unprompted advertising recall after exposure MTN,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code,MTN
+ad_unaided_b02,Unprompted advertising recall after exposure Telkom Mobile,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code,Telkom Mobile
+ad_unaided_b03,Unprompted advertising recall after exposure Cell C,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code,Cell C
+ad_unaided_b04,Unprompted advertising recall after exposure FNB Connect,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code,FNB Connect
+ad_unaided_b05,Unprompted advertising recall after exposure Capitec Connect,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code,Capitec Connect
+ad_unaided_b06,Unprompted advertising recall after exposure Standard Bank Connect,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code,Standard Bank Connect
+ad_unaided_b07,Unprompted advertising recall after exposure Melon Mobile,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code,Melon Mobile
+ad_unaided_b08,Unprompted advertising recall after exposure Vodacom,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code,Vodacom
+ad_unaided_b09,Unprompted advertising recall after exposure Afrihost Air Mobile,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code,Afrihost Air Mobile
+ad_unaided_b10,Unprompted advertising recall after exposure Mr Price Mobile,AD1,numeric,multiple_response,ad_unaided,1,All eligible respondents,,code,Mr Price Mobile
+adrecall_b01,Prompted advertising recall Yes all sample MTN,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Prompted advertising recall Yes all sample MTN
+adrecall_b02,Prompted advertising recall Yes all sample Telkom Mobile,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Prompted advertising recall Yes all sample Telkom Mobile
+adrecall_b03,Prompted advertising recall Yes all sample Cell C,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Prompted advertising recall Yes all sample Cell C
+adrecall_b04,Prompted advertising recall Yes all sample FNB Connect,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Prompted advertising recall Yes all sample FNB Connect
+adrecall_b05,Prompted advertising recall Yes all sample Capitec Connect,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Prompted advertising recall Yes all sample Capitec Connect
+adrecall_b06,Prompted advertising recall Yes all sample Standard Bank Connect,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Prompted advertising recall Yes all sample Standard Bank Connect
+adrecall_b07,Prompted advertising recall Yes all sample Melon Mobile,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Prompted advertising recall Yes all sample Melon Mobile
+adrecall_b08,Prompted advertising recall Yes all sample Vodacom,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Prompted advertising recall Yes all sample Vodacom
+adrecall_b09,Prompted advertising recall Yes all sample Afrihost Air Mobile,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Prompted advertising recall Yes all sample Afrihost Air Mobile
+adrecall_b10,Prompted advertising recall Yes all sample Mr Price Mobile,AD2,numeric,categorical,,,All eligible respondents,Derived indicator; see questionnaire route,code,Prompted advertising recall Yes all sample Mr Price Mobile
+aware_none,No tracked or other selection for aware,Derived,numeric,categorical,,,All eligible respondents,1 when relevant tracked indicators and any Other option are all zero,code,No tracked or other selection for aware
+consider_none,No tracked or other selection for consider,Derived,numeric,categorical,,,All eligible respondents,1 when relevant tracked indicators and any Other option are all zero,code,No tracked or other selection for consider
+shortlist_none,No tracked or other selection for shortlist,Derived,numeric,categorical,,,All eligible respondents,1 when relevant tracked indicators and any Other option are all zero,code,No tracked or other selection for shortlist
+current_none,No tracked or other selection for current,Derived,numeric,categorical,,,All eligible respondents,1 when relevant tracked indicators and any Other option are all zero,code,No tracked or other selection for current
+started90_none,No tracked or other selection for started90,Derived,numeric,categorical,,,All eligible respondents,1 when relevant tracked indicators and any Other option are all zero,code,No tracked or other selection for started90
+current_other,Other brand current,O1/O3,numeric,categorical,,,All eligible respondents,,code,Other brand current
+started90_other,Other brand started90,O1/O3,numeric,categorical,,,All eligible respondents,,code,Other brand started90
+first_choice,First choice brand,F3,numeric,categorical,,,All eligible respondents,,code,First choice brand
+main_brand,Main category provider,O2,numeric,categorical,,,Any current category relationship,,code,Main category provider
+start_channel,Most recent start channel,O5,numeric,categorical,,,last_acquired=1,,code,Most recent start channel
+start_type,Type of most recent category start,O6,numeric,categorical,,,last_acquired=1,,code,Type of most recent category start
+journey_j01,Provider website or app,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code,Provider website or app
+journey_j02,Network or price comparison,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code,Network or price comparison
+journey_j03,Store visit,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code,Store visit
+journey_j04,Checking coverage information,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code,Checking coverage information
+journey_j05,Online reviews,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code,Online reviews
+journey_j06,Friends or family,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code,Friends or family
+journey_j07,Comparing bundles and expiry rules,O7,numeric,multiple_response,purchase_journey,1,last_acquired=1,,code,Comparing bundles and expiry rules
+opinion_b01,Brand opinion MTN,R1,numeric,categorical,,,aware_b01=1,,code,Brand opinion MTN
+repeat_b01,Previously used same brand MTN,O4,numeric,categorical,,,started90_b01=1,,code,Previously used same brand MTN
+adprompt_b01,Prompted advertising recall MTN,AD2,numeric,categorical,,,aware_b01=1,,code,Prompted advertising recall MTN
+wom_b01,Word of mouth MTN,W1,numeric,categorical,,,aware_b01=1,,code,Word of mouth MTN
+cep_c01_b01,MTN recalled for Needing reliable signal where I live,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code,MTN
+cep_c02_b01,MTN recalled for Reducing monthly airtime and data costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code,MTN
+cep_c03_b01,MTN recalled for Starting a new job or course,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code,MTN
+cep_c04_b01,MTN recalled for Replacing an unsatisfactory mobile provider,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code,MTN
+cep_c05_b01,MTN recalled for Buying a new smartphone,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code,MTN
+cep_c06_b01,MTN recalled for Staying connected with family,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code,MTN
+cep_c07_b01,MTN recalled for Working or studying online,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code,MTN
+cep_c08_b01,MTN recalled for Streaming video or music on the move,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code,MTN
+cep_c09_b01,MTN recalled for Travelling within South Africa,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code,MTN
+cep_c10_b01,MTN recalled for Travelling internationally,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code,MTN
+cep_c11_b01,MTN recalled for Running out of data unexpectedly,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code,MTN
+cep_c12_b01,MTN recalled for Adding a second SIM or data connection,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code,MTN
+cep_links_b01,Number of CEP links MTN,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links,Number of CEP links MTN
+mental_b01,At least one CEP link MTN,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code,At least one CEP link MTN
+attr_a01_b01,MTN associated with Has reliable coverage,I1,numeric,multiple_response,attr_a01,1,aware_b01=1,,code,MTN
+attr_a02_b01,MTN associated with Offers affordable data,I1,numeric,multiple_response,attr_a02,1,aware_b01=1,,code,MTN
+attr_a03_b01,MTN associated with Offers affordable calls,I1,numeric,multiple_response,attr_a03,1,aware_b01=1,,code,MTN
+attr_a04_b01,MTN associated with Has fast mobile data,I1,numeric,multiple_response,attr_a04,1,aware_b01=1,,code,MTN
+attr_a05_b01,MTN associated with Makes costs and expiry rules clear,I1,numeric,multiple_response,attr_a05,1,aware_b01=1,,code,MTN
+attr_a06_b01,MTN associated with Provides helpful service,I1,numeric,multiple_response,attr_a06,1,aware_b01=1,,code,MTN
+attr_a07_b01,MTN associated with Makes self service easy,I1,numeric,multiple_response,attr_a07,1,aware_b01=1,,code,MTN
+attr_a08_b01,MTN associated with Offers flexible packages,I1,numeric,multiple_response,attr_a08,1,aware_b01=1,,code,MTN
+attr_a09_b01,MTN associated with Makes switching simple,I1,numeric,multiple_response,attr_a09,1,aware_b01=1,,code,MTN
+attr_a10_b01,MTN associated with Has useful rewards or extras,I1,numeric,multiple_response,attr_a10,1,aware_b01=1,,code,MTN
+opinion_b02,Brand opinion Telkom Mobile,R1,numeric,categorical,,,aware_b02=1,,code,Brand opinion Telkom Mobile
+repeat_b02,Previously used same brand Telkom Mobile,O4,numeric,categorical,,,started90_b02=1,,code,Previously used same brand Telkom Mobile
+adprompt_b02,Prompted advertising recall Telkom Mobile,AD2,numeric,categorical,,,aware_b02=1,,code,Prompted advertising recall Telkom Mobile
+wom_b02,Word of mouth Telkom Mobile,W1,numeric,categorical,,,aware_b02=1,,code,Word of mouth Telkom Mobile
+cep_c01_b02,Telkom Mobile recalled for Needing reliable signal where I live,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code,Telkom Mobile
+cep_c02_b02,Telkom Mobile recalled for Reducing monthly airtime and data costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code,Telkom Mobile
+cep_c03_b02,Telkom Mobile recalled for Starting a new job or course,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code,Telkom Mobile
+cep_c04_b02,Telkom Mobile recalled for Replacing an unsatisfactory mobile provider,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code,Telkom Mobile
+cep_c05_b02,Telkom Mobile recalled for Buying a new smartphone,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code,Telkom Mobile
+cep_c06_b02,Telkom Mobile recalled for Staying connected with family,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code,Telkom Mobile
+cep_c07_b02,Telkom Mobile recalled for Working or studying online,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code,Telkom Mobile
+cep_c08_b02,Telkom Mobile recalled for Streaming video or music on the move,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code,Telkom Mobile
+cep_c09_b02,Telkom Mobile recalled for Travelling within South Africa,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code,Telkom Mobile
+cep_c10_b02,Telkom Mobile recalled for Travelling internationally,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code,Telkom Mobile
+cep_c11_b02,Telkom Mobile recalled for Running out of data unexpectedly,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code,Telkom Mobile
+cep_c12_b02,Telkom Mobile recalled for Adding a second SIM or data connection,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code,Telkom Mobile
+cep_links_b02,Number of CEP links Telkom Mobile,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links,Number of CEP links Telkom Mobile
+mental_b02,At least one CEP link Telkom Mobile,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code,At least one CEP link Telkom Mobile
+attr_a01_b02,Telkom Mobile associated with Has reliable coverage,I1,numeric,multiple_response,attr_a01,1,aware_b02=1,,code,Telkom Mobile
+attr_a02_b02,Telkom Mobile associated with Offers affordable data,I1,numeric,multiple_response,attr_a02,1,aware_b02=1,,code,Telkom Mobile
+attr_a03_b02,Telkom Mobile associated with Offers affordable calls,I1,numeric,multiple_response,attr_a03,1,aware_b02=1,,code,Telkom Mobile
+attr_a04_b02,Telkom Mobile associated with Has fast mobile data,I1,numeric,multiple_response,attr_a04,1,aware_b02=1,,code,Telkom Mobile
+attr_a05_b02,Telkom Mobile associated with Makes costs and expiry rules clear,I1,numeric,multiple_response,attr_a05,1,aware_b02=1,,code,Telkom Mobile
+attr_a06_b02,Telkom Mobile associated with Provides helpful service,I1,numeric,multiple_response,attr_a06,1,aware_b02=1,,code,Telkom Mobile
+attr_a07_b02,Telkom Mobile associated with Makes self service easy,I1,numeric,multiple_response,attr_a07,1,aware_b02=1,,code,Telkom Mobile
+attr_a08_b02,Telkom Mobile associated with Offers flexible packages,I1,numeric,multiple_response,attr_a08,1,aware_b02=1,,code,Telkom Mobile
+attr_a09_b02,Telkom Mobile associated with Makes switching simple,I1,numeric,multiple_response,attr_a09,1,aware_b02=1,,code,Telkom Mobile
+attr_a10_b02,Telkom Mobile associated with Has useful rewards or extras,I1,numeric,multiple_response,attr_a10,1,aware_b02=1,,code,Telkom Mobile
+opinion_b03,Brand opinion Cell C,R1,numeric,categorical,,,aware_b03=1,,code,Brand opinion Cell C
+repeat_b03,Previously used same brand Cell C,O4,numeric,categorical,,,started90_b03=1,,code,Previously used same brand Cell C
+adprompt_b03,Prompted advertising recall Cell C,AD2,numeric,categorical,,,aware_b03=1,,code,Prompted advertising recall Cell C
+wom_b03,Word of mouth Cell C,W1,numeric,categorical,,,aware_b03=1,,code,Word of mouth Cell C
+cep_c01_b03,Cell C recalled for Needing reliable signal where I live,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code,Cell C
+cep_c02_b03,Cell C recalled for Reducing monthly airtime and data costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code,Cell C
+cep_c03_b03,Cell C recalled for Starting a new job or course,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code,Cell C
+cep_c04_b03,Cell C recalled for Replacing an unsatisfactory mobile provider,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code,Cell C
+cep_c05_b03,Cell C recalled for Buying a new smartphone,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code,Cell C
+cep_c06_b03,Cell C recalled for Staying connected with family,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code,Cell C
+cep_c07_b03,Cell C recalled for Working or studying online,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code,Cell C
+cep_c08_b03,Cell C recalled for Streaming video or music on the move,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code,Cell C
+cep_c09_b03,Cell C recalled for Travelling within South Africa,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code,Cell C
+cep_c10_b03,Cell C recalled for Travelling internationally,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code,Cell C
+cep_c11_b03,Cell C recalled for Running out of data unexpectedly,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code,Cell C
+cep_c12_b03,Cell C recalled for Adding a second SIM or data connection,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code,Cell C
+cep_links_b03,Number of CEP links Cell C,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links,Number of CEP links Cell C
+mental_b03,At least one CEP link Cell C,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code,At least one CEP link Cell C
+attr_a01_b03,Cell C associated with Has reliable coverage,I1,numeric,multiple_response,attr_a01,1,aware_b03=1,,code,Cell C
+attr_a02_b03,Cell C associated with Offers affordable data,I1,numeric,multiple_response,attr_a02,1,aware_b03=1,,code,Cell C
+attr_a03_b03,Cell C associated with Offers affordable calls,I1,numeric,multiple_response,attr_a03,1,aware_b03=1,,code,Cell C
+attr_a04_b03,Cell C associated with Has fast mobile data,I1,numeric,multiple_response,attr_a04,1,aware_b03=1,,code,Cell C
+attr_a05_b03,Cell C associated with Makes costs and expiry rules clear,I1,numeric,multiple_response,attr_a05,1,aware_b03=1,,code,Cell C
+attr_a06_b03,Cell C associated with Provides helpful service,I1,numeric,multiple_response,attr_a06,1,aware_b03=1,,code,Cell C
+attr_a07_b03,Cell C associated with Makes self service easy,I1,numeric,multiple_response,attr_a07,1,aware_b03=1,,code,Cell C
+attr_a08_b03,Cell C associated with Offers flexible packages,I1,numeric,multiple_response,attr_a08,1,aware_b03=1,,code,Cell C
+attr_a09_b03,Cell C associated with Makes switching simple,I1,numeric,multiple_response,attr_a09,1,aware_b03=1,,code,Cell C
+attr_a10_b03,Cell C associated with Has useful rewards or extras,I1,numeric,multiple_response,attr_a10,1,aware_b03=1,,code,Cell C
+opinion_b04,Brand opinion FNB Connect,R1,numeric,categorical,,,aware_b04=1,,code,Brand opinion FNB Connect
+repeat_b04,Previously used same brand FNB Connect,O4,numeric,categorical,,,started90_b04=1,,code,Previously used same brand FNB Connect
+adprompt_b04,Prompted advertising recall FNB Connect,AD2,numeric,categorical,,,aware_b04=1,,code,Prompted advertising recall FNB Connect
+wom_b04,Word of mouth FNB Connect,W1,numeric,categorical,,,aware_b04=1,,code,Word of mouth FNB Connect
+cep_c01_b04,FNB Connect recalled for Needing reliable signal where I live,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code,FNB Connect
+cep_c02_b04,FNB Connect recalled for Reducing monthly airtime and data costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code,FNB Connect
+cep_c03_b04,FNB Connect recalled for Starting a new job or course,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code,FNB Connect
+cep_c04_b04,FNB Connect recalled for Replacing an unsatisfactory mobile provider,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code,FNB Connect
+cep_c05_b04,FNB Connect recalled for Buying a new smartphone,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code,FNB Connect
+cep_c06_b04,FNB Connect recalled for Staying connected with family,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code,FNB Connect
+cep_c07_b04,FNB Connect recalled for Working or studying online,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code,FNB Connect
+cep_c08_b04,FNB Connect recalled for Streaming video or music on the move,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code,FNB Connect
+cep_c09_b04,FNB Connect recalled for Travelling within South Africa,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code,FNB Connect
+cep_c10_b04,FNB Connect recalled for Travelling internationally,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code,FNB Connect
+cep_c11_b04,FNB Connect recalled for Running out of data unexpectedly,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code,FNB Connect
+cep_c12_b04,FNB Connect recalled for Adding a second SIM or data connection,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code,FNB Connect
+cep_links_b04,Number of CEP links FNB Connect,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links,Number of CEP links FNB Connect
+mental_b04,At least one CEP link FNB Connect,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code,At least one CEP link FNB Connect
+attr_a01_b04,FNB Connect associated with Has reliable coverage,I1,numeric,multiple_response,attr_a01,1,aware_b04=1,,code,FNB Connect
+attr_a02_b04,FNB Connect associated with Offers affordable data,I1,numeric,multiple_response,attr_a02,1,aware_b04=1,,code,FNB Connect
+attr_a03_b04,FNB Connect associated with Offers affordable calls,I1,numeric,multiple_response,attr_a03,1,aware_b04=1,,code,FNB Connect
+attr_a04_b04,FNB Connect associated with Has fast mobile data,I1,numeric,multiple_response,attr_a04,1,aware_b04=1,,code,FNB Connect
+attr_a05_b04,FNB Connect associated with Makes costs and expiry rules clear,I1,numeric,multiple_response,attr_a05,1,aware_b04=1,,code,FNB Connect
+attr_a06_b04,FNB Connect associated with Provides helpful service,I1,numeric,multiple_response,attr_a06,1,aware_b04=1,,code,FNB Connect
+attr_a07_b04,FNB Connect associated with Makes self service easy,I1,numeric,multiple_response,attr_a07,1,aware_b04=1,,code,FNB Connect
+attr_a08_b04,FNB Connect associated with Offers flexible packages,I1,numeric,multiple_response,attr_a08,1,aware_b04=1,,code,FNB Connect
+attr_a09_b04,FNB Connect associated with Makes switching simple,I1,numeric,multiple_response,attr_a09,1,aware_b04=1,,code,FNB Connect
+attr_a10_b04,FNB Connect associated with Has useful rewards or extras,I1,numeric,multiple_response,attr_a10,1,aware_b04=1,,code,FNB Connect
+opinion_b05,Brand opinion Capitec Connect,R1,numeric,categorical,,,aware_b05=1,,code,Brand opinion Capitec Connect
+repeat_b05,Previously used same brand Capitec Connect,O4,numeric,categorical,,,started90_b05=1,,code,Previously used same brand Capitec Connect
+adprompt_b05,Prompted advertising recall Capitec Connect,AD2,numeric,categorical,,,aware_b05=1,,code,Prompted advertising recall Capitec Connect
+wom_b05,Word of mouth Capitec Connect,W1,numeric,categorical,,,aware_b05=1,,code,Word of mouth Capitec Connect
+cep_c01_b05,Capitec Connect recalled for Needing reliable signal where I live,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code,Capitec Connect
+cep_c02_b05,Capitec Connect recalled for Reducing monthly airtime and data costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code,Capitec Connect
+cep_c03_b05,Capitec Connect recalled for Starting a new job or course,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code,Capitec Connect
+cep_c04_b05,Capitec Connect recalled for Replacing an unsatisfactory mobile provider,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code,Capitec Connect
+cep_c05_b05,Capitec Connect recalled for Buying a new smartphone,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code,Capitec Connect
+cep_c06_b05,Capitec Connect recalled for Staying connected with family,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code,Capitec Connect
+cep_c07_b05,Capitec Connect recalled for Working or studying online,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code,Capitec Connect
+cep_c08_b05,Capitec Connect recalled for Streaming video or music on the move,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code,Capitec Connect
+cep_c09_b05,Capitec Connect recalled for Travelling within South Africa,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code,Capitec Connect
+cep_c10_b05,Capitec Connect recalled for Travelling internationally,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code,Capitec Connect
+cep_c11_b05,Capitec Connect recalled for Running out of data unexpectedly,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code,Capitec Connect
+cep_c12_b05,Capitec Connect recalled for Adding a second SIM or data connection,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code,Capitec Connect
+cep_links_b05,Number of CEP links Capitec Connect,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links,Number of CEP links Capitec Connect
+mental_b05,At least one CEP link Capitec Connect,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code,At least one CEP link Capitec Connect
+attr_a01_b05,Capitec Connect associated with Has reliable coverage,I1,numeric,multiple_response,attr_a01,1,aware_b05=1,,code,Capitec Connect
+attr_a02_b05,Capitec Connect associated with Offers affordable data,I1,numeric,multiple_response,attr_a02,1,aware_b05=1,,code,Capitec Connect
+attr_a03_b05,Capitec Connect associated with Offers affordable calls,I1,numeric,multiple_response,attr_a03,1,aware_b05=1,,code,Capitec Connect
+attr_a04_b05,Capitec Connect associated with Has fast mobile data,I1,numeric,multiple_response,attr_a04,1,aware_b05=1,,code,Capitec Connect
+attr_a05_b05,Capitec Connect associated with Makes costs and expiry rules clear,I1,numeric,multiple_response,attr_a05,1,aware_b05=1,,code,Capitec Connect
+attr_a06_b05,Capitec Connect associated with Provides helpful service,I1,numeric,multiple_response,attr_a06,1,aware_b05=1,,code,Capitec Connect
+attr_a07_b05,Capitec Connect associated with Makes self service easy,I1,numeric,multiple_response,attr_a07,1,aware_b05=1,,code,Capitec Connect
+attr_a08_b05,Capitec Connect associated with Offers flexible packages,I1,numeric,multiple_response,attr_a08,1,aware_b05=1,,code,Capitec Connect
+attr_a09_b05,Capitec Connect associated with Makes switching simple,I1,numeric,multiple_response,attr_a09,1,aware_b05=1,,code,Capitec Connect
+attr_a10_b05,Capitec Connect associated with Has useful rewards or extras,I1,numeric,multiple_response,attr_a10,1,aware_b05=1,,code,Capitec Connect
+opinion_b06,Brand opinion Standard Bank Connect,R1,numeric,categorical,,,aware_b06=1,,code,Brand opinion Standard Bank Connect
+repeat_b06,Previously used same brand Standard Bank Connect,O4,numeric,categorical,,,started90_b06=1,,code,Previously used same brand Standard Bank Connect
+adprompt_b06,Prompted advertising recall Standard Bank Connect,AD2,numeric,categorical,,,aware_b06=1,,code,Prompted advertising recall Standard Bank Connect
+wom_b06,Word of mouth Standard Bank Connect,W1,numeric,categorical,,,aware_b06=1,,code,Word of mouth Standard Bank Connect
+cep_c01_b06,Standard Bank Connect recalled for Needing reliable signal where I live,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code,Standard Bank Connect
+cep_c02_b06,Standard Bank Connect recalled for Reducing monthly airtime and data costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code,Standard Bank Connect
+cep_c03_b06,Standard Bank Connect recalled for Starting a new job or course,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code,Standard Bank Connect
+cep_c04_b06,Standard Bank Connect recalled for Replacing an unsatisfactory mobile provider,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code,Standard Bank Connect
+cep_c05_b06,Standard Bank Connect recalled for Buying a new smartphone,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code,Standard Bank Connect
+cep_c06_b06,Standard Bank Connect recalled for Staying connected with family,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code,Standard Bank Connect
+cep_c07_b06,Standard Bank Connect recalled for Working or studying online,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code,Standard Bank Connect
+cep_c08_b06,Standard Bank Connect recalled for Streaming video or music on the move,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code,Standard Bank Connect
+cep_c09_b06,Standard Bank Connect recalled for Travelling within South Africa,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code,Standard Bank Connect
+cep_c10_b06,Standard Bank Connect recalled for Travelling internationally,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code,Standard Bank Connect
+cep_c11_b06,Standard Bank Connect recalled for Running out of data unexpectedly,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code,Standard Bank Connect
+cep_c12_b06,Standard Bank Connect recalled for Adding a second SIM or data connection,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code,Standard Bank Connect
+cep_links_b06,Number of CEP links Standard Bank Connect,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links,Number of CEP links Standard Bank Connect
+mental_b06,At least one CEP link Standard Bank Connect,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code,At least one CEP link Standard Bank Connect
+attr_a01_b06,Standard Bank Connect associated with Has reliable coverage,I1,numeric,multiple_response,attr_a01,1,aware_b06=1,,code,Standard Bank Connect
+attr_a02_b06,Standard Bank Connect associated with Offers affordable data,I1,numeric,multiple_response,attr_a02,1,aware_b06=1,,code,Standard Bank Connect
+attr_a03_b06,Standard Bank Connect associated with Offers affordable calls,I1,numeric,multiple_response,attr_a03,1,aware_b06=1,,code,Standard Bank Connect
+attr_a04_b06,Standard Bank Connect associated with Has fast mobile data,I1,numeric,multiple_response,attr_a04,1,aware_b06=1,,code,Standard Bank Connect
+attr_a05_b06,Standard Bank Connect associated with Makes costs and expiry rules clear,I1,numeric,multiple_response,attr_a05,1,aware_b06=1,,code,Standard Bank Connect
+attr_a06_b06,Standard Bank Connect associated with Provides helpful service,I1,numeric,multiple_response,attr_a06,1,aware_b06=1,,code,Standard Bank Connect
+attr_a07_b06,Standard Bank Connect associated with Makes self service easy,I1,numeric,multiple_response,attr_a07,1,aware_b06=1,,code,Standard Bank Connect
+attr_a08_b06,Standard Bank Connect associated with Offers flexible packages,I1,numeric,multiple_response,attr_a08,1,aware_b06=1,,code,Standard Bank Connect
+attr_a09_b06,Standard Bank Connect associated with Makes switching simple,I1,numeric,multiple_response,attr_a09,1,aware_b06=1,,code,Standard Bank Connect
+attr_a10_b06,Standard Bank Connect associated with Has useful rewards or extras,I1,numeric,multiple_response,attr_a10,1,aware_b06=1,,code,Standard Bank Connect
+opinion_b07,Brand opinion Melon Mobile,R1,numeric,categorical,,,aware_b07=1,,code,Brand opinion Melon Mobile
+repeat_b07,Previously used same brand Melon Mobile,O4,numeric,categorical,,,started90_b07=1,,code,Previously used same brand Melon Mobile
+adprompt_b07,Prompted advertising recall Melon Mobile,AD2,numeric,categorical,,,aware_b07=1,,code,Prompted advertising recall Melon Mobile
+wom_b07,Word of mouth Melon Mobile,W1,numeric,categorical,,,aware_b07=1,,code,Word of mouth Melon Mobile
+cep_c01_b07,Melon Mobile recalled for Needing reliable signal where I live,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code,Melon Mobile
+cep_c02_b07,Melon Mobile recalled for Reducing monthly airtime and data costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code,Melon Mobile
+cep_c03_b07,Melon Mobile recalled for Starting a new job or course,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code,Melon Mobile
+cep_c04_b07,Melon Mobile recalled for Replacing an unsatisfactory mobile provider,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code,Melon Mobile
+cep_c05_b07,Melon Mobile recalled for Buying a new smartphone,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code,Melon Mobile
+cep_c06_b07,Melon Mobile recalled for Staying connected with family,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code,Melon Mobile
+cep_c07_b07,Melon Mobile recalled for Working or studying online,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code,Melon Mobile
+cep_c08_b07,Melon Mobile recalled for Streaming video or music on the move,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code,Melon Mobile
+cep_c09_b07,Melon Mobile recalled for Travelling within South Africa,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code,Melon Mobile
+cep_c10_b07,Melon Mobile recalled for Travelling internationally,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code,Melon Mobile
+cep_c11_b07,Melon Mobile recalled for Running out of data unexpectedly,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code,Melon Mobile
+cep_c12_b07,Melon Mobile recalled for Adding a second SIM or data connection,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code,Melon Mobile
+cep_links_b07,Number of CEP links Melon Mobile,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links,Number of CEP links Melon Mobile
+mental_b07,At least one CEP link Melon Mobile,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code,At least one CEP link Melon Mobile
+attr_a01_b07,Melon Mobile associated with Has reliable coverage,I1,numeric,multiple_response,attr_a01,1,aware_b07=1,,code,Melon Mobile
+attr_a02_b07,Melon Mobile associated with Offers affordable data,I1,numeric,multiple_response,attr_a02,1,aware_b07=1,,code,Melon Mobile
+attr_a03_b07,Melon Mobile associated with Offers affordable calls,I1,numeric,multiple_response,attr_a03,1,aware_b07=1,,code,Melon Mobile
+attr_a04_b07,Melon Mobile associated with Has fast mobile data,I1,numeric,multiple_response,attr_a04,1,aware_b07=1,,code,Melon Mobile
+attr_a05_b07,Melon Mobile associated with Makes costs and expiry rules clear,I1,numeric,multiple_response,attr_a05,1,aware_b07=1,,code,Melon Mobile
+attr_a06_b07,Melon Mobile associated with Provides helpful service,I1,numeric,multiple_response,attr_a06,1,aware_b07=1,,code,Melon Mobile
+attr_a07_b07,Melon Mobile associated with Makes self service easy,I1,numeric,multiple_response,attr_a07,1,aware_b07=1,,code,Melon Mobile
+attr_a08_b07,Melon Mobile associated with Offers flexible packages,I1,numeric,multiple_response,attr_a08,1,aware_b07=1,,code,Melon Mobile
+attr_a09_b07,Melon Mobile associated with Makes switching simple,I1,numeric,multiple_response,attr_a09,1,aware_b07=1,,code,Melon Mobile
+attr_a10_b07,Melon Mobile associated with Has useful rewards or extras,I1,numeric,multiple_response,attr_a10,1,aware_b07=1,,code,Melon Mobile
+opinion_b08,Brand opinion Vodacom,R1,numeric,categorical,,,aware_b08=1,,code,Brand opinion Vodacom
+repeat_b08,Previously used same brand Vodacom,O4,numeric,categorical,,,started90_b08=1,,code,Previously used same brand Vodacom
+adprompt_b08,Prompted advertising recall Vodacom,AD2,numeric,categorical,,,aware_b08=1,,code,Prompted advertising recall Vodacom
+wom_b08,Word of mouth Vodacom,W1,numeric,categorical,,,aware_b08=1,,code,Word of mouth Vodacom
+cep_c01_b08,Vodacom recalled for Needing reliable signal where I live,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code,Vodacom
+cep_c02_b08,Vodacom recalled for Reducing monthly airtime and data costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code,Vodacom
+cep_c03_b08,Vodacom recalled for Starting a new job or course,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code,Vodacom
+cep_c04_b08,Vodacom recalled for Replacing an unsatisfactory mobile provider,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code,Vodacom
+cep_c05_b08,Vodacom recalled for Buying a new smartphone,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code,Vodacom
+cep_c06_b08,Vodacom recalled for Staying connected with family,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code,Vodacom
+cep_c07_b08,Vodacom recalled for Working or studying online,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code,Vodacom
+cep_c08_b08,Vodacom recalled for Streaming video or music on the move,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code,Vodacom
+cep_c09_b08,Vodacom recalled for Travelling within South Africa,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code,Vodacom
+cep_c10_b08,Vodacom recalled for Travelling internationally,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code,Vodacom
+cep_c11_b08,Vodacom recalled for Running out of data unexpectedly,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code,Vodacom
+cep_c12_b08,Vodacom recalled for Adding a second SIM or data connection,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code,Vodacom
+cep_links_b08,Number of CEP links Vodacom,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links,Number of CEP links Vodacom
+mental_b08,At least one CEP link Vodacom,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code,At least one CEP link Vodacom
+attr_a01_b08,Vodacom associated with Has reliable coverage,I1,numeric,multiple_response,attr_a01,1,aware_b08=1,,code,Vodacom
+attr_a02_b08,Vodacom associated with Offers affordable data,I1,numeric,multiple_response,attr_a02,1,aware_b08=1,,code,Vodacom
+attr_a03_b08,Vodacom associated with Offers affordable calls,I1,numeric,multiple_response,attr_a03,1,aware_b08=1,,code,Vodacom
+attr_a04_b08,Vodacom associated with Has fast mobile data,I1,numeric,multiple_response,attr_a04,1,aware_b08=1,,code,Vodacom
+attr_a05_b08,Vodacom associated with Makes costs and expiry rules clear,I1,numeric,multiple_response,attr_a05,1,aware_b08=1,,code,Vodacom
+attr_a06_b08,Vodacom associated with Provides helpful service,I1,numeric,multiple_response,attr_a06,1,aware_b08=1,,code,Vodacom
+attr_a07_b08,Vodacom associated with Makes self service easy,I1,numeric,multiple_response,attr_a07,1,aware_b08=1,,code,Vodacom
+attr_a08_b08,Vodacom associated with Offers flexible packages,I1,numeric,multiple_response,attr_a08,1,aware_b08=1,,code,Vodacom
+attr_a09_b08,Vodacom associated with Makes switching simple,I1,numeric,multiple_response,attr_a09,1,aware_b08=1,,code,Vodacom
+attr_a10_b08,Vodacom associated with Has useful rewards or extras,I1,numeric,multiple_response,attr_a10,1,aware_b08=1,,code,Vodacom
+opinion_b09,Brand opinion Afrihost Air Mobile,R1,numeric,categorical,,,aware_b09=1,,code,Brand opinion Afrihost Air Mobile
+repeat_b09,Previously used same brand Afrihost Air Mobile,O4,numeric,categorical,,,started90_b09=1,,code,Previously used same brand Afrihost Air Mobile
+adprompt_b09,Prompted advertising recall Afrihost Air Mobile,AD2,numeric,categorical,,,aware_b09=1,,code,Prompted advertising recall Afrihost Air Mobile
+wom_b09,Word of mouth Afrihost Air Mobile,W1,numeric,categorical,,,aware_b09=1,,code,Word of mouth Afrihost Air Mobile
+cep_c01_b09,Afrihost Air Mobile recalled for Needing reliable signal where I live,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c02_b09,Afrihost Air Mobile recalled for Reducing monthly airtime and data costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c03_b09,Afrihost Air Mobile recalled for Starting a new job or course,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c04_b09,Afrihost Air Mobile recalled for Replacing an unsatisfactory mobile provider,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c05_b09,Afrihost Air Mobile recalled for Buying a new smartphone,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c06_b09,Afrihost Air Mobile recalled for Staying connected with family,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c07_b09,Afrihost Air Mobile recalled for Working or studying online,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c08_b09,Afrihost Air Mobile recalled for Streaming video or music on the move,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c09_b09,Afrihost Air Mobile recalled for Travelling within South Africa,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c10_b09,Afrihost Air Mobile recalled for Travelling internationally,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c11_b09,Afrihost Air Mobile recalled for Running out of data unexpectedly,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_c12_b09,Afrihost Air Mobile recalled for Adding a second SIM or data connection,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code,Afrihost Air Mobile
+cep_links_b09,Number of CEP links Afrihost Air Mobile,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links,Number of CEP links Afrihost Air Mobile
+mental_b09,At least one CEP link Afrihost Air Mobile,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code,At least one CEP link Afrihost Air Mobile
+attr_a01_b09,Afrihost Air Mobile associated with Has reliable coverage,I1,numeric,multiple_response,attr_a01,1,aware_b09=1,,code,Afrihost Air Mobile
+attr_a02_b09,Afrihost Air Mobile associated with Offers affordable data,I1,numeric,multiple_response,attr_a02,1,aware_b09=1,,code,Afrihost Air Mobile
+attr_a03_b09,Afrihost Air Mobile associated with Offers affordable calls,I1,numeric,multiple_response,attr_a03,1,aware_b09=1,,code,Afrihost Air Mobile
+attr_a04_b09,Afrihost Air Mobile associated with Has fast mobile data,I1,numeric,multiple_response,attr_a04,1,aware_b09=1,,code,Afrihost Air Mobile
+attr_a05_b09,Afrihost Air Mobile associated with Makes costs and expiry rules clear,I1,numeric,multiple_response,attr_a05,1,aware_b09=1,,code,Afrihost Air Mobile
+attr_a06_b09,Afrihost Air Mobile associated with Provides helpful service,I1,numeric,multiple_response,attr_a06,1,aware_b09=1,,code,Afrihost Air Mobile
+attr_a07_b09,Afrihost Air Mobile associated with Makes self service easy,I1,numeric,multiple_response,attr_a07,1,aware_b09=1,,code,Afrihost Air Mobile
+attr_a08_b09,Afrihost Air Mobile associated with Offers flexible packages,I1,numeric,multiple_response,attr_a08,1,aware_b09=1,,code,Afrihost Air Mobile
+attr_a09_b09,Afrihost Air Mobile associated with Makes switching simple,I1,numeric,multiple_response,attr_a09,1,aware_b09=1,,code,Afrihost Air Mobile
+attr_a10_b09,Afrihost Air Mobile associated with Has useful rewards or extras,I1,numeric,multiple_response,attr_a10,1,aware_b09=1,,code,Afrihost Air Mobile
+opinion_b10,Brand opinion Mr Price Mobile,R1,numeric,categorical,,,aware_b10=1,,code,Brand opinion Mr Price Mobile
+repeat_b10,Previously used same brand Mr Price Mobile,O4,numeric,categorical,,,started90_b10=1,,code,Previously used same brand Mr Price Mobile
+adprompt_b10,Prompted advertising recall Mr Price Mobile,AD2,numeric,categorical,,,aware_b10=1,,code,Prompted advertising recall Mr Price Mobile
+wom_b10,Word of mouth Mr Price Mobile,W1,numeric,categorical,,,aware_b10=1,,code,Word of mouth Mr Price Mobile
+cep_c01_b10,Mr Price Mobile recalled for Needing reliable signal where I live,M1,numeric,multiple_response,cep_c01,1,All eligible respondents,,code,Mr Price Mobile
+cep_c02_b10,Mr Price Mobile recalled for Reducing monthly airtime and data costs,M1,numeric,multiple_response,cep_c02,1,All eligible respondents,,code,Mr Price Mobile
+cep_c03_b10,Mr Price Mobile recalled for Starting a new job or course,M1,numeric,multiple_response,cep_c03,1,All eligible respondents,,code,Mr Price Mobile
+cep_c04_b10,Mr Price Mobile recalled for Replacing an unsatisfactory mobile provider,M1,numeric,multiple_response,cep_c04,1,All eligible respondents,,code,Mr Price Mobile
+cep_c05_b10,Mr Price Mobile recalled for Buying a new smartphone,M1,numeric,multiple_response,cep_c05,1,All eligible respondents,,code,Mr Price Mobile
+cep_c06_b10,Mr Price Mobile recalled for Staying connected with family,M1,numeric,multiple_response,cep_c06,1,All eligible respondents,,code,Mr Price Mobile
+cep_c07_b10,Mr Price Mobile recalled for Working or studying online,M1,numeric,multiple_response,cep_c07,1,All eligible respondents,,code,Mr Price Mobile
+cep_c08_b10,Mr Price Mobile recalled for Streaming video or music on the move,M1,numeric,multiple_response,cep_c08,1,All eligible respondents,,code,Mr Price Mobile
+cep_c09_b10,Mr Price Mobile recalled for Travelling within South Africa,M1,numeric,multiple_response,cep_c09,1,All eligible respondents,,code,Mr Price Mobile
+cep_c10_b10,Mr Price Mobile recalled for Travelling internationally,M1,numeric,multiple_response,cep_c10,1,All eligible respondents,,code,Mr Price Mobile
+cep_c11_b10,Mr Price Mobile recalled for Running out of data unexpectedly,M1,numeric,multiple_response,cep_c11,1,All eligible respondents,,code,Mr Price Mobile
+cep_c12_b10,Mr Price Mobile recalled for Adding a second SIM or data connection,M1,numeric,multiple_response,cep_c12,1,All eligible respondents,,code,Mr Price Mobile
+cep_links_b10,Number of CEP links Mr Price Mobile,Derived,numeric,continuous,,,All eligible respondents,Sum of 12 cep_cXX_bYY indicators,links,Number of CEP links Mr Price Mobile
+mental_b10,At least one CEP link Mr Price Mobile,Derived,numeric,categorical,,,All eligible respondents,1 if cep_links_bYY > 0,code,At least one CEP link Mr Price Mobile
+attr_a01_b10,Mr Price Mobile associated with Has reliable coverage,I1,numeric,multiple_response,attr_a01,1,aware_b10=1,,code,Mr Price Mobile
+attr_a02_b10,Mr Price Mobile associated with Offers affordable data,I1,numeric,multiple_response,attr_a02,1,aware_b10=1,,code,Mr Price Mobile
+attr_a03_b10,Mr Price Mobile associated with Offers affordable calls,I1,numeric,multiple_response,attr_a03,1,aware_b10=1,,code,Mr Price Mobile
+attr_a04_b10,Mr Price Mobile associated with Has fast mobile data,I1,numeric,multiple_response,attr_a04,1,aware_b10=1,,code,Mr Price Mobile
+attr_a05_b10,Mr Price Mobile associated with Makes costs and expiry rules clear,I1,numeric,multiple_response,attr_a05,1,aware_b10=1,,code,Mr Price Mobile
+attr_a06_b10,Mr Price Mobile associated with Provides helpful service,I1,numeric,multiple_response,attr_a06,1,aware_b10=1,,code,Mr Price Mobile
+attr_a07_b10,Mr Price Mobile associated with Makes self service easy,I1,numeric,multiple_response,attr_a07,1,aware_b10=1,,code,Mr Price Mobile
+attr_a08_b10,Mr Price Mobile associated with Offers flexible packages,I1,numeric,multiple_response,attr_a08,1,aware_b10=1,,code,Mr Price Mobile
+attr_a09_b10,Mr Price Mobile associated with Makes switching simple,I1,numeric,multiple_response,attr_a09,1,aware_b10=1,,code,Mr Price Mobile
+attr_a10_b10,Mr Price Mobile associated with Has useful rewards or extras,I1,numeric,multiple_response,attr_a10,1,aware_b10=1,,code,Mr Price Mobile
+attr_none_a01,No brand associated with Has reliable coverage,I1,numeric,categorical,,,All eligible respondents,,code,No brand associated with Has reliable coverage
+attr_dk_a01,Do not know for Has reliable coverage,I1,numeric,categorical,,,All eligible respondents,,code,Do not know for Has reliable coverage
+attr_none_a02,No brand associated with Offers affordable data,I1,numeric,categorical,,,All eligible respondents,,code,No brand associated with Offers affordable data
+attr_dk_a02,Do not know for Offers affordable data,I1,numeric,categorical,,,All eligible respondents,,code,Do not know for Offers affordable data
+attr_none_a03,No brand associated with Offers affordable calls,I1,numeric,categorical,,,All eligible respondents,,code,No brand associated with Offers affordable calls
+attr_dk_a03,Do not know for Offers affordable calls,I1,numeric,categorical,,,All eligible respondents,,code,Do not know for Offers affordable calls
+attr_none_a04,No brand associated with Has fast mobile data,I1,numeric,categorical,,,All eligible respondents,,code,No brand associated with Has fast mobile data
+attr_dk_a04,Do not know for Has fast mobile data,I1,numeric,categorical,,,All eligible respondents,,code,Do not know for Has fast mobile data
+attr_none_a05,No brand associated with Makes costs and expiry rules clear,I1,numeric,categorical,,,All eligible respondents,,code,No brand associated with Makes costs and expiry rules clear
+attr_dk_a05,Do not know for Makes costs and expiry rules clear,I1,numeric,categorical,,,All eligible respondents,,code,Do not know for Makes costs and expiry rules clear
+attr_none_a06,No brand associated with Provides helpful service,I1,numeric,categorical,,,All eligible respondents,,code,No brand associated with Provides helpful service
+attr_dk_a06,Do not know for Provides helpful service,I1,numeric,categorical,,,All eligible respondents,,code,Do not know for Provides helpful service
+attr_none_a07,No brand associated with Makes self service easy,I1,numeric,categorical,,,All eligible respondents,,code,No brand associated with Makes self service easy
+attr_dk_a07,Do not know for Makes self service easy,I1,numeric,categorical,,,All eligible respondents,,code,Do not know for Makes self service easy
+attr_none_a08,No brand associated with Offers flexible packages,I1,numeric,categorical,,,All eligible respondents,,code,No brand associated with Offers flexible packages
+attr_dk_a08,Do not know for Offers flexible packages,I1,numeric,categorical,,,All eligible respondents,,code,Do not know for Offers flexible packages
+attr_none_a09,No brand associated with Makes switching simple,I1,numeric,categorical,,,All eligible respondents,,code,No brand associated with Makes switching simple
+attr_dk_a09,Do not know for Makes switching simple,I1,numeric,categorical,,,All eligible respondents,,code,Do not know for Makes switching simple
+attr_none_a10,No brand associated with Has useful rewards or extras,I1,numeric,categorical,,,All eligible respondents,,code,No brand associated with Has useful rewards or extras
+attr_dk_a10,Do not know for Has useful rewards or extras,I1,numeric,categorical,,,All eligible respondents,,code,Do not know for Has useful rewards or extras
+media_m01,YouTube,P1,numeric,multiple_response,media,1,All eligible respondents,,code,YouTube
+media_m02,Facebook,P1,numeric,multiple_response,media,1,All eligible respondents,,code,Facebook
+media_m03,Instagram,P1,numeric,multiple_response,media,1,All eligible respondents,,code,Instagram
+media_m04,TikTok,P1,numeric,multiple_response,media,1,All eligible respondents,,code,TikTok
+media_m05,X,P1,numeric,multiple_response,media,1,All eligible respondents,,code,X
+media_m06,LinkedIn,P1,numeric,multiple_response,media,1,All eligible respondents,,code,LinkedIn
+media_m07,Broadcast television or DStv,P1,numeric,multiple_response,media,1,All eligible respondents,,code,Broadcast television or DStv
+media_m08,Radio,P1,numeric,multiple_response,media,1,All eligible respondents,,code,Radio
+media_m09,Video streaming,P1,numeric,multiple_response,media,1,All eligible respondents,,code,Video streaming
+media_m10,Audio streaming or podcasts,P1,numeric,multiple_response,media,1,All eligible respondents,,code,Audio streaming or podcasts
+media_m11,Online news or category websites,P1,numeric,multiple_response,media,1,All eligible respondents,,code,Online news or category websites
+media_m12,AI chatbots,P1,numeric,multiple_response,media,1,All eligible respondents,,code,AI chatbots
+media_none,No listed media used,P1,numeric,categorical,,,All eligible respondents,,code,No listed media used
+nps_main,Recommendation likelihood of main brand,I2,numeric,scale,,,main_brand 1–10,,0–10,Recommendation likelihood of main brand
+n_aware,Recognised brand repertoire,Derived,numeric,continuous,,,All eligible respondents,Sum of tracked aware indicators; excludes Other,brands,Recognised brand repertoire
+n_consider,Considered brand repertoire,Derived,numeric,continuous,,,All eligible respondents,Sum of tracked consider indicators; excludes Other,brands,Considered brand repertoire
+n_started90,Acquired brand repertoire,Derived,numeric,continuous,,,All eligible respondents,Sum of tracked started90 indicators; excludes Other,brands,Acquired brand repertoire
+category_active,Current in-scope category relationship,S5,numeric,categorical,,,All eligible respondents,,code,Current in-scope category relationship
+product_p01,Prepaid,X1,numeric,multiple_response,current_products,1,category_active=1,,code,Prepaid
+product_p02,Contract,X1,numeric,multiple_response,current_products,1,category_active=1,,code,Contract
+product_p03,Hybrid or top up,X1,numeric,multiple_response,current_products,1,category_active=1,,code,Hybrid or top up
+product_p04,Data only mobile,X1,numeric,multiple_response,current_products,1,category_active=1,,code,Data only mobile
+experience_event,Main-provider experience event in past 12 months,X2,numeric,categorical,,,main_brand 1–10,,code,Main-provider experience event in past 12 months
+experience_resolution,Resolution of most recent experience event,X3,numeric,categorical,,,experience_event=1,,code,Resolution of most recent experience event
+topups30,Number of top ups in past 30 days,X4,numeric,continuous,,,product_p01=1 or product_p03=1,,top ups,Number of top ups in past 30 days
+needsfit_b01,MTN meets my personal needs for mobile services.,E1,numeric,ordinal,,,Brand aware: aware_b01=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,MTN meets my personal needs for mobile services.
+needsfit_b02,Telkom Mobile meets my personal needs for mobile services.,E1,numeric,ordinal,,,Brand aware: aware_b02=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Telkom Mobile meets my personal needs for mobile services.
+needsfit_b03,Cell C meets my personal needs for mobile services.,E1,numeric,ordinal,,,Brand aware: aware_b03=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Cell C meets my personal needs for mobile services.
+needsfit_b04,FNB Connect meets my personal needs for mobile services.,E1,numeric,ordinal,,,Brand aware: aware_b04=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,FNB Connect meets my personal needs for mobile services.
+needsfit_b05,Capitec Connect meets my personal needs for mobile services.,E1,numeric,ordinal,,,Brand aware: aware_b05=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Capitec Connect meets my personal needs for mobile services.
+needsfit_b06,Standard Bank Connect meets my personal needs for mobile services.,E1,numeric,ordinal,,,Brand aware: aware_b06=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Standard Bank Connect meets my personal needs for mobile services.
+needsfit_b07,Melon Mobile meets my personal needs for mobile services.,E1,numeric,ordinal,,,Brand aware: aware_b07=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Melon Mobile meets my personal needs for mobile services.
+needsfit_b08,Vodacom meets my personal needs for mobile services.,E1,numeric,ordinal,,,Brand aware: aware_b08=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Vodacom meets my personal needs for mobile services.
+needsfit_b09,Afrihost Air Mobile meets my personal needs for mobile services.,E1,numeric,ordinal,,,Brand aware: aware_b09=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Afrihost Air Mobile meets my personal needs for mobile services.
+needsfit_b10,Mr Price Mobile meets my personal needs for mobile services.,E1,numeric,ordinal,,,Brand aware: aware_b10=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Mr Price Mobile meets my personal needs for mobile services.
+different_b01,MTN offers something meaningfully different from other mobile services brands.,E2,numeric,ordinal,,,Brand aware: aware_b01=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,MTN offers something meaningfully different from other mobile services brands.
+different_b02,Telkom Mobile offers something meaningfully different from other mobile services brands.,E2,numeric,ordinal,,,Brand aware: aware_b02=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Telkom Mobile offers something meaningfully different from other mobile services brands.
+different_b03,Cell C offers something meaningfully different from other mobile services brands.,E2,numeric,ordinal,,,Brand aware: aware_b03=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Cell C offers something meaningfully different from other mobile services brands.
+different_b04,FNB Connect offers something meaningfully different from other mobile services brands.,E2,numeric,ordinal,,,Brand aware: aware_b04=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,FNB Connect offers something meaningfully different from other mobile services brands.
+different_b05,Capitec Connect offers something meaningfully different from other mobile services brands.,E2,numeric,ordinal,,,Brand aware: aware_b05=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Capitec Connect offers something meaningfully different from other mobile services brands.
+different_b06,Standard Bank Connect offers something meaningfully different from other mobile services brands.,E2,numeric,ordinal,,,Brand aware: aware_b06=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Standard Bank Connect offers something meaningfully different from other mobile services brands.
+different_b07,Melon Mobile offers something meaningfully different from other mobile services brands.,E2,numeric,ordinal,,,Brand aware: aware_b07=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Melon Mobile offers something meaningfully different from other mobile services brands.
+different_b08,Vodacom offers something meaningfully different from other mobile services brands.,E2,numeric,ordinal,,,Brand aware: aware_b08=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Vodacom offers something meaningfully different from other mobile services brands.
+different_b09,Afrihost Air Mobile offers something meaningfully different from other mobile services brands.,E2,numeric,ordinal,,,Brand aware: aware_b09=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Afrihost Air Mobile offers something meaningfully different from other mobile services brands.
+different_b10,Mr Price Mobile offers something meaningfully different from other mobile services brands.,E2,numeric,ordinal,,,Brand aware: aware_b10=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,Mr Price Mobile offers something meaningfully different from other mobile services brands.
+pricejustify_b01,"Compared with alternatives that meet similar needs, MTN is worth its package airtime and data costs.",E3,numeric,ordinal,,,Brand aware: aware_b01=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,"Compared with alternatives that meet similar needs, MTN is worth its package airtime and data costs."
+pricejustify_b02,"Compared with alternatives that meet similar needs, Telkom Mobile is worth its package airtime and data costs.",E3,numeric,ordinal,,,Brand aware: aware_b02=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,"Compared with alternatives that meet similar needs, Telkom Mobile is worth its package airtime and data costs."
+pricejustify_b03,"Compared with alternatives that meet similar needs, Cell C is worth its package airtime and data costs.",E3,numeric,ordinal,,,Brand aware: aware_b03=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,"Compared with alternatives that meet similar needs, Cell C is worth its package airtime and data costs."
+pricejustify_b04,"Compared with alternatives that meet similar needs, FNB Connect is worth its package airtime and data costs.",E3,numeric,ordinal,,,Brand aware: aware_b04=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,"Compared with alternatives that meet similar needs, FNB Connect is worth its package airtime and data costs."
+pricejustify_b05,"Compared with alternatives that meet similar needs, Capitec Connect is worth its package airtime and data costs.",E3,numeric,ordinal,,,Brand aware: aware_b05=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,"Compared with alternatives that meet similar needs, Capitec Connect is worth its package airtime and data costs."
+pricejustify_b06,"Compared with alternatives that meet similar needs, Standard Bank Connect is worth its package airtime and data costs.",E3,numeric,ordinal,,,Brand aware: aware_b06=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,"Compared with alternatives that meet similar needs, Standard Bank Connect is worth its package airtime and data costs."
+pricejustify_b07,"Compared with alternatives that meet similar needs, Melon Mobile is worth its package airtime and data costs.",E3,numeric,ordinal,,,Brand aware: aware_b07=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,"Compared with alternatives that meet similar needs, Melon Mobile is worth its package airtime and data costs."
+pricejustify_b08,"Compared with alternatives that meet similar needs, Vodacom is worth its package airtime and data costs.",E3,numeric,ordinal,,,Brand aware: aware_b08=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,"Compared with alternatives that meet similar needs, Vodacom is worth its package airtime and data costs."
+pricejustify_b09,"Compared with alternatives that meet similar needs, Afrihost Air Mobile is worth its package airtime and data costs.",E3,numeric,ordinal,,,Brand aware: aware_b09=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,"Compared with alternatives that meet similar needs, Afrihost Air Mobile is worth its package airtime and data costs."
+pricejustify_b10,"Compared with alternatives that meet similar needs, Mr Price Mobile is worth its package airtime and data costs.",E3,numeric,ordinal,,,Brand aware: aware_b10=1. Blank if unaware. Code 9 excluded from 1 to 5 summaries.,,code,"Compared with alternatives that meet similar needs, Mr Price Mobile is worth its package airtime and data costs."
+choice_episode_eligible,Recent choice episode available: most recent new SIM or eSIM connection activation in the past 90 days,E4 route,numeric,categorical,,,All eligible respondents,1 if last_acquired=1; otherwise 0. Does not equate current provider or ownership with most recent choice.,code,Recent choice episode available: most recent new SIM or eSIM connection activation in the past 90 days
+choice_actual,Brand actually chosen for most recent new SIM or eSIM connection activation in the past 90 days,E4,numeric,categorical,,,choice_episode_eligible=1; otherwise blank,,code,Brand actually chosen for most recent new SIM or eSIM connection activation in the past 90 days
+choice_actual_other,Other actual brand name in the same recent choice episode,E4 other,text,text,,,choice_actual=96 only,,text,Other actual brand name in the same recent choice episode
+choice_ideal,"Brand ideally preferred at the time for the same most recent new SIM or eSIM connection activation in the past 90 days, before practical restrictions",E5,numeric,categorical,,,choice_episode_eligible=1; otherwise blank,,code,"Brand ideally preferred at the time for the same most recent new SIM or eSIM connection activation in the past 90 days, before practical restrictions"
+choice_ideal_other,Other ideal brand name in the same recent choice episode,E5 other,text,text,,,choice_ideal=96 only,,text,Other ideal brand name in the same recent choice episode
+choice_gap,Ideal and actual brands differ within the same recent choice episode,Derived,numeric,categorical,,,Known actual and ideal named brands including resolved Other names; otherwise blank,"1 when actual and ideal differ; 0 when identical. For code 96 compare normalized named brands, never assume two Other codes match. 98 and 99 excluded.",code,Ideal and actual brands differ within the same recent choice episode
+choice_barrier_r01,Choice gap reason: Package airtime or data costs exceeded my budget,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code,Package airtime or data costs exceeded my budget
+choice_barrier_r02,Choice gap reason: Preferred SIM device or package was not available,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code,Preferred SIM device or package was not available
+choice_barrier_r03,Choice gap reason: I did not meet credit identity or eligibility requirements,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code,I did not meet credit identity or eligibility requirements
+choice_barrier_r04,Choice gap reason: Coverage where I needed it or package features did not fit my needs,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code,Coverage where I needed it or package features did not fit my needs
+choice_barrier_r05,Choice gap reason: Store or service access was inconvenient,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code,Store or service access was inconvenient
+choice_barrier_r06,Choice gap reason: An existing contract cancellation cost or number porting made switching difficult,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code,An existing contract cancellation cost or number porting made switching difficult
+choice_barrier_r07,Choice gap reason: Another household decision maker influenced the choice,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code,Another household decision maker influenced the choice
+choice_barrier_r08,Choice gap reason: New information changed my decision,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code,New information changed my decision
+choice_barrier_r09,Choice gap reason: Staying with a familiar provider was easier,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code,Staying with a familiar provider was easier
+choice_barrier_r10,Choice gap reason: Another reason,E6,numeric,multiple_response,choice_barriers,1,choice_gap=1 only; otherwise blank,,code,Another reason
+choice_barrier_none,No reason or practical constraint reported for the episode gap,E6,numeric,categorical,,,choice_gap=1 only; otherwise blank,,code,No reason or practical constraint reported for the episode gap
+choice_barrier_dk,Cannot recall why the ideal and actual choice differed,E6,numeric,categorical,,,choice_gap=1 only; otherwise blank,,code,Cannot recall why the ideal and actual choice differed
+choice_barrier_other,Other reason for the same episode choice gap,E6 other,text,text,,,choice_gap=1 and choice_barrier_r10=1 only,,text,Other reason for the same episode choice gap

@@ -1,0 +1,52 @@
+{
+  "source_zip": "Telecoms_Tracker(1).zip",
+  "xlsx": [
+    {
+      "file": "Telecoms_Tracker/telecoms/Master_Codebook.xlsx",
+      "original_cells_preserved": 11641,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "Telecoms_Tracker/telecoms/Mobile_Brand_Tracker_Wave_1.xlsx",
+      "original_cells_preserved": 514025,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "Telecoms_Tracker/telecoms/Mobile_Brand_Tracker_Wave_2.xlsx",
+      "original_cells_preserved": 514025,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "Telecoms_Tracker/telecoms/Mobile_Brand_Tracker_Wave_3.xlsx",
+      "original_cells_preserved": 514025,
+      "sheet_names_and_panes_preserved": true
+    },
+    {
+      "file": "Telecoms_Tracker/telecoms/Reference_Metrics.xlsx",
+      "original_cells_preserved": 103968,
+      "sheet_names_and_panes_preserved": true
+    }
+  ],
+  "csv": [
+    {
+      "file": "Telecoms_Tracker/telecoms/test-reference/Mobile_Brand_Tracker_Wave_1.csv",
+      "original_rows_preserved_exactly": 1000,
+      "output_rows": 1000,
+      "restored_original_xlsx_rows": 0
+    },
+    {
+      "file": "Telecoms_Tracker/telecoms/test-reference/Mobile_Brand_Tracker_Wave_2.csv",
+      "original_rows_preserved_exactly": 904,
+      "output_rows": 1000,
+      "restored_original_xlsx_rows": 96
+    },
+    {
+      "file": "Telecoms_Tracker/telecoms/test-reference/Mobile_Brand_Tracker_Wave_3.csv",
+      "original_rows_preserved_exactly": 1000,
+      "output_rows": 1000,
+      "restored_original_xlsx_rows": 0
+    }
+  ],
+  "unchanged_pdf": [],
+  "status": "passed"
+}

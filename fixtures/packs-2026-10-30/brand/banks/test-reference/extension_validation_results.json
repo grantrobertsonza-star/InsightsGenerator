@@ -1,0 +1,33 @@
+{
+  "status": "passed",
+  "extension_version": "2026-10-30",
+  "checks": 3738,
+  "waves": [
+    {
+      "wave": 1,
+      "rows": 1000,
+      "columns": 550,
+      "episode_base": 252,
+      "known_pair_base": 215,
+      "gap_base": 97
+    },
+    {
+      "wave": 2,
+      "rows": 1000,
+      "columns": 550,
+      "episode_base": 236,
+      "known_pair_base": 212,
+      "gap_base": 97
+    },
+    {
+      "wave": 3,
+      "rows": 1000,
+      "columns": 550,
+      "episode_base": 250,
+      "known_pair_base": 220,
+      "gap_base": 110
+    }
+  ],
+  "reference_metrics_checked": 738,
+  "scope": "CSV XLSX metadata labels routes independent response streams and new reference arithmetic; no live dashboard import performed"
+}

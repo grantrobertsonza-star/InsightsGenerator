@@ -1,8 +1,4 @@
-/* Tailwind reads class names from src only (source("../") is relative to this file). Without it, Tailwind scans the
-   whole app folder, including work/ (independent review archives holding many full copies of the app), which made
-   every style rebuild in development slow and let the page show stale styles (Grant, 30 October 2026: the Brand
-   tracking dashboard drawn over the Analytics page, with no background and no width limit). Same classes for src. */
-@import "tailwindcss" source("../");
+@import "tailwindcss";
 
 :root {
   --background: #ffffff;

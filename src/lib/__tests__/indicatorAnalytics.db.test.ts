@@ -243,8 +243,9 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("Indicator Analytics: the tile
     expect(c.selected).toBeNull();
     // The unit multiplier (6) is applied for display only; two decimals (DECIMALS 2) less six places is none.
     expect(v.overview.trend[0].shown).toBe("3,427,000");
-    // Quarters are placed on the calendar.
-    expect(v.overview.trend[0].position).toBe(2026);
+    // Quarters are placed on the common calendar at their first day, on one quarterly axis.
+    expect(v.overview.trend[0].position).toBe(Date.UTC(2026, 0, 1) / 86400000);
+    expect(v.axis).toMatchObject({ state: "calendar", frequency: "quarter" });
   });
 
   it("workspace: readiness per file and per provider (OECD metadata only, IMF no file provided); a notes file is definitions only", async () => {

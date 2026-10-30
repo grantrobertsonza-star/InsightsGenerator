@@ -1,0 +1,99 @@
+variable,label,question,data_type,question_type,universe,mr_set,selected_value,derivation,unit
+respondent_id,Anonymous customer ID,SYS,text,text,All records,,,,code
+interview_date,Interview date,SYS,text,text,All records,,,,code
+wave,Wave,SYS,numeric,categorical,All records,,,,code
+company,Main company,S2,numeric,categorical,All records,,,,code
+weight,Synthetic customer weight,SYS,numeric,continuous,All records,,,,relative weight
+age,Age,S1,numeric,continuous,All records,,,,years
+age_band,Age group,S1,numeric,categorical,All records,,,,code
+gender,Gender,D1,numeric,categorical,All records,,,,code
+province,Province,D2,numeric,categorical,All records,,,,code
+income,Monthly household income,D3,numeric,categorical,All records,,,,code
+settlement,Settlement,D4,numeric,categorical,All records,,,,code
+segment,Synthetic demonstration segment,SYS,numeric,categorical,All records,,,,code
+tenure_months,Relationship tenure,S2,numeric,continuous,All records,,,,months
+company_csat5,Overall company satisfaction,R1,numeric,scale,All records,,,,code
+company_expectations5,Company versus expectations,R2,numeric,scale,All records,,,,code
+fairness5,Treats customers fairly,R5,numeric,scale,All records,,,,code
+trust5,Trustworthy,R5,numeric,scale,All records,,,,code
+recommend_0to10,Likelihood to recommend,L1,numeric,scale,All records,,,,code
+continue5,Intend to continue as main provider,L2,numeric,scale,All records,,,,code
+switch_0to10,Likelihood of switching main provider,L3,numeric,scale,All records,,,,code
+price_switch5,Would switch for better price,L4,numeric,scale,All records,,,,code
+grow_business5,Intend to use more services,L4,numeric,scale,All records,,,,code
+complaint3m,Complaint in past 3 months,C1,numeric,categorical,All records,,,,code
+company_driver_d01,Calls and data work reliably,R3,numeric,scale,All records,,,,code
+importance_d01,Importance of Calls and data work reliably,R4,numeric,scale,All records,,,,code
+company_driver_d02,Help is provided promptly,R3,numeric,scale,All records,,,,code
+importance_d02,Importance of Help is provided promptly,R4,numeric,scale,All records,,,,code
+company_driver_d03,Billing and account information inspire confidence,R3,numeric,scale,All records,,,,code
+importance_d03,Importance of Billing and account information inspire confidence,R4,numeric,scale,All records,,,,code
+company_driver_d04,The provider understands my needs,R3,numeric,scale,All records,,,,code
+importance_d04,Importance of The provider understands my needs,R4,numeric,scale,All records,,,,code
+company_driver_d05,Services and support are easy to access,R3,numeric,scale,All records,,,,code
+importance_d05,Importance of Services and support are easy to access,R4,numeric,scale,All records,,,,code
+company_driver_d06,Packages represent good value,R3,numeric,scale,All records,,,,code
+importance_d06,Importance of Packages represent good value,R4,numeric,scale,All records,,,,code
+company_reason_text,Reason for company rating,L5,text,text,All records,,,,code
+product_p01,Prepaid,S3,numeric,multiple_response,All records,products,1,,code
+product_p02,Contract,S3,numeric,multiple_response,All records,products,1,,code
+product_p03,Hybrid or top up,S3,numeric,multiple_response,All records,products,1,,code
+product_p04,Data-only mobile,S3,numeric,multiple_response,All records,products,1,,code
+complaint_reason_r01,Data or airtime charges,C2,numeric,multiple_response,complaint3m=1,complaint_reasons,1,,code
+complaint_reason_r02,Coverage or speed failure,C2,numeric,multiple_response,complaint3m=1,complaint_reasons,1,,code
+complaint_reason_r03,Billing or contract dispute,C2,numeric,multiple_response,complaint3m=1,complaint_reasons,1,,code
+complaint_reason_r04,Poor service,C2,numeric,multiple_response,complaint3m=1,complaint_reasons,1,,code
+complaint_reason_r05,Unclear package information,C2,numeric,multiple_response,complaint3m=1,complaint_reasons,1,,code
+complaint_reason_r06,Other,C2,numeric,multiple_response,complaint3m=1,complaint_reasons,1,,code
+complaint_resolution,Complaint resolution,C3,numeric,categorical,complaint3m=1,,,,code
+complaint_handling_csat5,Complaint handling satisfaction,C3,numeric,scale,complaint3m=1,,,,code
+channel_used_c01,Call centre,CH1,numeric,multiple_response,All records,channel_use,1,,code
+channel_contacts_c01,Recalled interactions Call centre,CH2,numeric,continuous,All records,,,,interactions
+channel_used_c02,Retail store,CH1,numeric,multiple_response,All records,channel_use,1,,code
+channel_contacts_c02,Recalled interactions Retail store,CH2,numeric,continuous,All records,,,,interactions
+channel_used_c03,Digital self service,CH1,numeric,multiple_response,All records,channel_use,1,,code
+channel_contacts_c03,Recalled interactions Digital self service,CH2,numeric,continuous,All records,,,,interactions
+channel_used_c04,Messaging or live chat,CH1,numeric,multiple_response,All records,channel_use,1,,code
+channel_contacts_c04,Recalled interactions Messaging or live chat,CH2,numeric,continuous,All records,,,,interactions
+channel_none,No channel used in past 30 days,CH1,numeric,categorical,All records,,,,code
+experience_preference5,Recent experiences give a reason to choose this provider over another,L6,numeric,categorical,All records,,,,code
+stay_reason_r01,Genuine preference for this provider,L7,numeric,multiple response,All records,reasons_staying,1,,code
+stay_reason_r02,Habit or familiarity,L7,numeric,multiple response,All records,reasons_staying,1,,code
+stay_reason_r03,Contractual restriction or exit charge,L7,numeric,multiple response,All records,reasons_staying,1,,code
+stay_reason_r04,Time effort or inconvenience of switching,L7,numeric,multiple response,All records,reasons_staying,1,,code
+stay_reason_r05,Lack of suitable alternatives,L7,numeric,multiple response,All records,reasons_staying,1,,code
+stay_reason_r06,Other reason,L7,numeric,multiple response,All records,reasons_staying,1,,code
+stay_none,No stated reason for continuing current use,L7,numeric,categorical,All records,,,,code
+stay_dk,Do not know reason for current use,L7,numeric,categorical,All records,,,,code
+stay_primary,Main reason for continuing current use,L8,numeric,categorical,Selected substantive reasons; None or Do not know carried from L7,,,,code
+journey_recent30,Attempted a specific service task with main provider in past 30 days,J1,numeric,categorical,All records,,,,code
+journey_id,Independent anchored task journey ID,SYS,text,text,journey_recent30=1,,,,code
+journey_task,Task attempted in anchored journey,J2a,numeric,categorical,journey_recent30=1,,,,code
+journey_start_days_ago,Days since first contact on anchored task,J2b,numeric,continuous,journey_recent30=1,,,,days
+journey_last_days_ago,Days since most recent contact on anchored task,J2c,numeric,continuous,journey_recent30=1,,,,days
+journey_channel_c01,Same task used Call centre,J3a,numeric,multiple response,journey_recent30=1,journey_channels,1,,code
+journey_channel_c02,Same task used Retail store,J3a,numeric,multiple response,journey_recent30=1,journey_channels,1,,code
+journey_channel_c03,Same task used Digital self service,J3a,numeric,multiple response,journey_recent30=1,journey_channels,1,,code
+journey_channel_c04,Same task used Messaging or live chat,J3a,numeric,multiple response,journey_recent30=1,journey_channels,1,,code
+journey_digital_mode,Digital mode used in anchored journey,J3b,numeric,categorical,journey_channel_c03=1,,,,code
+journey_sequence,Ordered channel codes for contacts on the same task,J3c,text,text,journey_recent30=1,,,,code
+journey_contacts,Number of contacts on the same anchored task,J3d,numeric,continuous,journey_recent30=1,,,,contacts
+journey_multichannel,Used at least two distinct channels on the same task,DER,numeric,categorical,journey_recent30=1,,,Count of journey_channel_c01-c04 selected >=2,code
+journey_transferred,Transferred or directed between teams or channels on this task,J4a,numeric,categorical,journey_recent30=1,,,,code
+journey_repeat_info,Required to repeat information already provided on this task,J4b,numeric,categorical,journey_recent30=1,,,,code
+journey_status,Outcome of the same anchored task at interview,J5,numeric,categorical,journey_recent30=1,,,,code
+journey_completed,Completed task among known final outcomes,DER,numeric,categorical,journey_status in 1 2 3,,,1 if journey_status=1; 0 if 2 or 3; blank if pending or no journey,code
+journey_csat5,Overall satisfaction with the end to end anchored task,J6,numeric,categorical,journey_recent30=1,,,,code
+journey_reassured5,Anchored journey left customer reassured,J7a,numeric,categorical,journey_recent30=1,,,,code
+journey_valued5,Anchored journey left customer valued,J7b,numeric,categorical,journey_recent30=1,,,,code
+journey_frustrated5,Anchored journey left customer frustrated,J7c,numeric,categorical,journey_recent30=1,,,,code
+journey_anxious5,Anchored journey left customer anxious,J7d,numeric,categorical,journey_recent30=1,,,,code
+journey_emotion_why_text,Reason for anchored journey emotional outcome,J7e,text,text,journey_recent30=1,,,,code
+journey_preference5,Anchored journey gives a reason to choose this provider,J8,numeric,categorical,journey_recent30=1,,,,code
+benchmark_recent_same_task30,Personally used another provider for same task type in past 30 days,B1,numeric,categorical,journey_recent30=1,,,,code
+benchmark_provider,Other provider personally used for comparable task,B2a,numeric,categorical,benchmark_recent_same_task30=1,,,,code
+benchmark_task,Task type personally attempted with other provider,B2b,numeric,categorical,benchmark_recent_same_task30=1,,,,code
+benchmark_days_ago,Days since comparable other provider experience,B2c,numeric,continuous,benchmark_recent_same_task30=1,,,,days
+benchmark_channel,Channel of comparable other provider task experience,B2d,numeric,categorical,benchmark_recent_same_task30=1,,,,code
+benchmark_csat5,Overall satisfaction with other provider comparable task,B3,numeric,categorical,benchmark_recent_same_task30=1,,,,code
+benchmark_gap5,Main provider minus alternative paired task CSAT,DER,numeric,continuous,Both journey_csat5 and benchmark_csat5 valid 1-5,,,journey_csat5 - benchmark_csat5; descriptive paired difference only,scale points

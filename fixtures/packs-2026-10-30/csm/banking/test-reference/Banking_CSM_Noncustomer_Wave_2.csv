@@ -1,0 +1,501 @@
+respondent_id,interview_date,wave,company,weight,age,age_band,gender,province,income,settlement,focal_company,current_focal_use,focal_awareness,focal_consider5,expect_preferred_channel,expect_level_d01,expect_importance_d01,expect_level_d02,expect_importance_d02,expect_level_d03,expect_importance_d03,expect_level_d04,expect_importance_d04,expect_level_d05,expect_importance_d05,expect_level_d06,expect_importance_d06,expect_reason_text,alternative_recent30,alternative_task,alternative_days_ago,alternative_channel,alternative_csat5
+NCB200001,2026-06-25,2,2,1,33,2,2,3,3,1,1,0,1,3,4,4,4,5,5,5,3,3,5,3,4,5,4,Synthetic example: I would need understandable fees and easy access.,1,3,0,4,3
+NCB200002,2026-06-25,2,3,1,18,1,2,8,1,2,1,0,1,4,3,3,3,3,3,3,4,3,5,5,5,5,5,Synthetic example: I need clear information and reliable service.,1,1,10,1,1
+NCB200003,2026-06-25,2,4,1,51,4,2,4,2,1,1,0,1,3,2,4,4,5,5,3,4,5,3,3,99,4,5,Synthetic example: I need clear information and reliable service.,1,4,13,1,5
+NCB200004,2026-06-25,2,5,1,33,2,1,4,5,3,1,0,1,4,1,5,5,5,5,3,5,3,5,3,5,5,5,Synthetic example: I need clear information and reliable service.,1,6,24,2,4
+NCB200005,2026-06-25,2,6,1,57,4,2,1,3,1,1,0,1,3,3,3,5,4,3,3,5,3,5,4,3,3,3,Synthetic example: I would need understandable fees and easy access.,1,3,2,2,3
+NCB200006,2026-06-25,2,7,1,63,4,1,7,99,3,1,0,1,2,1,5,4,5,3,4,5,3,5,5,4,5,3,Synthetic example: I want help without repeating the same details.,1,6,30,2,4
+NCB200007,2026-06-25,2,2,1,40,3,1,8,4,2,1,0,1,3,3,3,4,5,4,4,3,5,3,5,3,5,4,Synthetic example: I would need understandable fees and easy access.,99,,,,
+NCB200008,2026-06-25,2,3,1,69,4,1,7,99,3,1,0,1,3,4,4,5,3,5,4,4,3,4,5,2,4,5,Synthetic example: I need clear information and reliable service.,1,5,1,4,5
+NCB200009,2026-06-25,2,4,1,23,1,1,1,1,1,1,0,1,3,4,4,4,4,4,4,3,4,4,4,5,5,5,Synthetic example: I want help without repeating the same details.,1,4,15,1,3
+NCB200010,2026-06-25,2,5,1,40,3,1,7,99,2,1,0,0,,3,,5,,4,,4,,4,,5,,4,Synthetic example: I need clear information and reliable service.,1,4,12,1,5
+NCB200011,2026-06-25,2,6,1,31,2,2,3,3,3,1,0,0,,2,,2,,4,,5,,3,,4,,3,Synthetic example: I want help without repeating the same details.,1,6,2,4,99
+NCB200012,2026-06-25,2,7,1,58,4,2,2,99,1,1,0,0,,99,,5,,5,,3,,5,,2,,4,Synthetic example: I would need understandable fees and easy access.,1,3,5,2,3
+NCB200013,2026-06-25,2,2,1,25,2,1,7,99,3,1,0,1,4,1,4,5,5,5,4,4,5,5,3,4,5,5,Synthetic example: I need clear information and reliable service.,1,1,14,3,4
+NCB200014,2026-06-25,2,3,1,30,2,2,6,2,1,1,0,1,3,3,4,5,4,3,4,4,5,5,3,5,3,4,Synthetic example: I would need understandable fees and easy access.,1,5,21,2,4
+NCB200015,2026-06-25,2,4,1,60,4,1,1,5,1,1,0,0,,99,,4,,4,,4,,4,,5,,5,Synthetic example: I want help without repeating the same details.,1,5,23,4,1
+NCB200016,2026-06-25,2,5,1,55,4,2,7,3,3,1,0,0,,1,,3,,5,,4,,4,,99,,3,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200017,2026-06-25,2,6,1,28,2,2,3,4,2,1,0,0,,2,,4,,3,,5,,5,,3,,4,Synthetic example: I would need understandable fees and easy access.,1,4,23,2,3
+NCB200018,2026-06-25,2,7,1,36,3,2,5,4,1,1,0,1,3,1,3,4,3,5,4,4,4,5,1,5,4,4,Synthetic example: I want help without repeating the same details.,1,6,10,2,99
+NCB200019,2026-06-25,2,2,1,38,3,1,6,99,2,1,0,0,,4,,5,,2,,4,,5,,3,,5,Synthetic example: I want help without repeating the same details.,1,4,26,2,2
+NCB200020,2026-06-25,2,3,1,50,4,1,6,3,2,1,0,1,4,3,2,5,4,3,5,5,5,4,4,4,5,5,Synthetic example: I would need understandable fees and easy access.,1,6,0,2,3
+NCB200021,2026-06-25,2,4,1,21,1,2,9,99,1,1,0,1,3,4,4,4,4,4,3,5,2,4,5,2,4,5,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200022,2026-06-25,2,5,1,45,3,1,7,99,1,1,0,1,3,99,4,5,5,5,3,5,5,4,4,4,4,3,Synthetic example: I would need understandable fees and easy access.,1,5,22,3,3
+NCB200023,2026-06-25,2,6,1,55,4,2,7,99,1,1,0,1,5,99,5,99,4,3,5,5,4,5,3,4,4,5,Synthetic example: I want help without repeating the same details.,1,6,5,1,5
+NCB200024,2026-06-25,2,7,1,58,4,1,1,1,3,1,0,1,2,1,5,5,2,5,3,4,5,4,4,3,5,3,Synthetic example: I want help without repeating the same details.,1,5,27,2,4
+NCB200025,2026-06-25,2,2,1,48,3,2,2,1,1,1,0,1,3,99,5,5,4,5,4,4,5,3,5,2,4,4,Synthetic example: I want help without repeating the same details.,1,1,15,2,3
+NCB200026,2026-06-25,2,3,1,50,4,2,4,1,2,1,0,1,2,4,4,4,1,3,4,5,3,4,2,3,5,5,Synthetic example: I would need understandable fees and easy access.,1,1,4,2,3
+NCB200027,2026-06-25,2,4,1,29,2,4,2,2,3,1,0,1,4,4,4,5,5,2,3,5,5,3,3,3,3,5,Synthetic example: I need clear information and reliable service.,1,5,5,4,4
+NCB200028,2026-06-25,2,5,1,25,2,1,9,3,2,1,0,1,4,3,5,4,4,3,3,4,5,5,3,3,3,4,Synthetic example: I want help without repeating the same details.,1,3,2,3,2
+NCB200029,2026-06-25,2,6,1,66,4,1,2,4,2,1,0,1,1,3,5,4,5,3,4,5,4,5,3,4,5,5,Synthetic example: I want help without repeating the same details.,1,6,29,1,2
+NCB200030,2026-06-25,2,7,1,21,1,2,8,99,1,1,0,1,2,2,5,3,5,2,4,99,2,4,2,4,5,5,Synthetic example: I need clear information and reliable service.,1,1,29,1,2
+NCB200031,2026-06-25,2,2,1,44,3,1,9,3,3,1,0,1,3,4,2,5,5,5,3,5,3,5,5,3,3,3,Synthetic example: I need clear information and reliable service.,1,2,10,2,1
+NCB200032,2026-06-25,2,3,1,44,3,4,8,2,2,1,0,1,4,3,4,4,4,3,4,3,4,3,4,4,5,3,Synthetic example: I need clear information and reliable service.,1,4,3,1,5
+NCB200033,2026-06-25,2,4,1,64,4,2,4,1,1,1,0,1,3,4,3,5,2,5,5,4,5,4,5,3,5,4,Synthetic example: I would need understandable fees and easy access.,1,6,12,1,3
+NCB200034,2026-06-25,2,5,1,69,4,2,1,5,3,1,0,1,1,99,4,5,5,3,4,4,4,3,3,3,5,5,Synthetic example: I want help without repeating the same details.,1,5,15,1,5
+NCB200035,2026-06-25,2,6,1,40,3,2,9,5,2,1,0,1,3,2,4,4,5,3,4,5,4,5,4,4,5,2,Synthetic example: I would need understandable fees and easy access.,1,6,29,4,3
+NCB200036,2026-06-25,2,7,1,48,3,1,3,99,1,1,0,1,2,99,4,3,5,5,5,5,3,4,4,5,3,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200037,2026-06-25,2,2,1,29,2,2,4,2,2,1,0,1,2,1,5,4,5,4,3,4,2,2,4,5,3,4,Synthetic example: I want help without repeating the same details.,1,6,26,1,2
+NCB200038,2026-06-25,2,3,1,38,3,1,9,2,2,1,0,0,,3,,4,,2,,5,,4,,5,,2,Synthetic example: I need clear information and reliable service.,1,6,13,2,3
+NCB200039,2026-06-25,2,4,1,59,4,1,8,1,2,1,0,1,3,1,3,5,3,3,4,5,5,4,3,3,3,4,Synthetic example: I want help without repeating the same details.,1,2,20,1,4
+NCB200040,2026-06-25,2,5,1,42,3,2,7,4,1,1,0,1,3,99,3,4,2,3,3,3,5,4,3,4,5,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200041,2026-06-25,2,6,1,39,3,1,4,3,1,1,0,1,2,3,5,2,4,5,5,3,4,4,4,4,5,4,Synthetic example: I would need understandable fees and easy access.,1,3,2,2,3
+NCB200042,2026-06-25,2,7,1,47,3,1,6,1,3,1,0,1,3,1,4,4,4,5,3,5,4,3,2,5,4,4,Synthetic example: I need clear information and reliable service.,1,2,16,4,3
+NCB200043,2026-06-25,2,2,1,23,1,2,9,1,1,1,0,1,4,99,4,4,5,4,2,5,3,3,5,2,3,3,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200044,2026-06-25,2,3,1,29,2,2,3,4,3,1,0,1,4,3,3,2,5,5,1,3,3,4,4,3,4,2,Synthetic example: I need clear information and reliable service.,1,2,8,2,4
+NCB200045,2026-06-25,2,4,1,23,1,1,8,99,2,1,0,1,2,1,3,4,4,4,4,4,4,5,5,4,5,4,Synthetic example: I want help without repeating the same details.,1,4,8,3,3
+NCB200046,2026-06-25,2,5,1,51,4,1,1,1,3,1,0,1,4,3,5,4,3,99,5,3,4,5,4,5,5,5,Synthetic example: I want help without repeating the same details.,1,5,1,3,99
+NCB200047,2026-06-25,2,6,1,45,3,2,1,99,3,1,0,1,3,3,4,3,4,99,4,5,3,5,4,99,4,2,Synthetic example: I need clear information and reliable service.,1,5,16,3,3
+NCB200048,2026-06-25,2,7,1,32,2,1,9,3,1,1,0,1,4,2,4,2,5,5,4,3,4,4,4,99,5,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200049,2026-06-25,2,2,1,21,1,2,1,3,3,1,0,1,3,2,5,99,5,5,4,3,5,4,2,4,5,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200050,2026-06-25,2,3,1,37,3,2,1,99,3,1,0,1,4,1,5,4,2,5,5,5,5,3,5,4,4,2,Synthetic example: I need clear information and reliable service.,1,2,19,2,4
+NCB200051,2026-06-25,2,4,1,32,2,1,2,2,2,1,0,1,4,2,3,99,5,99,4,4,5,5,4,5,5,4,Synthetic example: I want help without repeating the same details.,1,3,23,1,3
+NCB200052,2026-06-25,2,5,1,63,4,1,8,4,3,1,0,1,3,3,5,3,3,4,3,5,3,3,4,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,1,22,2,3
+NCB200053,2026-06-25,2,6,1,30,2,2,6,4,3,1,0,1,4,2,4,99,5,4,2,4,5,3,2,5,5,3,Synthetic example: I need clear information and reliable service.,1,4,26,4,2
+NCB200054,2026-06-25,2,7,1,24,1,1,7,4,2,1,0,1,3,4,5,4,4,3,4,3,4,4,4,5,4,3,Synthetic example: I need clear information and reliable service.,1,5,12,3,3
+NCB200055,2026-06-25,2,2,1,68,4,1,6,4,2,1,0,1,2,2,4,4,3,2,5,5,5,4,3,5,5,5,Synthetic example: I need clear information and reliable service.,1,4,22,2,4
+NCB200056,2026-06-25,2,3,1,64,4,2,3,2,3,1,0,1,4,2,5,4,2,4,3,5,5,2,5,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,2,5,4,5
+NCB200057,2026-06-25,2,4,1,63,4,3,3,3,2,1,0,1,4,4,4,4,4,5,3,3,4,5,2,4,4,4,Synthetic example: I would need understandable fees and easy access.,1,4,14,2,3
+NCB200058,2026-06-25,2,5,1,31,2,1,9,2,2,1,0,1,3,3,4,4,3,4,5,99,3,4,4,3,3,4,Synthetic example: I need clear information and reliable service.,1,6,14,2,5
+NCB200059,2026-06-25,2,6,1,58,4,1,9,99,2,1,0,1,4,3,4,5,5,4,3,3,3,5,4,5,5,3,Synthetic example: I want help without repeating the same details.,1,2,25,2,99
+NCB200060,2026-06-25,2,7,1,22,1,2,2,99,2,1,0,0,,3,,4,,5,,3,,3,,5,,5,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200061,2026-06-25,2,2,1,25,2,2,9,3,1,1,0,1,3,1,3,4,4,5,5,3,4,4,5,3,5,5,Synthetic example: I would need understandable fees and easy access.,1,4,21,1,3
+NCB200062,2026-06-25,2,3,1,20,1,2,4,1,1,1,0,1,2,3,5,5,5,4,5,3,3,4,4,4,4,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200063,2026-06-25,2,4,1,37,3,2,7,4,3,1,0,1,4,99,4,4,4,4,4,2,4,3,3,5,2,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200064,2026-06-25,2,5,1,65,4,2,7,99,3,1,0,1,3,3,3,3,4,5,5,3,4,5,3,4,4,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200065,2026-06-25,2,6,1,64,4,2,5,99,1,1,0,1,5,3,5,3,4,4,5,4,5,5,4,4,4,3,Synthetic example: I would need understandable fees and easy access.,1,2,13,3,3
+NCB200066,2026-06-25,2,7,1,19,1,1,1,3,3,1,0,1,4,3,4,4,3,4,3,4,4,4,5,4,3,5,Synthetic example: I need clear information and reliable service.,1,2,30,1,5
+NCB200067,2026-06-25,2,2,1,62,4,2,6,1,1,1,0,1,5,4,5,3,5,5,3,5,5,4,3,3,4,4,Synthetic example: I want help without repeating the same details.,1,5,2,2,2
+NCB200068,2026-06-25,2,3,1,58,4,2,6,4,2,1,0,1,3,2,4,4,5,3,3,3,5,5,4,3,5,5,Synthetic example: I want help without repeating the same details.,1,2,14,1,4
+NCB200069,2026-06-25,2,4,1,69,4,1,7,4,2,1,0,1,3,99,3,3,3,3,4,4,5,5,5,99,5,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200070,2026-06-25,2,5,1,54,4,2,9,2,2,1,0,1,3,3,4,5,4,4,4,3,3,4,4,3,3,3,Synthetic example: I want help without repeating the same details.,1,5,25,4,5
+NCB200071,2026-06-25,2,6,1,24,1,2,9,4,3,1,0,1,4,2,4,5,4,4,4,4,5,4,5,2,3,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200072,2026-06-25,2,7,1,60,4,1,1,1,1,1,0,1,3,99,5,4,5,4,4,5,4,5,4,5,4,3,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200073,2026-06-25,2,2,1,37,3,1,7,99,2,1,0,1,2,99,2,3,3,4,4,4,5,2,3,5,2,5,Synthetic example: I need clear information and reliable service.,1,3,17,1,2
+NCB200074,2026-06-25,2,3,1,65,4,4,1,1,1,1,0,1,4,99,3,4,4,3,4,2,4,5,5,4,3,4,Synthetic example: I need clear information and reliable service.,1,2,20,3,5
+NCB200075,2026-06-25,2,4,1,54,4,1,2,4,1,1,0,1,4,4,4,3,4,3,3,5,4,4,3,4,4,3,Synthetic example: I need clear information and reliable service.,1,5,25,1,4
+NCB200076,2026-06-25,2,5,1,38,3,2,7,2,3,1,0,1,1,2,4,4,3,4,5,5,4,4,3,4,3,4,Synthetic example: I would need understandable fees and easy access.,1,2,11,2,3
+NCB200077,2026-06-25,2,6,1,56,4,2,1,4,3,1,0,1,3,3,3,5,4,3,4,4,5,5,3,99,3,4,Synthetic example: I want help without repeating the same details.,1,5,30,2,4
+NCB200078,2026-06-25,2,7,1,45,3,1,9,5,2,1,0,1,3,99,5,3,5,5,3,4,4,3,5,3,4,5,Synthetic example: I would need understandable fees and easy access.,1,5,6,1,2
+NCB200079,2026-06-25,2,2,1,31,2,1,1,5,3,1,0,1,4,3,3,4,3,5,3,4,4,4,3,4,2,5,Synthetic example: I need clear information and reliable service.,99,,,,
+NCB200080,2026-06-25,2,3,1,32,2,1,8,5,2,1,0,1,1,2,3,5,4,4,5,99,4,4,5,5,3,5,Synthetic example: I want help without repeating the same details.,1,5,2,2,4
+NCB200081,2026-06-25,2,4,1,60,4,1,3,4,3,1,0,1,3,3,3,4,4,4,4,5,4,5,3,3,3,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200082,2026-06-25,2,5,1,44,3,1,5,2,1,1,0,1,2,2,4,5,4,2,2,5,4,5,2,5,3,2,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200083,2026-06-25,2,6,1,60,4,1,5,99,2,1,0,1,3,99,5,4,5,4,4,4,5,4,5,2,4,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200084,2026-06-25,2,7,1,35,3,2,8,3,3,1,0,1,2,99,3,3,4,5,4,5,5,4,4,4,5,5,Synthetic example: I need clear information and reliable service.,1,1,19,2,4
+NCB200085,2026-06-25,2,2,1,61,4,1,2,99,1,1,0,1,4,99,4,5,3,5,4,5,4,5,4,5,4,5,Synthetic example: I would need understandable fees and easy access.,1,3,18,2,4
+NCB200086,2026-06-25,2,3,1,22,1,1,3,1,2,1,0,0,,1,,4,,2,,4,,5,,5,,99,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200087,2026-06-25,2,4,1,20,1,2,9,3,3,1,0,1,3,99,4,5,4,5,4,3,5,5,4,3,3,4,Synthetic example: I need clear information and reliable service.,1,5,6,4,3
+NCB200088,2026-06-25,2,5,1,29,2,2,7,99,1,1,0,1,4,4,3,3,5,4,4,3,5,4,4,5,3,3,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200089,2026-06-25,2,6,1,34,2,2,5,3,1,1,0,1,3,4,3,4,5,99,4,4,5,5,5,3,2,4,Synthetic example: I would need understandable fees and easy access.,1,6,17,2,3
+NCB200090,2026-06-25,2,7,1,26,2,1,5,99,3,1,0,1,4,1,4,5,3,5,5,4,5,5,4,3,4,3,Synthetic example: I want help without repeating the same details.,1,5,5,3,5
+NCB200091,2026-06-25,2,2,1,22,1,1,5,5,2,1,0,1,3,4,4,4,3,4,5,1,4,5,4,4,4,5,Synthetic example: I would need understandable fees and easy access.,1,2,7,4,5
+NCB200092,2026-06-25,2,3,1,35,3,2,9,1,2,1,0,1,4,3,4,3,4,4,4,3,3,4,5,5,3,4,Synthetic example: I want help without repeating the same details.,1,6,20,2,2
+NCB200093,2026-06-25,2,4,1,47,3,2,3,3,3,1,0,1,2,4,5,4,3,4,4,3,5,4,5,3,4,5,Synthetic example: I want help without repeating the same details.,1,3,4,1,1
+NCB200094,2026-06-25,2,5,1,46,3,2,1,3,1,1,0,1,1,99,2,4,2,3,5,4,4,5,5,3,4,5,Synthetic example: I want help without repeating the same details.,1,5,25,3,2
+NCB200095,2026-06-25,2,6,1,61,4,1,3,3,3,1,0,1,3,2,5,5,4,4,4,4,4,4,4,4,4,4,Synthetic example: I want help without repeating the same details.,1,5,0,2,4
+NCB200096,2026-06-25,2,7,1,50,4,1,8,5,3,1,0,1,2,2,5,5,5,3,4,5,3,4,4,4,2,5,Synthetic example: I want help without repeating the same details.,1,1,23,2,5
+NCB200097,2026-06-25,2,2,1,25,2,1,4,3,1,1,0,1,4,99,4,5,4,4,4,4,4,4,4,5,3,3,Synthetic example: I need clear information and reliable service.,1,5,5,1,5
+NCB200098,2026-06-25,2,3,1,56,4,3,7,99,2,1,0,0,,99,,4,,5,,5,,4,,5,,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200099,2026-06-25,2,4,1,64,4,2,2,3,2,1,0,1,4,99,3,5,4,3,4,4,5,5,5,4,5,5,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200100,2026-06-25,2,5,1,42,3,2,4,2,1,1,0,1,5,4,4,4,5,5,2,5,4,3,5,3,5,4,Synthetic example: I would need understandable fees and easy access.,1,5,7,2,3
+NCB200101,2026-06-25,2,6,1,40,3,1,1,1,1,1,0,1,3,1,5,4,5,5,4,3,4,3,4,4,5,99,Synthetic example: I want help without repeating the same details.,1,2,0,2,3
+NCB200102,2026-06-25,2,7,1,22,1,2,9,3,3,1,0,1,3,99,4,4,5,4,5,5,1,4,3,5,4,5,Synthetic example: I would need understandable fees and easy access.,1,2,17,1,4
+NCB200103,2026-06-25,2,2,1,55,4,2,5,3,2,1,0,1,4,2,4,4,5,3,4,4,5,4,4,3,4,5,Synthetic example: I want help without repeating the same details.,1,2,10,3,2
+NCB200104,2026-06-25,2,3,1,33,2,1,7,5,2,1,0,1,3,4,3,4,3,3,4,3,3,5,3,3,4,4,Synthetic example: I need clear information and reliable service.,1,5,23,3,4
+NCB200105,2026-06-25,2,4,1,50,4,2,9,3,3,1,0,1,4,4,3,5,4,1,4,5,3,4,4,5,4,4,Synthetic example: I need clear information and reliable service.,1,6,21,2,2
+NCB200106,2026-06-25,2,5,1,39,3,2,8,3,3,1,0,0,,2,,5,,5,,4,,5,,3,,4,Synthetic example: I want help without repeating the same details.,1,4,4,4,3
+NCB200107,2026-06-25,2,6,1,33,2,2,9,1,3,1,0,1,4,3,2,4,5,4,2,5,5,5,4,3,2,5,Synthetic example: I need clear information and reliable service.,1,4,19,4,4
+NCB200108,2026-06-25,2,7,1,64,4,1,7,4,1,1,0,0,,4,,4,,4,,4,,5,,5,,4,Synthetic example: I need clear information and reliable service.,1,2,10,2,3
+NCB200109,2026-06-25,2,2,1,18,1,1,2,4,1,1,0,1,2,2,3,4,4,3,4,4,4,5,4,99,5,3,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200110,2026-06-25,2,3,1,57,4,1,5,2,1,1,0,1,4,3,3,5,4,4,5,3,3,4,3,5,5,3,Synthetic example: I would need understandable fees and easy access.,1,6,10,2,5
+NCB200111,2026-06-25,2,4,1,63,4,1,1,2,1,1,0,0,,99,,4,,99,,5,,5,,5,,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200112,2026-06-25,2,5,1,44,3,1,5,3,1,1,0,1,4,2,5,5,4,4,5,5,5,5,3,4,5,4,Synthetic example: I need clear information and reliable service.,1,1,2,4,3
+NCB200113,2026-06-25,2,6,1,53,4,2,4,5,2,1,0,1,1,4,5,5,4,4,5,5,3,5,4,3,5,4,Synthetic example: I would need understandable fees and easy access.,1,2,1,2,4
+NCB200114,2026-06-25,2,7,1,20,1,2,3,3,3,1,0,1,4,99,3,3,4,3,3,3,4,5,3,5,2,4,Synthetic example: I need clear information and reliable service.,1,5,14,3,3
+NCB200115,2026-06-25,2,2,1,56,4,2,5,5,1,1,0,1,3,99,4,3,3,4,4,3,5,4,4,3,5,5,Synthetic example: I want help without repeating the same details.,1,1,6,2,2
+NCB200116,2026-06-25,2,3,1,63,4,1,5,5,2,1,0,1,4,99,4,4,4,5,3,5,4,3,3,3,3,3,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200117,2026-06-25,2,4,1,64,4,2,2,3,3,1,0,1,3,2,3,5,5,4,3,3,3,3,5,4,4,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200118,2026-06-25,2,5,1,29,2,2,8,99,2,1,0,1,2,99,4,3,5,3,4,4,4,4,5,5,4,5,Synthetic example: I need clear information and reliable service.,1,4,16,2,5
+NCB200119,2026-06-25,2,6,1,57,4,2,6,4,3,1,0,1,4,4,4,5,4,5,3,4,4,5,4,4,3,4,Synthetic example: I would need understandable fees and easy access.,1,5,17,3,2
+NCB200120,2026-06-25,2,7,1,20,1,2,9,5,1,1,0,1,4,1,3,4,4,5,4,4,4,4,3,3,4,4,Synthetic example: I need clear information and reliable service.,1,4,13,4,4
+NCB200121,2026-06-25,2,2,1,60,4,1,6,3,3,1,0,1,1,4,5,4,4,4,5,99,5,4,5,5,3,4,Synthetic example: I want help without repeating the same details.,1,5,9,2,5
+NCB200122,2026-06-25,2,3,1,58,4,1,8,1,3,1,0,1,3,1,3,5,2,5,2,4,3,4,4,4,4,4,Synthetic example: I need clear information and reliable service.,1,3,15,2,4
+NCB200123,2026-06-25,2,4,1,44,3,2,7,3,2,1,0,1,2,3,3,4,3,5,5,5,5,5,3,4,4,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200124,2026-06-25,2,5,1,44,3,2,2,5,1,1,0,1,2,2,4,4,5,3,5,4,3,5,4,3,5,3,Synthetic example: I want help without repeating the same details.,1,1,15,4,3
+NCB200125,2026-06-25,2,6,1,41,3,1,7,2,1,1,0,0,,1,,4,,5,,2,,5,,5,,3,Synthetic example: I need clear information and reliable service.,1,2,23,3,99
+NCB200126,2026-06-25,2,7,1,48,3,2,8,1,3,1,0,1,3,3,4,5,4,4,4,5,4,4,2,5,3,4,Synthetic example: I would need understandable fees and easy access.,1,5,27,4,3
+NCB200127,2026-06-25,2,2,1,64,4,2,8,4,1,1,0,1,4,3,2,3,4,4,5,4,4,4,4,3,4,4,Synthetic example: I want help without repeating the same details.,1,6,9,1,3
+NCB200128,2026-06-25,2,3,1,27,2,2,2,4,2,1,0,1,4,99,4,3,3,4,3,5,4,4,3,5,5,3,Synthetic example: I would need understandable fees and easy access.,99,,,,
+NCB200129,2026-06-25,2,4,1,27,2,1,7,99,3,1,0,1,2,3,4,5,5,4,5,4,5,5,3,4,4,4,Synthetic example: I need clear information and reliable service.,1,6,16,1,4
+NCB200130,2026-06-25,2,5,1,63,4,1,5,1,3,1,0,1,4,3,5,4,5,3,3,5,3,4,4,3,2,5,Synthetic example: I would need understandable fees and easy access.,1,1,15,4,4
+NCB200131,2026-06-25,2,6,1,56,4,1,6,4,1,1,0,1,2,1,3,5,4,5,3,5,4,4,3,4,5,3,Synthetic example: I would need understandable fees and easy access.,1,4,19,4,3
+NCB200132,2026-06-25,2,7,1,51,4,2,9,99,2,1,0,1,4,99,5,4,4,3,1,2,5,3,5,4,3,5,Synthetic example: I need clear information and reliable service.,1,4,25,2,4
+NCB200133,2026-06-25,2,2,1,34,2,1,8,2,1,1,0,1,3,99,4,4,5,4,5,4,5,99,5,3,4,4,Synthetic example: I would need understandable fees and easy access.,1,4,8,1,2
+NCB200134,2026-06-25,2,3,1,58,4,1,6,3,2,1,0,1,4,3,5,3,4,2,3,5,5,4,4,4,4,3,Synthetic example: I need clear information and reliable service.,1,3,3,4,3
+NCB200135,2026-06-25,2,4,1,67,4,2,9,4,3,1,0,1,3,1,5,3,5,5,5,5,4,4,4,4,4,3,Synthetic example: I need clear information and reliable service.,1,2,4,2,4
+NCB200136,2026-06-25,2,5,1,47,3,1,5,2,3,1,0,1,4,3,5,4,4,4,1,4,5,4,2,5,4,4,Synthetic example: I want help without repeating the same details.,1,6,29,2,99
+NCB200137,2026-06-25,2,6,1,26,2,2,6,4,1,1,0,1,3,3,5,5,3,5,3,5,3,5,5,5,2,5,Synthetic example: I would need understandable fees and easy access.,1,1,3,3,4
+NCB200138,2026-06-25,2,7,1,28,2,1,2,1,2,1,0,1,4,4,3,4,5,5,4,4,5,4,5,4,3,3,Synthetic example: I would need understandable fees and easy access.,1,4,4,1,2
+NCB200139,2026-06-25,2,2,1,68,4,1,9,5,2,1,0,0,,1,,4,,5,,3,,4,,4,,3,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200140,2026-06-25,2,3,1,50,4,2,4,3,3,1,0,1,4,99,5,4,4,2,3,4,4,4,5,4,4,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200141,2026-06-25,2,4,1,48,3,2,3,5,3,1,0,1,4,2,3,5,4,4,3,3,3,4,5,4,4,4,Synthetic example: I would need understandable fees and easy access.,1,1,16,3,2
+NCB200142,2026-06-25,2,5,1,21,1,3,1,1,1,1,0,1,3,4,3,4,4,4,5,5,5,5,4,4,3,5,Synthetic example: I would need understandable fees and easy access.,1,5,22,2,4
+NCB200143,2026-06-25,2,6,1,41,3,2,9,2,3,1,0,1,4,2,3,4,2,3,5,5,3,4,4,3,2,5,Synthetic example: I need clear information and reliable service.,1,6,18,3,5
+NCB200144,2026-06-25,2,7,1,37,3,1,2,5,1,1,0,1,3,4,4,4,4,4,5,4,4,99,2,5,3,4,Synthetic example: I want help without repeating the same details.,99,,,,
+NCB200145,2026-06-25,2,2,1,67,4,3,8,4,1,1,0,1,5,1,2,5,3,3,4,5,5,4,3,5,3,5,Synthetic example: I want help without repeating the same details.,1,2,3,4,2
+NCB200146,2026-06-25,2,3,1,31,2,2,1,5,2,1,0,1,3,2,5,3,4,4,4,4,5,4,4,5,4,5,Synthetic example: I would need understandable fees and easy access.,1,2,2,3,3
+NCB200147,2026-06-25,2,4,1,51,4,1,8,3,3,1,0,1,5,3,4,3,4,4,3,4,5,3,3,5,5,3,Synthetic example: I need clear information and reliable service.,1,2,22,4,5
+NCB200148,2026-06-25,2,5,1,41,3,2,6,99,3,1,0,1,5,1,5,4,4,4,5,5,5,3,4,4,4,5,Synthetic example: I want help without repeating the same details.,1,2,6,1,2
+NCB200149,2026-06-25,2,6,1,18,1,2,1,3,3,1,0,1,4,4,5,3,3,4,3,5,5,4,4,5,3,4,Synthetic example: I need clear information and reliable service.,1,3,8,3,3
+NCB200150,2026-06-25,2,7,1,58,4,1,7,4,3,1,0,1,4,99,4,3,5,5,5,5,2,3,5,5,5,4,Synthetic example: I would need understandable fees and easy access.,1,6,18,3,4
+NCB200151,2026-06-25,2,2,1,55,4,1,9,4,1,1,0,0,,1,,5,,4,,5,,4,,4,,4,Synthetic example: I want help without repeating the same details.,1,6,28,2,3
+NCB200152,2026-06-25,2,3,1,54,4,2,7,5,3,1,0,1,3,99,5,4,2,5,5,4,4,3,4,4,5,4,Synthetic example: I want help without repeating the same details.,1,6,1,1,4
+NCB200153,2026-06-25,2,4,1,23,1,2,5,1,3,1,0,1,2,2,5,5,5,4,4,3,4,3,5,4,3,3,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200154,2026-06-25,2,5,1,34,2,2,1,99,2,1,0,1,2,1,5,5,4,5,3,4,3,3,3,3,4,4,Synthetic example: I need clear information and reliable service.,1,3,18,4,3
+NCB200155,2026-06-25,2,6,1,49,3,1,3,4,1,1,0,1,2,1,3,4,3,5,5,3,4,5,3,5,4,3,Synthetic example: I need clear information and reliable service.,1,3,26,3,4
+NCB200156,2026-06-25,2,7,1,39,3,2,2,4,2,1,0,1,3,99,5,5,4,5,3,3,4,4,3,4,3,4,Synthetic example: I want help without repeating the same details.,1,1,19,3,4
+NCB200157,2026-06-25,2,2,1,47,3,2,9,4,1,1,0,1,2,3,3,5,4,5,4,4,3,3,2,3,5,5,Synthetic example: I want help without repeating the same details.,1,5,23,3,3
+NCB200158,2026-06-25,2,3,1,23,1,1,6,4,3,1,0,1,2,2,3,4,4,4,5,5,3,5,3,4,5,5,Synthetic example: I need clear information and reliable service.,1,3,25,3,3
+NCB200159,2026-06-25,2,4,1,69,4,1,2,3,2,1,0,1,5,1,5,4,4,5,4,5,5,5,3,3,4,4,Synthetic example: I would need understandable fees and easy access.,1,1,25,1,99
+NCB200160,2026-06-25,2,5,1,31,2,1,6,2,1,1,0,1,4,1,5,4,2,4,2,5,4,4,4,5,3,5,Synthetic example: I need clear information and reliable service.,1,5,10,3,4
+NCB200161,2026-06-25,2,6,1,33,2,2,4,1,2,1,0,1,4,2,3,5,5,2,5,4,5,3,3,3,3,4,Synthetic example: I want help without repeating the same details.,1,4,16,2,3
+NCB200162,2026-06-25,2,7,1,44,3,2,8,1,1,1,0,1,3,3,3,3,3,4,4,5,5,5,4,4,5,4,Synthetic example: I would need understandable fees and easy access.,1,1,19,1,3
+NCB200163,2026-06-25,2,2,1,26,2,2,5,1,1,1,0,1,4,2,4,3,3,3,4,4,2,5,4,4,5,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200164,2026-06-25,2,3,1,23,1,1,5,4,3,1,0,1,3,1,5,4,5,5,5,5,4,5,4,99,3,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200165,2026-06-25,2,4,1,23,1,2,8,5,3,1,0,1,3,99,3,5,5,4,3,4,4,3,4,99,2,5,Synthetic example: I would need understandable fees and easy access.,1,1,10,3,4
+NCB200166,2026-06-25,2,5,1,51,4,2,7,5,1,1,0,1,4,3,5,5,4,5,4,4,5,5,4,5,3,3,Synthetic example: I want help without repeating the same details.,1,4,14,3,3
+NCB200167,2026-06-25,2,6,1,67,4,1,4,3,1,1,0,1,2,4,4,5,3,4,5,5,4,5,5,5,5,5,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200168,2026-06-25,2,7,1,33,2,1,8,99,2,1,0,0,,3,,3,,5,,5,,4,,5,,3,Synthetic example: I need clear information and reliable service.,1,6,0,1,2
+NCB200169,2026-06-25,2,2,1,64,4,1,5,4,1,1,0,1,4,3,4,3,5,5,5,5,5,4,2,5,3,5,Synthetic example: I want help without repeating the same details.,1,5,27,3,2
+NCB200170,2026-06-25,2,3,1,26,2,2,1,2,1,1,0,1,2,4,4,5,1,2,4,5,5,4,3,5,4,3,Synthetic example: I want help without repeating the same details.,1,6,13,3,3
+NCB200171,2026-06-25,2,4,1,66,4,1,3,5,2,1,0,1,3,3,4,3,4,5,3,5,5,5,5,5,4,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200172,2026-06-25,2,5,1,68,4,2,2,99,3,1,0,1,4,99,4,5,4,2,4,5,5,5,4,4,4,5,Synthetic example: I would need understandable fees and easy access.,1,5,23,4,2
+NCB200173,2026-06-25,2,6,1,60,4,1,8,5,2,1,0,1,3,3,4,5,4,5,4,5,5,4,3,4,3,4,Synthetic example: I want help without repeating the same details.,1,2,24,2,4
+NCB200174,2026-06-25,2,7,1,35,3,1,5,4,1,1,0,1,4,99,3,5,4,4,5,4,3,5,5,5,5,2,Synthetic example: I want help without repeating the same details.,1,2,14,1,3
+NCB200175,2026-06-25,2,2,1,69,4,2,9,4,2,1,0,1,3,3,3,3,5,5,5,5,4,4,4,5,5,5,Synthetic example: I need clear information and reliable service.,1,6,6,2,3
+NCB200176,2026-06-25,2,3,1,41,3,2,6,2,2,1,0,0,,4,,4,,4,,4,,5,,99,,4,Synthetic example: I want help without repeating the same details.,1,1,4,3,3
+NCB200177,2026-06-25,2,4,1,68,4,2,8,99,2,1,0,1,4,99,4,5,3,4,3,3,5,5,4,5,3,5,Synthetic example: I would need understandable fees and easy access.,1,6,27,1,3
+NCB200178,2026-06-25,2,5,1,24,1,1,2,2,2,1,0,1,3,3,3,4,5,5,4,3,3,3,4,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,1,1,3,3
+NCB200179,2026-06-25,2,6,1,27,2,2,4,3,1,1,0,1,3,2,2,5,4,4,4,5,2,3,4,4,4,2,Synthetic example: I would need understandable fees and easy access.,1,2,4,3,3
+NCB200180,2026-06-25,2,7,1,19,1,2,8,3,1,1,0,1,2,3,4,5,5,5,2,4,4,4,4,99,4,4,Synthetic example: I would need understandable fees and easy access.,1,3,11,3,3
+NCB200181,2026-06-25,2,2,1,51,4,2,1,1,3,1,0,1,2,2,5,3,5,5,3,4,4,3,2,4,3,4,Synthetic example: I would need understandable fees and easy access.,1,3,14,4,3
+NCB200182,2026-06-25,2,3,1,41,3,2,1,5,3,1,0,1,2,2,4,4,5,2,4,3,4,3,3,4,4,2,Synthetic example: I want help without repeating the same details.,1,2,1,4,3
+NCB200183,2026-06-25,2,4,1,26,2,2,5,5,3,1,0,1,2,3,4,5,5,5,4,4,5,2,5,5,4,5,Synthetic example: I want help without repeating the same details.,1,1,4,3,4
+NCB200184,2026-06-25,2,5,1,68,4,1,6,3,1,1,0,1,3,3,4,3,4,4,5,3,4,5,5,4,5,5,Synthetic example: I would need understandable fees and easy access.,1,2,6,2,4
+NCB200185,2026-06-25,2,6,1,47,3,1,7,99,2,1,0,1,2,2,2,5,5,4,1,3,5,5,4,3,2,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200186,2026-06-25,2,7,1,68,4,2,7,4,1,1,0,1,2,3,4,3,5,5,4,4,4,2,4,2,5,3,Synthetic example: I would need understandable fees and easy access.,1,2,6,3,3
+NCB200187,2026-06-25,2,2,1,19,1,1,3,2,1,1,0,1,3,4,4,3,3,5,4,3,2,4,3,4,4,4,Synthetic example: I need clear information and reliable service.,1,1,24,1,4
+NCB200188,2026-06-25,2,3,1,39,3,2,2,4,1,1,0,1,3,1,3,5,2,5,5,5,5,4,4,5,3,3,Synthetic example: I need clear information and reliable service.,1,5,5,1,3
+NCB200189,2026-06-25,2,4,1,54,4,1,2,1,1,1,0,1,4,3,3,3,5,4,5,5,5,5,5,5,3,4,Synthetic example: I would need understandable fees and easy access.,1,2,27,3,4
+NCB200190,2026-06-25,2,5,1,29,2,2,6,99,3,1,0,1,2,3,5,5,5,5,3,5,5,4,3,3,3,5,Synthetic example: I would need understandable fees and easy access.,1,6,6,3,4
+NCB200191,2026-06-25,2,6,1,69,4,1,1,5,3,1,0,1,4,4,4,5,3,5,4,5,3,3,4,3,5,2,Synthetic example: I want help without repeating the same details.,1,4,14,1,3
+NCB200192,2026-06-25,2,7,1,29,2,2,2,99,2,1,0,1,1,99,3,5,2,5,4,4,4,3,4,4,4,4,Synthetic example: I want help without repeating the same details.,1,3,11,2,3
+NCB200193,2026-06-25,2,2,1,31,2,2,8,2,3,1,0,1,2,1,4,3,2,3,3,4,4,4,2,4,5,5,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200194,2026-06-25,2,3,1,64,4,1,2,3,3,1,0,1,4,3,4,4,5,4,3,99,4,4,2,2,4,5,Synthetic example: I would need understandable fees and easy access.,1,5,0,3,2
+NCB200195,2026-06-25,2,4,1,59,4,2,2,4,2,1,0,1,3,99,4,4,2,4,1,4,3,3,4,4,4,3,Synthetic example: I would need understandable fees and easy access.,1,2,14,2,3
+NCB200196,2026-06-25,2,5,1,67,4,2,6,4,1,1,0,1,4,3,5,4,4,4,5,4,4,5,3,4,5,5,Synthetic example: I need clear information and reliable service.,1,4,7,1,1
+NCB200197,2026-06-25,2,6,1,50,4,2,7,4,3,1,0,1,3,2,3,3,3,5,3,99,4,5,4,4,5,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200198,2026-06-25,2,7,1,39,3,1,4,5,2,1,0,1,2,1,4,5,2,4,4,4,5,3,3,5,4,4,Synthetic example: I need clear information and reliable service.,1,2,11,3,5
+NCB200199,2026-06-25,2,2,1,57,4,2,4,99,3,1,0,1,4,2,4,5,2,4,5,3,5,3,4,3,5,4,Synthetic example: I need clear information and reliable service.,1,4,1,4,3
+NCB200200,2026-06-25,2,3,1,27,2,1,2,5,3,1,0,1,3,2,5,99,2,5,5,4,4,4,3,5,3,3,Synthetic example: I need clear information and reliable service.,1,5,18,4,5
+NCB200201,2026-06-25,2,4,1,61,4,1,1,4,1,1,0,1,1,4,4,5,4,4,4,5,3,4,4,4,5,4,Synthetic example: I want help without repeating the same details.,1,3,29,4,5
+NCB200202,2026-06-25,2,5,1,39,3,1,4,3,3,1,0,1,5,99,2,5,4,4,3,5,2,3,3,5,4,4,Synthetic example: I want help without repeating the same details.,1,3,16,2,3
+NCB200203,2026-06-25,2,6,1,19,1,1,3,5,3,1,0,1,2,3,4,4,5,4,3,5,5,3,4,5,2,4,Synthetic example: I need clear information and reliable service.,1,1,5,2,3
+NCB200204,2026-06-25,2,7,1,27,2,2,8,2,3,1,0,1,5,4,5,5,5,5,4,4,5,4,5,3,5,3,Synthetic example: I need clear information and reliable service.,1,4,17,3,3
+NCB200205,2026-06-25,2,2,1,41,3,1,7,1,1,1,0,1,2,3,4,4,5,2,4,4,3,4,3,5,3,4,Synthetic example: I would need understandable fees and easy access.,1,1,20,3,5
+NCB200206,2026-06-25,2,3,1,37,3,1,9,5,2,1,0,1,3,4,4,4,4,3,2,4,4,4,4,5,3,4,Synthetic example: I want help without repeating the same details.,1,4,7,3,3
+NCB200207,2026-06-25,2,4,1,69,4,2,8,2,1,1,0,1,4,2,4,3,2,5,3,4,2,4,3,3,4,4,Synthetic example: I would need understandable fees and easy access.,1,3,1,3,2
+NCB200208,2026-06-25,2,5,1,68,4,1,8,3,2,1,0,1,4,3,5,3,5,5,4,3,3,5,4,3,3,3,Synthetic example: I need clear information and reliable service.,99,,,,
+NCB200209,2026-06-25,2,6,1,47,3,1,3,5,3,1,0,1,3,3,3,3,4,4,3,4,4,4,5,3,5,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200210,2026-06-25,2,7,1,50,4,2,2,3,1,1,0,1,5,3,4,3,5,3,4,5,5,4,3,3,4,4,Synthetic example: I want help without repeating the same details.,1,4,28,4,4
+NCB200211,2026-06-25,2,2,1,64,4,2,6,1,2,1,0,1,1,1,5,3,5,5,4,4,4,5,4,5,4,5,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200212,2026-06-25,2,3,1,32,2,1,7,2,1,1,0,1,4,99,3,3,5,3,5,4,2,2,3,2,4,5,Synthetic example: I want help without repeating the same details.,1,3,13,1,4
+NCB200213,2026-06-25,2,4,1,44,3,2,7,4,3,1,0,1,4,4,3,5,4,3,4,4,3,3,2,3,5,5,Synthetic example: I would need understandable fees and easy access.,1,6,21,4,4
+NCB200214,2026-06-25,2,5,1,48,3,1,5,99,3,1,0,1,5,3,2,5,4,4,4,4,4,5,4,4,3,2,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200215,2026-06-25,2,6,1,60,4,1,9,99,3,1,0,1,4,3,4,3,4,4,5,4,4,5,4,5,3,5,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200216,2026-06-25,2,7,1,19,1,2,4,1,2,1,0,1,1,4,5,4,3,2,4,4,5,3,4,5,3,5,Synthetic example: I would need understandable fees and easy access.,1,5,19,1,3
+NCB200217,2026-06-25,2,2,1,23,1,1,8,2,2,1,0,1,3,99,5,3,3,4,4,5,5,5,4,4,4,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200218,2026-06-25,2,3,1,44,3,1,1,1,3,1,0,1,3,1,4,3,4,5,2,3,5,4,5,4,5,3,Synthetic example: I would need understandable fees and easy access.,1,3,11,1,2
+NCB200219,2026-06-25,2,4,1,59,4,2,6,3,3,1,0,1,2,3,2,4,4,3,5,5,4,4,5,5,4,5,Synthetic example: I would need understandable fees and easy access.,1,5,15,3,4
+NCB200220,2026-06-25,2,5,1,49,3,1,9,5,3,1,0,0,,1,,5,,2,,2,,5,,5,,5,Synthetic example: I want help without repeating the same details.,1,6,10,2,4
+NCB200221,2026-06-25,2,6,1,34,2,2,3,1,3,1,0,1,5,3,5,5,3,5,3,2,5,4,1,4,5,4,Synthetic example: I want help without repeating the same details.,1,5,14,4,4
+NCB200222,2026-06-25,2,7,1,64,4,1,8,4,3,1,0,1,4,2,4,5,4,4,2,3,5,5,1,5,4,2,Synthetic example: I want help without repeating the same details.,1,4,18,3,3
+NCB200223,2026-06-25,2,2,1,54,4,1,7,2,1,1,0,0,,3,,4,,5,,4,,3,,4,,5,Synthetic example: I need clear information and reliable service.,1,5,0,2,1
+NCB200224,2026-06-25,2,3,1,35,3,2,1,5,3,1,0,0,,4,,3,,99,,3,,4,,4,,4,Synthetic example: I would need understandable fees and easy access.,1,2,7,4,3
+NCB200225,2026-06-25,2,4,1,41,3,2,8,3,3,1,0,1,2,3,3,5,3,2,5,4,4,3,5,5,5,4,Synthetic example: I want help without repeating the same details.,1,4,1,3,4
+NCB200226,2026-06-25,2,5,1,67,4,2,6,3,1,1,0,1,2,4,5,3,4,5,3,3,5,4,4,4,3,5,Synthetic example: I want help without repeating the same details.,1,5,7,1,5
+NCB200227,2026-06-25,2,6,1,48,3,2,9,3,2,1,0,1,4,2,2,5,5,4,4,3,3,4,5,4,3,2,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200228,2026-06-25,2,7,1,23,1,1,1,5,3,1,0,0,,3,,5,,5,,3,,5,,3,,5,Synthetic example: I want help without repeating the same details.,1,3,22,1,4
+NCB200229,2026-06-25,2,2,1,18,1,2,6,1,1,1,0,1,5,1,5,3,3,4,4,4,4,2,3,4,5,4,Synthetic example: I want help without repeating the same details.,1,3,9,4,4
+NCB200230,2026-06-25,2,3,1,42,3,4,4,4,1,1,0,1,2,2,3,3,5,4,2,3,4,5,4,4,4,3,Synthetic example: I would need understandable fees and easy access.,1,2,28,2,3
+NCB200231,2026-06-25,2,4,1,29,2,1,3,3,3,1,0,1,4,3,3,5,3,2,3,4,2,4,4,3,5,5,Synthetic example: I need clear information and reliable service.,1,2,7,4,4
+NCB200232,2026-06-25,2,5,1,29,2,4,3,99,3,1,0,1,3,1,4,5,5,4,5,2,4,3,5,4,4,3,Synthetic example: I want help without repeating the same details.,1,6,4,3,4
+NCB200233,2026-06-25,2,6,1,39,3,1,6,2,3,1,0,1,3,99,4,3,4,4,4,5,5,4,5,5,3,5,Synthetic example: I want help without repeating the same details.,1,3,22,1,3
+NCB200234,2026-06-25,2,7,1,43,3,1,5,99,2,1,0,1,4,99,5,4,4,2,3,4,2,4,4,4,5,2,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200235,2026-06-25,2,2,1,48,3,1,3,3,3,1,0,1,3,2,3,5,4,3,3,3,3,3,3,3,5,3,Synthetic example: I want help without repeating the same details.,1,4,15,3,3
+NCB200236,2026-06-25,2,3,1,57,4,2,1,4,2,1,0,1,3,99,4,4,4,5,3,5,3,5,4,4,3,5,Synthetic example: I need clear information and reliable service.,1,3,4,4,4
+NCB200237,2026-06-25,2,4,1,30,2,2,8,3,1,1,0,1,2,1,2,3,4,5,4,5,4,3,3,3,5,5,Synthetic example: I would need understandable fees and easy access.,1,2,10,1,5
+NCB200238,2026-06-25,2,5,1,35,3,1,5,4,3,1,0,1,3,3,5,5,5,4,5,4,4,5,4,3,5,4,Synthetic example: I would need understandable fees and easy access.,1,6,25,2,2
+NCB200239,2026-06-25,2,6,1,33,2,1,6,1,1,1,0,1,5,1,5,3,4,4,5,5,3,3,4,3,3,3,Synthetic example: I need clear information and reliable service.,1,4,7,3,2
+NCB200240,2026-06-25,2,7,1,35,3,1,1,2,2,1,0,0,,3,,5,,4,,3,,4,,4,,5,Synthetic example: I want help without repeating the same details.,1,1,0,1,3
+NCB200241,2026-06-25,2,2,1,29,2,2,4,2,2,1,0,1,3,3,3,5,5,5,4,5,4,5,3,4,5,4,Synthetic example: I would need understandable fees and easy access.,1,5,25,3,3
+NCB200242,2026-06-25,2,3,1,18,1,1,6,99,1,1,0,1,3,3,4,4,4,5,5,2,2,5,3,5,3,4,Synthetic example: I want help without repeating the same details.,1,3,18,4,2
+NCB200243,2026-06-25,2,4,1,29,2,1,5,4,3,1,0,1,2,1,4,4,5,4,3,3,5,5,4,2,5,3,Synthetic example: I would need understandable fees and easy access.,1,5,7,1,4
+NCB200244,2026-06-25,2,5,1,23,1,2,8,2,3,1,0,0,,3,,3,,4,,4,,4,,3,,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200245,2026-06-25,2,6,1,66,4,2,8,5,3,1,0,1,3,4,3,5,4,5,5,4,5,4,3,5,1,3,Synthetic example: I would need understandable fees and easy access.,1,4,9,3,3
+NCB200246,2026-06-25,2,7,1,60,4,2,6,2,2,1,0,1,3,3,3,5,3,5,5,2,4,4,4,5,5,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200247,2026-06-25,2,2,1,45,3,2,4,5,1,1,0,1,3,1,2,5,3,5,2,5,5,5,5,5,3,5,Synthetic example: I need clear information and reliable service.,1,1,16,4,4
+NCB200248,2026-06-25,2,3,1,46,3,1,8,4,2,1,0,1,3,4,4,4,3,4,3,4,5,5,3,3,4,4,Synthetic example: I would need understandable fees and easy access.,1,1,19,4,5
+NCB200249,2026-06-25,2,4,1,25,2,1,8,5,1,1,0,1,3,1,2,99,4,2,3,3,3,5,3,4,2,3,Synthetic example: I want help without repeating the same details.,1,3,26,3,4
+NCB200250,2026-06-25,2,5,1,19,1,2,3,99,3,1,0,1,3,99,5,3,4,5,5,5,3,5,4,3,3,5,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200251,2026-06-25,2,6,1,64,4,2,6,3,2,1,0,1,3,2,4,5,3,4,5,5,2,4,3,4,5,5,Synthetic example: I would need understandable fees and easy access.,1,2,6,2,3
+NCB200252,2026-06-25,2,7,1,29,2,2,8,5,2,1,0,1,2,4,4,4,2,4,4,4,3,5,3,3,4,4,Synthetic example: I need clear information and reliable service.,1,3,17,4,4
+NCB200253,2026-06-25,2,2,1,56,4,2,1,1,3,1,0,1,4,99,5,3,3,4,4,4,3,5,4,5,5,4,Synthetic example: I would need understandable fees and easy access.,1,5,27,1,3
+NCB200254,2026-06-25,2,3,1,21,1,1,6,99,1,1,0,1,3,4,3,3,4,1,3,2,5,2,5,5,4,3,Synthetic example: I need clear information and reliable service.,1,4,22,2,5
+NCB200255,2026-06-25,2,4,1,64,4,1,4,5,1,1,0,1,3,1,5,4,4,5,5,5,3,3,4,5,5,2,Synthetic example: I would need understandable fees and easy access.,1,3,26,4,2
+NCB200256,2026-06-25,2,5,1,67,4,1,4,2,2,1,0,0,,1,,5,,3,,3,,3,,4,,4,Synthetic example: I want help without repeating the same details.,1,2,13,2,4
+NCB200257,2026-06-25,2,6,1,23,1,1,8,1,2,1,0,1,1,4,2,5,4,5,5,4,3,4,4,5,4,5,Synthetic example: I would need understandable fees and easy access.,1,5,29,1,4
+NCB200258,2026-06-25,2,7,1,53,4,1,5,3,3,1,0,1,4,3,5,3,4,4,3,5,4,3,4,4,5,99,Synthetic example: I would need understandable fees and easy access.,1,2,15,1,5
+NCB200259,2026-06-25,2,2,1,32,2,2,3,2,1,1,0,1,3,4,4,3,4,4,3,2,3,99,5,4,3,4,Synthetic example: I would need understandable fees and easy access.,1,3,30,2,5
+NCB200260,2026-06-25,2,3,1,32,2,1,8,99,2,1,0,1,5,1,5,3,5,5,3,4,4,4,3,4,3,4,Synthetic example: I need clear information and reliable service.,1,3,3,1,4
+NCB200261,2026-06-25,2,4,1,69,4,2,7,3,2,1,0,1,3,99,3,3,3,3,5,4,4,2,3,3,5,3,Synthetic example: I want help without repeating the same details.,1,6,6,1,5
+NCB200262,2026-06-25,2,5,1,45,3,1,9,99,2,1,0,1,4,3,3,2,5,3,3,2,4,5,4,99,4,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200263,2026-06-25,2,6,1,29,2,1,1,3,3,1,0,1,4,3,5,5,5,5,5,5,4,99,3,4,4,4,Synthetic example: I would need understandable fees and easy access.,1,3,6,4,5
+NCB200264,2026-06-25,2,7,1,62,4,2,1,99,1,1,0,1,3,2,5,3,3,3,4,4,4,3,5,4,4,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200265,2026-06-25,2,2,1,22,1,1,4,99,3,1,0,1,2,2,4,3,4,4,4,4,4,5,5,3,4,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200266,2026-06-25,2,3,1,37,3,2,7,2,1,1,0,1,4,1,3,4,5,4,3,2,5,5,5,4,5,5,Synthetic example: I would need understandable fees and easy access.,1,5,1,4,3
+NCB200267,2026-06-25,2,4,1,66,4,1,4,99,3,1,0,1,4,99,3,4,5,5,5,5,5,5,3,4,3,2,Synthetic example: I want help without repeating the same details.,1,5,6,1,3
+NCB200268,2026-06-25,2,5,1,57,4,2,7,3,1,1,0,1,3,99,4,4,4,4,4,4,5,5,4,3,3,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200269,2026-06-25,2,6,1,36,3,2,4,3,1,1,0,1,4,4,4,4,5,5,3,3,3,3,4,4,5,5,Synthetic example: I would need understandable fees and easy access.,1,5,20,3,3
+NCB200270,2026-06-25,2,7,1,21,1,1,2,99,1,1,0,1,1,99,4,99,5,4,4,4,2,4,3,3,4,5,Synthetic example: I need clear information and reliable service.,1,1,6,3,4
+NCB200271,2026-06-25,2,2,1,67,4,1,7,1,3,1,0,1,3,3,4,4,3,4,5,3,4,5,4,5,5,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200272,2026-06-25,2,3,1,61,4,1,5,5,2,1,0,1,3,2,4,4,3,5,5,4,5,4,4,4,2,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200273,2026-06-25,2,4,1,40,3,2,7,4,1,1,0,1,1,3,5,3,5,4,4,5,4,5,4,5,4,4,Synthetic example: I need clear information and reliable service.,1,3,23,1,3
+NCB200274,2026-06-25,2,5,1,29,2,1,4,5,3,1,0,1,3,1,4,4,5,4,5,4,4,5,5,4,5,5,Synthetic example: I would need understandable fees and easy access.,1,5,0,3,3
+NCB200275,2026-06-25,2,6,1,33,2,1,6,1,1,1,0,1,2,2,3,4,4,5,1,4,4,3,3,3,5,1,Synthetic example: I need clear information and reliable service.,1,4,15,4,5
+NCB200276,2026-06-25,2,7,1,24,1,2,5,5,3,1,0,1,3,4,3,5,4,4,4,99,4,5,4,99,4,3,Synthetic example: I would need understandable fees and easy access.,1,4,10,1,3
+NCB200277,2026-06-25,2,2,1,56,4,2,9,4,1,1,0,1,4,2,5,5,4,3,4,4,4,4,4,5,3,5,Synthetic example: I want help without repeating the same details.,1,5,26,1,4
+NCB200278,2026-06-25,2,3,1,23,1,4,4,1,1,1,0,1,3,3,4,3,4,3,4,3,3,5,4,5,3,4,Synthetic example: I need clear information and reliable service.,1,2,30,1,4
+NCB200279,2026-06-25,2,4,1,32,2,1,9,3,1,1,0,0,,1,,4,,4,,4,,4,,3,,5,Synthetic example: I want help without repeating the same details.,1,2,12,4,2
+NCB200280,2026-06-25,2,5,1,19,1,2,6,5,2,1,0,1,3,99,3,4,3,4,4,5,4,4,4,5,5,4,Synthetic example: I would need understandable fees and easy access.,1,5,17,1,3
+NCB200281,2026-06-25,2,6,1,62,4,1,9,5,1,1,0,1,3,3,5,3,4,5,4,2,4,5,5,4,4,4,Synthetic example: I need clear information and reliable service.,1,4,13,4,2
+NCB200282,2026-06-25,2,7,1,59,4,1,8,4,3,1,0,1,4,1,4,3,5,5,2,5,5,99,3,2,3,5,Synthetic example: I need clear information and reliable service.,1,6,14,3,3
+NCB200283,2026-06-25,2,2,1,62,4,2,4,5,3,1,0,0,,3,,4,,4,,3,,4,,4,,4,Synthetic example: I need clear information and reliable service.,1,4,8,2,4
+NCB200284,2026-06-25,2,3,1,58,4,1,8,99,1,1,0,1,5,3,5,4,3,3,4,5,3,4,3,3,5,3,Synthetic example: I would need understandable fees and easy access.,1,3,11,3,3
+NCB200285,2026-06-25,2,4,1,58,4,2,1,5,3,1,0,1,3,2,5,5,5,3,4,5,4,3,3,3,4,5,Synthetic example: I would need understandable fees and easy access.,1,3,11,3,4
+NCB200286,2026-06-25,2,5,1,42,3,4,6,4,3,1,0,1,2,3,4,5,4,4,4,5,5,4,2,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,2,6,1,3
+NCB200287,2026-06-25,2,6,1,53,4,1,1,5,2,1,0,1,3,2,5,4,3,4,4,2,3,4,5,5,5,4,Synthetic example: I need clear information and reliable service.,1,4,11,4,3
+NCB200288,2026-06-25,2,7,1,56,4,2,4,5,3,1,0,1,5,3,5,4,4,4,2,5,3,4,5,5,4,5,Synthetic example: I need clear information and reliable service.,1,6,29,2,2
+NCB200289,2026-06-25,2,2,1,32,2,1,2,5,2,1,0,1,4,2,3,3,4,3,4,5,4,4,3,3,4,5,Synthetic example: I would need understandable fees and easy access.,1,5,20,1,4
+NCB200290,2026-06-25,2,3,1,50,4,1,5,3,3,1,0,1,2,1,5,5,2,5,5,4,4,5,4,4,5,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200291,2026-06-25,2,4,1,30,2,1,4,2,1,1,0,1,4,2,5,5,4,5,4,4,3,5,5,4,5,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200292,2026-06-25,2,5,1,37,3,4,2,5,2,1,0,1,4,4,5,4,3,5,2,3,4,5,4,99,5,5,Synthetic example: I want help without repeating the same details.,1,6,18,3,3
+NCB200293,2026-06-25,2,6,1,28,2,2,6,2,3,1,0,1,4,3,4,4,3,4,4,4,4,5,3,5,3,2,Synthetic example: I want help without repeating the same details.,1,6,7,2,4
+NCB200294,2026-06-25,2,7,1,48,3,2,4,4,2,1,0,1,3,1,3,4,3,3,4,5,4,99,5,4,4,3,Synthetic example: I would need understandable fees and easy access.,1,5,12,3,4
+NCB200295,2026-06-25,2,2,1,69,4,2,4,99,1,1,0,1,3,99,4,5,4,5,2,4,4,4,5,99,3,4,Synthetic example: I want help without repeating the same details.,1,5,19,2,5
+NCB200296,2026-06-25,2,3,1,60,4,2,5,3,2,1,0,1,4,3,5,5,3,4,5,3,4,3,4,3,3,4,Synthetic example: I need clear information and reliable service.,1,6,12,1,3
+NCB200297,2026-06-25,2,4,1,23,1,2,1,2,3,1,0,1,4,2,5,5,3,3,5,5,5,5,5,5,3,5,Synthetic example: I want help without repeating the same details.,1,1,8,1,3
+NCB200298,2026-06-25,2,5,1,55,4,1,2,2,2,1,0,0,,3,,2,,5,,99,,3,,4,,4,Synthetic example: I want help without repeating the same details.,1,1,0,3,4
+NCB200299,2026-06-25,2,6,1,22,1,2,3,2,3,1,0,1,3,99,5,4,4,3,5,3,1,4,4,5,5,1,Synthetic example: I need clear information and reliable service.,1,2,10,3,4
+NCB200300,2026-06-25,2,7,1,49,3,2,6,4,3,1,0,1,3,2,4,4,3,3,5,4,4,5,3,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,4,14,3,2
+NCB200301,2026-06-25,2,2,1,60,4,2,1,2,2,1,0,1,4,1,5,4,5,4,5,4,5,5,4,4,4,4,Synthetic example: I need clear information and reliable service.,1,6,15,4,3
+NCB200302,2026-06-25,2,3,1,32,2,1,2,5,3,1,0,1,3,2,4,4,3,4,4,4,5,4,4,3,5,3,Synthetic example: I want help without repeating the same details.,1,1,28,3,3
+NCB200303,2026-06-25,2,4,1,20,1,1,2,2,2,1,0,1,2,3,3,3,3,3,4,4,3,5,4,4,5,3,Synthetic example: I want help without repeating the same details.,1,5,7,1,4
+NCB200304,2026-06-25,2,5,1,67,4,2,9,5,3,1,0,1,3,3,5,5,4,2,5,3,3,5,2,4,3,4,Synthetic example: I need clear information and reliable service.,1,2,0,2,4
+NCB200305,2026-06-25,2,6,1,41,3,1,9,1,1,1,0,1,5,3,5,4,4,5,5,2,4,4,3,5,4,2,Synthetic example: I need clear information and reliable service.,1,1,0,2,3
+NCB200306,2026-06-25,2,7,1,58,4,2,7,1,2,1,0,1,3,2,4,4,2,5,5,4,3,3,4,3,5,4,Synthetic example: I want help without repeating the same details.,1,4,23,3,3
+NCB200307,2026-06-25,2,2,1,31,2,1,6,3,2,1,0,1,3,1,4,3,3,4,2,4,3,3,4,2,2,4,Synthetic example: I need clear information and reliable service.,1,2,26,2,4
+NCB200308,2026-06-25,2,3,1,45,3,2,2,3,1,1,0,1,4,3,5,4,2,4,3,4,5,5,4,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,1,27,4,2
+NCB200309,2026-06-25,2,4,1,22,1,2,5,3,2,1,0,1,3,99,2,2,4,3,3,3,4,4,4,4,4,3,Synthetic example: I want help without repeating the same details.,1,4,3,1,3
+NCB200310,2026-06-25,2,5,1,47,3,1,4,4,3,1,0,1,3,3,2,4,3,5,4,4,3,3,4,5,3,2,Synthetic example: I would need understandable fees and easy access.,1,6,6,4,2
+NCB200311,2026-06-25,2,6,1,21,1,1,4,2,1,1,0,1,5,1,4,4,5,5,4,3,4,4,4,5,3,3,Synthetic example: I would need understandable fees and easy access.,1,1,7,1,4
+NCB200312,2026-06-25,2,7,1,22,1,2,2,2,2,1,0,0,,99,,3,,5,,3,,4,,5,,3,Synthetic example: I need clear information and reliable service.,1,3,25,4,4
+NCB200313,2026-06-25,2,2,1,56,4,1,8,5,2,1,0,1,4,1,3,3,5,3,4,5,4,3,4,5,4,4,Synthetic example: I want help without repeating the same details.,1,1,25,2,5
+NCB200314,2026-06-25,2,3,1,20,1,2,7,99,1,1,0,1,3,3,4,3,5,5,4,3,4,5,5,3,5,3,Synthetic example: I need clear information and reliable service.,1,3,23,1,4
+NCB200315,2026-06-25,2,4,1,53,4,2,3,5,1,1,0,1,2,3,5,5,3,4,5,4,3,3,4,2,3,5,Synthetic example: I need clear information and reliable service.,1,6,29,2,3
+NCB200316,2026-06-25,2,5,1,69,4,1,6,3,3,1,0,1,5,2,5,4,3,4,5,5,5,4,5,4,4,3,Synthetic example: I want help without repeating the same details.,1,2,14,4,4
+NCB200317,2026-06-25,2,6,1,48,3,1,7,2,1,1,0,1,3,3,4,5,4,5,5,3,4,4,3,3,5,4,Synthetic example: I would need understandable fees and easy access.,1,5,2,3,4
+NCB200318,2026-06-25,2,7,1,60,4,1,8,2,2,1,0,1,3,2,4,5,5,99,3,4,4,4,5,5,5,4,Synthetic example: I want help without repeating the same details.,1,3,10,1,4
+NCB200319,2026-06-25,2,2,1,40,3,4,9,1,3,1,0,1,3,4,2,4,3,3,5,4,4,3,4,4,5,4,Synthetic example: I need clear information and reliable service.,1,4,24,2,2
+NCB200320,2026-06-25,2,3,1,38,3,2,2,99,3,1,0,1,2,3,3,4,4,5,5,2,3,5,5,4,3,4,Synthetic example: I would need understandable fees and easy access.,1,6,15,4,4
+NCB200321,2026-06-25,2,4,1,52,4,1,2,3,1,1,0,1,4,3,4,4,2,4,3,5,3,5,4,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,4,25,3,3
+NCB200322,2026-06-25,2,5,1,62,4,1,9,5,3,1,0,1,1,1,4,5,4,5,4,4,5,3,5,4,4,4,Synthetic example: I need clear information and reliable service.,1,3,19,2,1
+NCB200323,2026-06-25,2,6,1,19,1,2,3,4,3,1,0,1,3,1,4,5,4,5,5,2,5,3,4,4,5,5,Synthetic example: I need clear information and reliable service.,1,3,7,4,3
+NCB200324,2026-06-25,2,7,1,35,3,2,3,1,2,1,0,1,4,99,3,3,3,99,4,5,3,4,3,4,5,4,Synthetic example: I would need understandable fees and easy access.,1,1,20,4,4
+NCB200325,2026-06-25,2,2,1,57,4,2,3,3,3,1,0,1,3,3,3,4,5,4,5,5,5,4,5,4,3,5,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200326,2026-06-25,2,3,1,57,4,1,5,3,1,1,0,1,2,3,5,5,5,3,3,4,5,4,3,4,3,4,Synthetic example: I want help without repeating the same details.,1,2,9,3,5
+NCB200327,2026-06-25,2,4,1,27,2,1,8,3,1,1,0,1,4,4,4,4,3,3,3,4,3,3,3,5,4,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200328,2026-06-25,2,5,1,55,4,1,1,99,1,1,0,1,3,3,3,4,4,5,3,4,4,3,3,5,3,5,Synthetic example: I would need understandable fees and easy access.,1,2,0,4,2
+NCB200329,2026-06-25,2,6,1,40,3,2,6,99,1,1,0,1,2,99,4,5,3,5,5,4,4,5,5,5,4,3,Synthetic example: I need clear information and reliable service.,99,,,,
+NCB200330,2026-06-25,2,7,1,45,3,2,2,2,3,1,0,1,3,3,5,3,5,5,2,3,4,99,5,4,4,2,Synthetic example: I would need understandable fees and easy access.,1,5,28,1,5
+NCB200331,2026-06-25,2,2,1,18,1,1,8,99,2,1,0,1,2,2,4,4,3,5,3,4,2,5,5,5,3,2,Synthetic example: I need clear information and reliable service.,1,4,2,4,2
+NCB200332,2026-06-25,2,3,1,20,1,2,4,4,2,1,0,1,4,3,3,4,5,5,2,4,5,3,5,5,4,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200333,2026-06-25,2,4,1,32,2,2,9,4,3,1,0,1,4,3,4,4,5,5,4,3,3,3,3,2,4,5,Synthetic example: I need clear information and reliable service.,1,5,28,1,3
+NCB200334,2026-06-25,2,5,1,44,3,2,8,3,1,1,0,1,3,99,3,4,4,5,4,4,4,99,5,2,5,5,Synthetic example: I would need understandable fees and easy access.,1,1,16,1,5
+NCB200335,2026-06-25,2,6,1,25,2,2,5,5,1,1,0,1,5,1,4,4,5,3,5,5,3,4,3,5,4,4,Synthetic example: I need clear information and reliable service.,1,1,0,2,2
+NCB200336,2026-06-25,2,7,1,29,2,2,8,1,2,1,0,1,3,1,5,5,4,4,4,4,4,5,5,99,3,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200337,2026-06-25,2,2,1,59,4,2,1,1,2,1,0,1,4,4,3,5,5,4,3,3,5,3,3,3,3,5,Synthetic example: I would need understandable fees and easy access.,99,,,,
+NCB200338,2026-06-25,2,3,1,53,4,1,6,99,3,1,0,1,2,99,5,2,5,4,4,4,4,4,4,4,4,4,Synthetic example: I want help without repeating the same details.,1,4,18,3,3
+NCB200339,2026-06-25,2,4,1,67,4,2,1,4,3,1,0,1,3,3,5,99,3,3,5,3,4,5,3,5,4,4,Synthetic example: I need clear information and reliable service.,1,6,24,4,4
+NCB200340,2026-06-25,2,5,1,60,4,2,3,3,3,1,0,1,4,99,5,3,3,4,4,5,4,5,3,5,5,4,Synthetic example: I would need understandable fees and easy access.,1,3,12,4,3
+NCB200341,2026-06-25,2,6,1,59,4,1,4,99,2,1,0,1,3,4,5,3,4,5,5,5,3,5,4,5,5,4,Synthetic example: I want help without repeating the same details.,1,6,17,1,4
+NCB200342,2026-06-25,2,7,1,54,4,1,6,5,1,1,0,1,3,99,5,5,5,3,3,5,4,3,3,5,2,4,Synthetic example: I want help without repeating the same details.,1,2,29,2,3
+NCB200343,2026-06-25,2,2,1,35,3,1,6,1,2,1,0,1,3,3,4,5,4,3,5,3,4,4,5,4,4,4,Synthetic example: I want help without repeating the same details.,1,5,29,1,3
+NCB200344,2026-06-25,2,3,1,36,3,2,7,1,1,1,0,1,2,3,3,5,4,99,4,3,4,5,5,4,5,5,Synthetic example: I want help without repeating the same details.,99,,,,
+NCB200345,2026-06-25,2,4,1,43,3,1,4,2,2,1,0,1,2,4,5,4,2,5,4,3,4,5,5,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,3,24,4,4
+NCB200346,2026-06-25,2,5,1,64,4,2,5,5,2,1,0,1,3,2,4,5,5,4,5,4,5,5,4,5,3,5,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200347,2026-06-25,2,6,1,58,4,1,6,4,2,1,0,1,3,3,4,5,2,4,3,5,4,3,2,5,5,5,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200348,2026-06-25,2,7,1,67,4,1,6,1,3,1,0,1,4,4,5,3,5,5,5,3,5,3,3,5,4,3,Synthetic example: I want help without repeating the same details.,1,1,28,2,5
+NCB200349,2026-06-25,2,2,1,54,4,1,3,5,2,1,0,1,3,3,3,4,3,4,5,5,3,4,3,4,5,3,Synthetic example: I need clear information and reliable service.,1,5,2,1,2
+NCB200350,2026-06-25,2,3,1,23,1,2,5,5,2,1,0,1,3,2,4,5,4,4,3,5,4,5,5,3,4,4,Synthetic example: I want help without repeating the same details.,1,2,23,4,2
+NCB200351,2026-06-25,2,4,1,37,3,2,3,2,2,1,0,1,3,3,4,4,5,4,3,5,4,3,3,5,3,3,Synthetic example: I need clear information and reliable service.,1,2,23,4,4
+NCB200352,2026-06-25,2,5,1,45,3,1,5,1,3,1,0,1,2,2,4,4,5,3,5,5,4,3,4,4,3,5,Synthetic example: I need clear information and reliable service.,1,4,28,2,1
+NCB200353,2026-06-25,2,6,1,41,3,2,1,99,1,1,0,1,4,1,4,5,4,5,3,4,4,3,4,3,4,4,Synthetic example: I would need understandable fees and easy access.,1,4,1,2,4
+NCB200354,2026-06-25,2,7,1,20,1,1,1,5,3,1,0,1,2,99,3,3,3,4,4,5,4,4,4,5,5,3,Synthetic example: I need clear information and reliable service.,1,5,3,4,5
+NCB200355,2026-06-25,2,2,1,59,4,1,4,2,3,1,0,1,2,3,3,4,3,3,2,3,4,5,3,99,4,5,Synthetic example: I need clear information and reliable service.,1,6,21,2,3
+NCB200356,2026-06-25,2,3,1,56,4,2,6,3,3,1,0,1,3,2,4,3,5,3,5,4,3,4,5,5,5,4,Synthetic example: I would need understandable fees and easy access.,1,4,22,4,4
+NCB200357,2026-06-25,2,4,1,57,4,2,4,99,1,1,0,1,2,4,3,5,4,2,3,5,4,5,4,4,1,4,Synthetic example: I would need understandable fees and easy access.,1,4,21,2,5
+NCB200358,2026-06-25,2,5,1,39,3,1,1,4,2,1,0,1,2,1,4,4,5,5,4,4,5,4,4,5,3,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200359,2026-06-25,2,6,1,50,4,2,3,2,2,1,0,1,3,2,3,5,4,5,4,4,4,5,3,5,5,3,Synthetic example: I would need understandable fees and easy access.,1,2,20,2,4
+NCB200360,2026-06-25,2,7,1,32,2,2,2,1,1,1,0,1,2,2,2,5,4,5,5,5,3,5,3,4,3,2,Synthetic example: I would need understandable fees and easy access.,1,1,28,3,4
+NCB200361,2026-06-25,2,2,1,35,3,2,3,4,2,1,0,1,4,3,4,4,5,3,5,5,4,5,5,4,2,4,Synthetic example: I would need understandable fees and easy access.,1,2,6,1,2
+NCB200362,2026-06-25,2,3,1,62,4,2,1,5,3,1,0,0,,1,,3,,4,,4,,5,,5,,3,Synthetic example: I need clear information and reliable service.,1,3,24,1,4
+NCB200363,2026-06-25,2,4,1,32,2,2,8,2,1,1,0,1,2,3,1,4,3,4,5,3,4,5,4,5,4,3,Synthetic example: I want help without repeating the same details.,1,4,2,1,3
+NCB200364,2026-06-25,2,5,1,63,4,1,3,2,3,1,0,1,5,99,4,4,4,5,2,4,3,5,2,3,5,5,Synthetic example: I need clear information and reliable service.,1,1,8,2,5
+NCB200365,2026-06-25,2,6,1,23,1,2,5,3,2,1,0,0,,99,,4,,4,,3,,3,,5,,4,Synthetic example: I want help without repeating the same details.,1,5,3,1,2
+NCB200366,2026-06-25,2,7,1,43,3,2,8,4,2,1,0,1,3,1,3,4,5,3,3,5,5,5,4,4,4,2,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200367,2026-06-25,2,2,1,24,1,2,1,4,1,1,0,1,4,99,4,2,4,3,4,5,5,5,4,3,4,3,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200368,2026-06-25,2,3,1,43,3,1,7,1,3,1,0,1,2,3,3,5,4,5,3,4,4,5,4,99,5,5,Synthetic example: I want help without repeating the same details.,1,2,8,2,2
+NCB200369,2026-06-25,2,4,1,21,1,3,5,2,1,1,0,1,1,3,3,5,4,5,3,5,5,5,4,5,4,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200370,2026-06-25,2,5,1,65,4,2,6,3,2,1,0,1,4,2,2,5,4,3,3,4,5,4,5,3,2,3,Synthetic example: I need clear information and reliable service.,1,3,14,1,5
+NCB200371,2026-06-25,2,6,1,61,4,1,7,2,1,1,0,1,4,3,4,4,3,3,5,4,4,4,4,3,3,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200372,2026-06-25,2,7,1,41,3,3,5,1,1,1,0,1,4,3,3,5,5,5,4,3,3,5,5,3,4,3,Synthetic example: I need clear information and reliable service.,1,3,5,1,2
+NCB200373,2026-06-25,2,2,1,26,2,2,9,5,2,1,0,1,3,3,3,5,4,4,3,5,5,3,4,5,5,4,Synthetic example: I want help without repeating the same details.,1,4,25,2,3
+NCB200374,2026-06-25,2,3,1,27,2,4,2,1,2,1,0,1,3,2,4,4,3,4,5,2,5,5,5,3,4,5,Synthetic example: I need clear information and reliable service.,1,3,27,1,3
+NCB200375,2026-06-25,2,4,1,49,3,2,8,5,1,1,0,1,3,2,4,99,4,4,4,3,5,2,4,3,4,5,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200376,2026-06-25,2,5,1,45,3,2,4,4,1,1,0,1,4,4,5,3,3,5,5,4,4,5,5,5,5,4,Synthetic example: I need clear information and reliable service.,1,6,24,1,2
+NCB200377,2026-06-25,2,6,1,60,4,2,9,99,1,1,0,1,5,2,5,3,4,5,4,5,4,5,4,5,4,99,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200378,2026-06-25,2,7,1,46,3,2,1,4,2,1,0,1,3,3,3,5,4,99,5,4,5,4,5,3,5,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200379,2026-06-25,2,2,1,31,2,1,6,5,3,1,0,0,,3,,5,,3,,4,,3,,4,,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200380,2026-06-25,2,3,1,43,3,2,1,5,3,1,0,1,3,4,3,3,2,4,3,3,4,3,5,5,5,5,Synthetic example: I would need understandable fees and easy access.,1,3,22,1,5
+NCB200381,2026-06-25,2,4,1,31,2,3,3,3,3,1,0,1,3,1,4,5,2,5,4,4,4,5,3,5,5,3,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200382,2026-06-25,2,5,1,60,4,1,9,3,3,1,0,1,3,3,5,4,2,4,4,4,4,3,5,5,3,4,Synthetic example: I would need understandable fees and easy access.,1,5,27,2,4
+NCB200383,2026-06-25,2,6,1,54,4,2,9,2,3,1,0,1,5,4,4,3,5,5,3,4,4,5,5,3,4,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200384,2026-06-25,2,7,1,67,4,2,9,2,3,1,0,1,2,99,4,3,5,4,3,4,3,5,4,5,5,4,Synthetic example: I need clear information and reliable service.,1,3,27,3,2
+NCB200385,2026-06-25,2,2,1,20,1,2,7,4,1,1,0,1,5,2,5,4,5,5,4,5,4,5,4,4,5,99,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200386,2026-06-25,2,3,1,51,4,1,1,5,1,1,0,0,,99,,3,,5,,5,,5,,4,,2,Synthetic example: I want help without repeating the same details.,1,2,27,3,3
+NCB200387,2026-06-25,2,4,1,60,4,1,3,3,2,1,0,1,4,1,4,4,2,4,4,4,4,4,3,3,5,3,Synthetic example: I need clear information and reliable service.,1,5,6,3,3
+NCB200388,2026-06-25,2,5,1,32,2,2,5,99,2,1,0,1,3,99,4,3,5,5,3,4,5,3,5,3,4,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200389,2026-06-25,2,6,1,32,2,2,6,4,2,1,0,1,4,4,3,5,4,2,1,5,2,2,4,4,4,3,Synthetic example: I need clear information and reliable service.,1,3,29,1,4
+NCB200390,2026-06-25,2,7,1,54,4,1,5,99,2,1,0,1,3,3,5,4,4,3,3,4,4,1,2,3,4,5,Synthetic example: I want help without repeating the same details.,1,3,6,3,4
+NCB200391,2026-06-25,2,2,1,56,4,1,5,4,3,1,0,1,4,3,5,3,4,2,5,3,5,3,4,5,3,4,Synthetic example: I would need understandable fees and easy access.,1,3,18,1,4
+NCB200392,2026-06-25,2,3,1,24,1,1,2,1,2,1,0,1,4,3,3,4,3,4,3,4,5,4,5,5,3,3,Synthetic example: I need clear information and reliable service.,1,4,29,1,3
+NCB200393,2026-06-25,2,4,1,20,1,2,4,2,1,1,0,1,4,2,5,4,5,5,3,5,4,4,3,3,4,4,Synthetic example: I need clear information and reliable service.,1,1,13,1,2
+NCB200394,2026-06-25,2,5,1,27,2,2,8,5,2,1,0,1,4,1,3,5,4,4,4,4,3,99,5,5,4,5,Synthetic example: I would need understandable fees and easy access.,1,5,23,4,5
+NCB200395,2026-06-25,2,6,1,66,4,1,1,1,2,1,0,1,4,1,4,3,5,3,4,99,4,3,3,3,3,4,Synthetic example: I would need understandable fees and easy access.,1,4,29,4,4
+NCB200396,2026-06-25,2,7,1,19,1,2,9,2,3,1,0,1,3,3,4,3,2,3,5,5,4,4,5,4,4,5,Synthetic example: I want help without repeating the same details.,1,3,5,2,5
+NCB200397,2026-06-25,2,2,1,58,4,2,5,1,1,1,0,1,1,2,5,5,5,4,5,5,5,4,3,4,4,3,Synthetic example: I would need understandable fees and easy access.,1,6,13,2,5
+NCB200398,2026-06-25,2,3,1,57,4,2,9,2,2,1,0,1,3,3,4,4,4,4,4,5,3,2,5,3,4,3,Synthetic example: I want help without repeating the same details.,1,4,14,1,2
+NCB200399,2026-06-25,2,4,1,23,1,2,9,1,3,1,0,1,3,2,3,5,3,3,3,4,3,5,4,5,2,5,Synthetic example: I need clear information and reliable service.,1,3,0,2,4
+NCB200400,2026-06-25,2,5,1,46,3,2,3,2,1,1,0,1,3,4,3,4,3,5,4,5,4,4,5,4,3,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200401,2026-06-25,2,6,1,43,3,2,4,99,3,1,0,1,2,3,5,5,5,1,3,5,5,4,4,4,3,4,Synthetic example: I need clear information and reliable service.,1,6,14,2,2
+NCB200402,2026-06-25,2,7,1,53,4,1,6,1,3,1,0,1,2,3,3,5,4,3,5,3,5,3,1,3,3,5,Synthetic example: I need clear information and reliable service.,1,3,15,1,2
+NCB200403,2026-06-25,2,2,1,50,4,2,4,5,3,1,0,1,4,99,3,5,4,4,3,5,4,4,5,3,5,4,Synthetic example: I would need understandable fees and easy access.,1,3,20,2,4
+NCB200404,2026-06-25,2,3,1,45,3,1,4,5,1,1,0,0,,99,,5,,3,,4,,4,,5,,5,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200405,2026-06-25,2,4,1,47,3,1,4,1,1,1,0,1,2,3,5,4,4,5,2,3,4,99,5,4,4,5,Synthetic example: I would need understandable fees and easy access.,1,4,20,1,3
+NCB200406,2026-06-25,2,5,1,57,4,1,9,99,1,1,0,1,3,2,5,5,5,5,5,5,4,4,5,3,3,3,Synthetic example: I want help without repeating the same details.,1,1,12,4,4
+NCB200407,2026-06-25,2,6,1,57,4,1,6,2,3,1,0,1,4,1,5,5,5,3,4,4,5,4,4,4,3,4,Synthetic example: I would need understandable fees and easy access.,1,3,11,3,2
+NCB200408,2026-06-25,2,7,1,59,4,1,8,4,2,1,0,1,4,3,4,4,5,5,5,5,3,99,5,5,3,3,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200409,2026-06-25,2,2,1,34,2,1,1,2,2,1,0,1,4,99,4,3,3,5,4,3,3,5,5,3,3,3,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200410,2026-06-25,2,3,1,39,3,1,7,5,2,1,0,1,4,3,5,5,4,4,3,3,3,4,4,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,3,12,1,3
+NCB200411,2026-06-25,2,4,1,61,4,1,2,1,1,1,0,1,5,3,5,5,3,4,3,4,4,5,5,4,4,4,Synthetic example: I want help without repeating the same details.,1,3,11,3,3
+NCB200412,2026-06-25,2,5,1,33,2,1,1,2,2,1,0,1,5,1,4,5,5,3,3,4,5,4,4,5,3,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200413,2026-06-25,2,6,1,24,1,1,3,1,1,1,0,1,2,4,3,4,4,4,5,3,5,5,4,4,5,5,Synthetic example: I need clear information and reliable service.,1,1,6,1,3
+NCB200414,2026-06-25,2,7,1,23,1,1,2,99,1,1,0,1,2,4,3,4,3,4,4,4,5,4,3,5,5,4,Synthetic example: I need clear information and reliable service.,1,1,22,3,3
+NCB200415,2026-06-25,2,2,1,69,4,2,1,5,3,1,0,1,4,4,4,4,3,4,5,5,5,5,4,5,3,5,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200416,2026-06-25,2,3,1,46,3,1,6,1,3,1,0,1,3,4,5,3,5,4,5,3,4,2,4,5,4,3,Synthetic example: I would need understandable fees and easy access.,1,1,25,2,4
+NCB200417,2026-06-25,2,4,1,62,4,1,1,1,1,1,0,1,3,3,5,4,4,3,5,3,5,4,4,3,3,3,Synthetic example: I need clear information and reliable service.,1,5,3,3,2
+NCB200418,2026-06-25,2,5,1,43,3,1,3,3,3,1,0,1,2,1,5,3,5,3,5,5,5,4,4,4,5,3,Synthetic example: I want help without repeating the same details.,1,3,15,2,3
+NCB200419,2026-06-25,2,6,1,29,2,2,1,4,1,1,0,1,3,4,4,3,5,5,3,5,1,5,5,3,2,3,Synthetic example: I want help without repeating the same details.,1,1,17,4,3
+NCB200420,2026-06-25,2,7,1,51,4,1,4,5,1,1,0,1,4,3,4,4,5,5,4,2,3,5,3,5,5,5,Synthetic example: I need clear information and reliable service.,1,1,1,4,5
+NCB200421,2026-06-25,2,2,1,31,2,2,9,99,2,1,0,1,4,4,3,4,3,5,3,4,4,1,5,5,5,4,Synthetic example: I would need understandable fees and easy access.,1,3,18,3,3
+NCB200422,2026-06-25,2,3,1,57,4,2,6,5,3,1,0,1,3,4,5,4,4,3,3,3,3,3,4,4,3,4,Synthetic example: I want help without repeating the same details.,1,5,4,3,5
+NCB200423,2026-06-25,2,4,1,33,2,1,1,3,1,1,0,0,,1,,4,,2,,3,,1,,3,,5,Synthetic example: I would need understandable fees and easy access.,99,,,,
+NCB200424,2026-06-25,2,5,1,67,4,1,9,4,1,1,0,1,4,3,4,4,4,4,5,5,4,4,3,4,5,4,Synthetic example: I would need understandable fees and easy access.,1,5,0,2,2
+NCB200425,2026-06-25,2,6,1,44,3,1,9,1,2,1,0,1,3,1,4,3,3,4,3,4,5,5,3,4,3,4,Synthetic example: I need clear information and reliable service.,1,5,25,3,3
+NCB200426,2026-06-25,2,7,1,25,2,1,4,99,2,1,0,1,3,1,3,4,4,4,5,5,3,5,5,4,5,5,Synthetic example: I would need understandable fees and easy access.,1,5,4,3,2
+NCB200427,2026-06-25,2,2,1,18,1,1,7,99,1,1,0,0,,1,,5,,3,,5,,3,,4,,5,Synthetic example: I want help without repeating the same details.,1,3,14,3,2
+NCB200428,2026-06-25,2,3,1,36,3,1,3,4,2,1,0,0,,3,,5,,4,,5,,5,,5,,2,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200429,2026-06-25,2,4,1,57,4,1,4,2,1,1,0,1,4,2,4,4,5,4,4,5,3,4,4,1,4,5,Synthetic example: I want help without repeating the same details.,1,3,18,3,3
+NCB200430,2026-06-25,2,5,1,56,4,2,5,99,3,1,0,1,1,3,5,4,5,5,2,4,2,4,3,5,5,5,Synthetic example: I would need understandable fees and easy access.,1,1,6,4,1
+NCB200431,2026-06-25,2,6,1,34,2,2,9,2,1,1,0,1,3,2,4,5,4,3,3,5,4,5,4,3,4,4,Synthetic example: I want help without repeating the same details.,1,3,2,3,2
+NCB200432,2026-06-25,2,7,1,54,4,2,1,99,2,1,0,1,2,3,5,5,4,99,1,2,4,3,2,4,5,3,Synthetic example: I would need understandable fees and easy access.,1,5,25,3,3
+NCB200433,2026-06-25,2,2,1,50,4,1,1,4,2,1,0,1,3,3,3,5,4,3,3,5,5,5,3,3,3,5,Synthetic example: I need clear information and reliable service.,1,2,13,3,2
+NCB200434,2026-06-25,2,3,1,65,4,1,7,5,3,1,0,1,3,3,5,3,2,5,3,5,5,4,4,3,2,5,Synthetic example: I want help without repeating the same details.,1,1,2,2,5
+NCB200435,2026-06-25,2,4,1,35,3,3,7,4,2,1,0,1,2,1,5,3,5,5,4,5,4,4,3,4,5,5,Synthetic example: I would need understandable fees and easy access.,1,2,12,4,1
+NCB200436,2026-06-25,2,5,1,34,2,1,7,5,2,1,0,1,4,3,2,4,5,3,3,4,5,4,3,5,5,5,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200437,2026-06-25,2,6,1,33,2,1,7,2,3,1,0,1,3,3,4,3,4,4,3,3,5,3,2,4,4,5,Synthetic example: I would need understandable fees and easy access.,1,3,5,3,4
+NCB200438,2026-06-25,2,7,1,43,3,2,9,1,1,1,0,1,4,99,3,5,2,5,2,4,4,4,4,3,3,5,Synthetic example: I want help without repeating the same details.,1,5,19,4,5
+NCB200439,2026-06-25,2,2,1,36,3,2,4,2,3,1,0,1,4,99,3,4,5,3,4,5,3,5,4,4,5,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200440,2026-06-25,2,3,1,20,1,2,4,1,2,1,0,0,,2,,3,,4,,5,,5,,4,,4,Synthetic example: I want help without repeating the same details.,1,5,23,1,3
+NCB200441,2026-06-25,2,4,1,28,2,1,9,99,1,1,0,1,4,99,5,5,3,4,4,99,4,4,5,5,5,4,Synthetic example: I need clear information and reliable service.,1,2,21,1,4
+NCB200442,2026-06-25,2,5,1,54,4,2,9,3,2,1,0,1,3,1,3,5,4,3,5,4,3,4,5,5,2,4,Synthetic example: I need clear information and reliable service.,1,3,30,1,4
+NCB200443,2026-06-25,2,6,1,54,4,1,2,99,2,1,0,1,1,2,3,3,4,4,4,4,5,3,4,4,5,5,Synthetic example: I would need understandable fees and easy access.,1,2,14,1,4
+NCB200444,2026-06-25,2,7,1,44,3,2,1,1,1,1,0,1,1,3,3,5,4,4,4,2,4,5,4,5,5,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200445,2026-06-25,2,2,1,42,3,1,1,99,3,1,0,0,,99,,5,,4,,3,,5,,5,,4,Synthetic example: I need clear information and reliable service.,1,5,9,4,4
+NCB200446,2026-06-25,2,3,1,18,1,2,6,4,3,1,0,0,,3,,1,,3,,3,,5,,5,,3,Synthetic example: I need clear information and reliable service.,1,4,4,4,4
+NCB200447,2026-06-25,2,4,1,46,3,2,5,4,1,1,0,1,4,1,4,5,3,4,4,3,5,4,3,5,4,4,Synthetic example: I need clear information and reliable service.,1,4,25,3,3
+NCB200448,2026-06-25,2,5,1,62,4,1,1,1,3,1,0,1,3,99,5,5,5,4,5,3,4,3,2,3,5,3,Synthetic example: I want help without repeating the same details.,1,5,15,1,3
+NCB200449,2026-06-25,2,6,1,32,2,2,6,1,3,1,0,1,4,2,5,2,4,4,3,5,4,5,5,4,4,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200450,2026-06-25,2,7,1,60,4,1,2,3,3,1,0,1,3,3,2,4,5,4,5,5,4,4,5,3,5,3,Synthetic example: I want help without repeating the same details.,1,2,10,1,2
+NCB200451,2026-06-25,2,2,1,48,3,1,3,5,1,1,0,1,2,3,3,4,3,4,4,4,2,4,4,4,5,5,Synthetic example: I would need understandable fees and easy access.,1,1,20,3,4
+NCB200452,2026-06-25,2,3,1,56,4,2,8,2,1,1,0,1,3,3,3,5,4,5,4,5,4,4,3,3,5,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200453,2026-06-25,2,4,1,58,4,1,6,3,2,1,0,1,1,3,4,5,3,4,3,5,5,5,5,5,4,4,Synthetic example: I need clear information and reliable service.,1,5,16,2,2
+NCB200454,2026-06-25,2,5,1,35,3,1,2,5,2,1,0,1,2,1,2,3,5,4,4,3,5,1,3,2,3,5,Synthetic example: I want help without repeating the same details.,1,5,9,4,5
+NCB200455,2026-06-25,2,6,1,30,2,1,9,5,2,1,0,1,3,3,3,5,2,4,4,5,3,4,3,3,4,4,Synthetic example: I need clear information and reliable service.,1,5,6,1,5
+NCB200456,2026-06-25,2,7,1,18,1,1,5,3,1,1,0,1,3,99,3,3,4,4,2,5,3,4,4,5,5,5,Synthetic example: I would need understandable fees and easy access.,1,2,17,1,2
+NCB200457,2026-06-25,2,2,1,37,3,1,7,2,1,1,0,1,3,3,4,4,5,99,5,4,5,3,3,4,4,4,Synthetic example: I need clear information and reliable service.,1,5,15,1,5
+NCB200458,2026-06-25,2,3,1,24,1,2,2,4,2,1,0,1,3,1,4,3,3,3,4,5,3,4,4,3,4,4,Synthetic example: I want help without repeating the same details.,1,1,21,4,5
+NCB200459,2026-06-25,2,4,1,57,4,2,6,99,3,1,0,1,2,3,3,4,4,3,3,4,4,5,4,4,4,3,Synthetic example: I need clear information and reliable service.,1,1,21,4,4
+NCB200460,2026-06-25,2,5,1,28,2,2,3,1,2,1,0,1,3,3,2,4,2,5,4,3,5,4,4,5,4,4,Synthetic example: I need clear information and reliable service.,1,1,27,3,3
+NCB200461,2026-06-25,2,6,1,61,4,1,6,2,2,1,0,1,2,3,5,3,3,3,2,4,4,5,4,3,4,4,Synthetic example: I would need understandable fees and easy access.,1,3,17,2,4
+NCB200462,2026-06-25,2,7,1,58,4,2,1,1,3,1,0,1,2,1,5,3,4,5,3,2,5,5,5,4,3,5,Synthetic example: I need clear information and reliable service.,1,3,11,3,2
+NCB200463,2026-06-25,2,2,1,62,4,2,5,2,1,1,0,1,3,4,3,5,3,5,4,5,1,3,3,3,4,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200464,2026-06-25,2,3,1,51,4,2,7,99,3,1,0,1,4,3,5,5,3,4,4,2,2,3,5,5,4,5,Synthetic example: I need clear information and reliable service.,1,5,11,4,4
+NCB200465,2026-06-25,2,4,1,28,2,3,5,4,3,1,0,0,,99,,5,,3,,3,,5,,4,,5,Synthetic example: I want help without repeating the same details.,1,4,7,3,3
+NCB200466,2026-06-25,2,5,1,28,2,2,8,99,2,1,0,1,2,99,4,5,5,2,3,4,4,3,4,2,4,5,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200467,2026-06-25,2,6,1,26,2,2,6,99,2,1,0,1,3,2,3,5,5,2,5,4,4,1,4,4,5,2,Synthetic example: I would need understandable fees and easy access.,1,5,6,3,3
+NCB200468,2026-06-25,2,7,1,50,4,1,4,2,3,1,0,0,,3,,3,,4,,5,,3,,3,,2,Synthetic example: I would need understandable fees and easy access.,1,2,8,4,3
+NCB200469,2026-06-25,2,2,1,52,4,2,9,3,1,1,0,1,4,1,5,3,4,4,4,5,4,4,4,4,4,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200470,2026-06-25,2,3,1,40,3,1,1,4,2,1,0,1,4,3,5,5,3,4,3,5,3,5,4,5,3,5,Synthetic example: I need clear information and reliable service.,1,1,18,2,5
+NCB200471,2026-06-25,2,4,1,62,4,1,9,4,2,1,0,1,4,99,4,4,5,5,3,3,5,5,5,5,2,4,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200472,2026-06-25,2,5,1,23,1,2,8,4,2,1,0,0,,3,,3,,2,,4,,3,,5,,2,Synthetic example: I want help without repeating the same details.,1,5,17,1,3
+NCB200473,2026-06-25,2,6,1,63,4,2,6,5,2,1,0,1,2,3,4,5,4,4,4,5,4,4,4,4,4,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200474,2026-06-25,2,7,1,34,2,1,5,5,1,1,0,1,2,3,3,2,5,3,4,3,5,4,4,4,4,4,Synthetic example: I need clear information and reliable service.,1,2,1,4,4
+NCB200475,2026-06-25,2,2,1,64,4,1,7,5,2,1,0,1,2,3,2,5,4,4,3,3,3,3,1,5,5,3,Synthetic example: I would need understandable fees and easy access.,1,6,26,1,4
+NCB200476,2026-06-25,2,3,1,67,4,2,7,1,1,1,0,1,3,3,5,3,5,3,3,5,3,5,3,3,2,3,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200477,2026-06-25,2,4,1,22,1,1,5,99,1,1,0,1,4,3,5,4,5,4,4,5,4,5,5,3,5,3,Synthetic example: I would need understandable fees and easy access.,1,4,25,3,3
+NCB200478,2026-06-25,2,5,1,33,2,2,4,3,3,1,0,1,3,4,5,5,4,5,5,5,3,4,2,4,3,3,Synthetic example: I want help without repeating the same details.,99,,,,
+NCB200479,2026-06-25,2,6,1,30,2,2,4,4,2,1,0,0,,4,,4,,5,,3,,4,,5,,5,Synthetic example: I want help without repeating the same details.,99,,,,
+NCB200480,2026-06-25,2,7,1,19,1,2,8,2,1,1,0,1,4,2,4,4,3,5,5,4,3,5,5,4,3,3,Synthetic example: I need clear information and reliable service.,1,5,25,3,4
+NCB200481,2026-06-25,2,2,1,69,4,2,4,3,1,1,0,1,3,3,2,4,5,5,3,4,3,5,4,5,2,5,Synthetic example: I want help without repeating the same details.,1,6,2,2,3
+NCB200482,2026-06-25,2,3,1,67,4,1,9,2,3,1,0,1,2,2,3,5,5,4,4,4,3,5,4,4,4,5,Synthetic example: I want help without repeating the same details.,1,3,23,4,3
+NCB200483,2026-06-25,2,4,1,55,4,2,5,2,2,1,0,1,4,99,4,4,3,4,4,3,5,4,5,5,2,5,Synthetic example: I would need understandable fees and easy access.,1,1,8,1,2
+NCB200484,2026-06-25,2,5,1,39,3,2,6,99,1,1,0,0,,99,,3,,4,,5,,5,,4,,5,Synthetic example: I need clear information and reliable service.,1,2,17,3,4
+NCB200485,2026-06-25,2,6,1,24,1,4,6,5,3,1,0,1,5,99,3,3,5,5,5,2,5,4,3,3,5,4,Synthetic example: I would need understandable fees and easy access.,1,3,14,1,3
+NCB200486,2026-06-25,2,7,1,33,2,2,8,2,3,1,0,1,2,99,3,4,5,3,3,5,2,4,5,4,4,4,Synthetic example: I want help without repeating the same details.,0,,,,
+NCB200487,2026-06-25,2,2,1,35,3,2,8,99,2,1,0,1,2,4,4,3,5,3,5,4,5,5,5,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,1,6,3,2
+NCB200488,2026-06-25,2,3,1,47,3,2,5,3,1,1,0,1,3,3,4,5,4,5,4,4,3,5,4,99,5,5,Synthetic example: I need clear information and reliable service.,0,,,,
+NCB200489,2026-06-25,2,4,1,62,4,1,5,1,2,1,0,1,2,3,3,4,4,4,5,4,4,5,4,5,3,5,Synthetic example: I want help without repeating the same details.,1,3,1,3,99
+NCB200490,2026-06-25,2,5,1,36,3,2,8,99,3,1,0,1,3,3,5,5,5,3,4,4,4,3,3,5,3,5,Synthetic example: I need clear information and reliable service.,1,6,28,2,2
+NCB200491,2026-06-25,2,6,1,63,4,2,2,99,1,1,0,1,4,3,5,5,3,3,2,5,5,3,5,3,4,5,Synthetic example: I want help without repeating the same details.,1,5,2,2,2
+NCB200492,2026-06-25,2,7,1,65,4,1,9,2,1,1,0,1,3,99,4,5,5,2,5,4,4,5,4,3,5,4,Synthetic example: I would need understandable fees and easy access.,1,5,10,1,4
+NCB200493,2026-06-25,2,2,1,62,4,2,2,5,2,1,0,1,3,3,3,4,4,4,3,5,5,5,4,5,5,4,Synthetic example: I need clear information and reliable service.,1,1,30,2,3
+NCB200494,2026-06-25,2,3,1,25,2,2,7,1,3,1,0,1,3,2,5,4,5,5,4,4,3,5,5,5,4,4,Synthetic example: I would need understandable fees and easy access.,1,5,28,2,2
+NCB200495,2026-06-25,2,4,1,36,3,2,4,2,3,1,0,1,4,3,4,99,3,3,4,4,3,5,3,5,4,3,Synthetic example: I need clear information and reliable service.,1,5,17,3,99
+NCB200496,2026-06-25,2,5,1,64,4,2,9,4,1,1,0,1,4,1,4,5,5,2,5,4,3,5,3,5,5,4,Synthetic example: I would need understandable fees and easy access.,0,,,,
+NCB200497,2026-06-25,2,6,1,27,2,2,5,5,2,1,0,1,3,2,4,5,5,4,4,4,3,4,4,4,4,5,Synthetic example: I need clear information and reliable service.,1,3,9,4,5
+NCB200498,2026-06-25,2,7,1,46,3,1,3,2,3,1,0,1,4,3,5,2,5,5,4,3,5,5,4,4,3,4,Synthetic example: I need clear information and reliable service.,1,4,26,3,3
+NCB200499,2026-06-25,2,2,1,21,1,2,9,2,2,1,0,0,,1,,4,,3,,4,,5,,5,,4,Synthetic example: I need clear information and reliable service.,1,5,11,4,4
+NCB200500,2026-06-25,2,3,1,64,4,2,7,1,2,1,0,0,,4,,99,,5,,4,,4,,99,,5,Synthetic example: I would need understandable fees and easy access.,0,,,,

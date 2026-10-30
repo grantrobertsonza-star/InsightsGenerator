@@ -4963,10 +4963,20 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         # D3AR-F01): with an answer list, the highest declared substantive answer or observed answer, so a declared
         # top nobody chose still counts and a non-answer (6 = Don't know) never does; without one, the highest answer
         # observed, said so (scaleStated false).
-        declared = [float(n) for n in (_num_or_none(k) for k in vl.keys()) if n is not None and float(n) not in non_answers(var)]
+        excluded = non_answers(var)
+        declared = [float(n) for n in (_num_or_none(k) for k in vl.keys()) if n is not None and float(n) not in excluded]
         top = max(declared + [float(finite.max())]) if declared else float(finite.max())
+        # The answer domain (claude/answer-domain.md; Codex T2-F01): with an answer list, every declared substantive
+        # code (non-answers left out by _non_answer_codes, as above) together with every observed answer, so a scale
+        # point nobody chose still sets the scale's range and length; without one, the observed answers only, said so
+        # (source "observed"). Summarised (range, number of codes, whole numbers) rather than listed, since a long
+        # numeric variable can have thousands of codes. driverPerformance.ts reads the performance measure from it.
+        domain = sorted(set(declared) | set(codes)) if declared else codes
+        answer_domain = {"source": "declared" if declared else "observed", "min": domain[0], "max": domain[-1],
+                         "count": len(domain), "integers": all(float(c).is_integer() for c in domain)}
         return {"name": var, "label": labels.get(var) or var, "min": float(finite.min()), "max": float(finite.max()),
-                "distinct": len(codes), "valueLabels": shown, "scaleTop": top, "scaleStated": bool(declared)}
+                "distinct": len(codes), "valueLabels": shown, "scaleTop": top, "scaleStated": bool(declared),
+                "answerDomain": answer_domain}
 
     skipped = []
     y_arr, why = numeric(outcome)

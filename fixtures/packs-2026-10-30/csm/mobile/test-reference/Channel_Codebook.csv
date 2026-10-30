@@ -1,0 +1,72 @@
+variable,label,question,data_type,question_type,universe,mr_set,selected_value,derivation,unit
+respondent_id,Anonymous customer ID,SYS,text,text,All records,,,,code
+interview_date,Interview date,SYS,text,text,All records,,,,code
+wave,Wave,SYS,numeric,categorical,All records,,,,code
+company,Main company,S2,numeric,categorical,All records,,,,code
+weight,Synthetic customer weight,SYS,numeric,continuous,All records,,,,relative weight
+age,Age,S1,numeric,continuous,All records,,,,years
+age_band,Age group,S1,numeric,categorical,All records,,,,code
+gender,Gender,D1,numeric,categorical,All records,,,,code
+province,Province,D2,numeric,categorical,All records,,,,code
+income,Monthly household income,D3,numeric,categorical,All records,,,,code
+settlement,Settlement,D4,numeric,categorical,All records,,,,code
+segment,Synthetic demonstration segment,SYS,numeric,categorical,All records,,,,code
+tenure_months,Relationship tenure,S2,numeric,continuous,All records,,,,months
+experience_id,Unique most recent channel experience,SYS,text,text,All records,,,,code
+contact_date,Date of experience,E1,text,text,All records,,,,code
+days_ago,Days before interview,E1,numeric,continuous,All records,,,,days
+channel,Channel,CH1,numeric,categorical,All records,,,,code
+digital_mode,Digital mode,E2,numeric,categorical,channel=3,,,,code
+staff_contact,Staff contact,E2,numeric,categorical,All records,,,,code
+primary_reason,Primary need,E1,numeric,categorical,All records,,,,code
+reasons_r01,Recharge or bundle purchase,E1,numeric,multiple_response,All records,experience_reasons,1,,code
+reasons_r02,Billing or account information,E1,numeric,multiple_response,All records,experience_reasons,1,,code
+reasons_r03,SIM contract or package change,E1,numeric,multiple_response,All records,experience_reasons,1,,code
+reasons_r04,Network service or billing problem,E1,numeric,multiple_response,All records,experience_reasons,1,,code
+reasons_r05,Device or technical support,E1,numeric,multiple_response,All records,experience_reasons,1,,code
+reasons_r06,Other,E1,numeric,multiple_response,All records,experience_reasons,1,,code
+channel_csat5,Satisfaction with this experience,E3,numeric,scale,All records,,,,code
+ease7,Ease of getting what was needed,E4,numeric,scale,All records,,,,code
+task_completed,Task completed,E5,numeric,categorical,All records,,,,code
+problem_present,Problem to resolve,E5,numeric,categorical,All records,,,,code
+problem_resolution,Problem resolution,E5,numeric,categorical,problem_present=1,,,,code
+contacts_same_need,Contacts about this need including current,E6,numeric,continuous,All records,,,,contacts
+first_contact_resolution,First contact resolution,E6,numeric,categorical,"problem_present=1 and problem_resolution in 1,2,3",,,1 only when fully resolved and contacts_same_need=1,code
+channel_reason_text,Reason for channel rating,E7,text,text,All records,,,,code
+driver_reliable_accurate,Accuracy of information,Q1,numeric,scale,All channel experiences,,,,code
+driver_reliable_correct,Correct handling of the task,Q1,numeric,scale,All channel experiences,,,,code
+driver_responsive_speed,Speed of response,Q1,numeric,scale,All channel experiences,,,,code
+driver_responsive_updates,Kept informed about progress,Q1,numeric,scale,All channel experiences,,,,code
+driver_assurance_knowledge,Staff knowledge and competence,Q1,numeric,scale,staff_contact=1,,,,code
+driver_assurance_confidence,Confidence in safe handling,Q1,numeric,scale,All channel experiences,,,,code
+driver_empathy_understood,Understanding of my needs,Q1,numeric,scale,staff_contact=1,,,,code
+driver_empathy_respect,Respectful treatment,Q1,numeric,scale,staff_contact=1,,,,code
+driver_access_ease,Ease of accessing the channel,Q1,numeric,scale,All channel experiences,,,,code
+driver_access_clarity,Clarity of communication or interface,Q1,numeric,scale,All channel experiences,,,,code
+dimension_reliability,Reliability two item mean,Derived,numeric,continuous,Both corresponding items valid,,,"Mean of two matching Q1 items, excluding 98/99; both required",1–5 mean
+dimension_responsiveness,Responsiveness two item mean,Derived,numeric,continuous,Both corresponding items valid,,,"Mean of two matching Q1 items, excluding 98/99; both required",1–5 mean
+dimension_assurance,Assurance two item mean,Derived,numeric,continuous,Both corresponding items valid,,,"Mean of two matching Q1 items, excluding 98/99; both required",1–5 mean
+dimension_empathy,Empathy two item mean,Derived,numeric,continuous,Both corresponding items valid,,,"Mean of two matching Q1 items, excluding 98/99; both required",1–5 mean
+dimension_access_and_clarity,Access and clarity two item mean,Derived,numeric,continuous,Both corresponding items valid,,,"Mean of two matching Q1 items, excluding 98/99; both required",1–5 mean
+wait_minutes,Wait before staff response,Q2,numeric,continuous,staff_contact=1,,,,minutes
+handling_minutes,Interaction duration,Q2,numeric,continuous,All records,,,,minutes
+digital_response_seconds,Digital response time,Q2,numeric,continuous,channel=3,,,,seconds
+transferred,Transferred,Q3/Q4,numeric,categorical,channel=1,,,,code
+put_on_hold,Put on hold,Q3/Q4,numeric,categorical,channel=1,,,,code
+callback_promised,Callback promised,Q3/Q4,numeric,categorical,channel=1,,,,code
+used_ivr,Used IVR,Q3/Q4,numeric,categorical,channel=1,,,,code
+number_transfers,Number of transfers,Q3,numeric,continuous,channel=1 and transferred=1,,,,transfers
+callback_outcome,Callback outcome,Q3,numeric,categorical,callback_promised=1,,,,code
+ivr_csat5,IVR satisfaction,Q4,numeric,scale,used_ivr=1,,,,code
+ivr_clarity5,IVR clarity,Q4,numeric,scale,used_ivr=1,,,,code
+agent_introduced,Staff introduced themselves,Q5,numeric,categorical,staff_contact=1,,,,code
+agent_polite,Polite staff,Q5,numeric,categorical,staff_contact=1,,,,code
+preferred_language_assisted,Preferred language assistance,Q5,numeric,categorical,staff_contact=1,,,,code
+branch_tidy5,Physical facilities tidy,Q6,numeric,scale,channel=2,,,,code
+branch_accessible5,Physical facilities accessible,Q6,numeric,scale,channel=2,,,,code
+channel_reassured5,This latest channel experience left customer reassured,E8a,numeric,categorical,All records,,,,code
+channel_valued5,This latest channel experience left customer valued,E8b,numeric,categorical,All records,,,,code
+channel_frustrated5,This latest channel experience left customer frustrated,E8c,numeric,categorical,All records,,,,code
+channel_anxious5,This latest channel experience left customer anxious,E8d,numeric,categorical,All records,,,,code
+channel_emotion_why_text,Reason for latest channel emotional outcome,E8e,text,text,All records,,,,code
+channel_preference5,This latest channel experience gives reason to choose provider,E9,numeric,categorical,All records,,,,code

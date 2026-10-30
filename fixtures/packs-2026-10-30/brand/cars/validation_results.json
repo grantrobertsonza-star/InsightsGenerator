@@ -1,0 +1,7 @@
+{
+  "status": "passed",
+  "respondent_records_checked": 3000,
+  "reference_rows": 8595,
+  "checked_assertions_or_records": 5175,
+  "limitations": "Fixture integrity and reference checks, not an application or model pass."
+}

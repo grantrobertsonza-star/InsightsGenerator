@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "relationship_records": 3000,
+  "channel_records": 4837,
+  "noncustomer_records": 1500,
+  "reference_results": 2202,
+  "record_and_metric_checks": 11467,
+  "scope": "Exported fixture integrity, joins, routes and reference arithmetic. Not an application acceptance pass."
+}

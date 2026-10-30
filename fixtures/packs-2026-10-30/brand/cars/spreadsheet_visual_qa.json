@@ -1,0 +1,8 @@
+{
+  "status": "passed",
+  "tool": "artifact-tool",
+  "views": "Original style inspected; authored additions rendered for every modified sheet; 40 cropped views reopened from final XLSX and visually inspected across four categories; wave2 repair notes and category reason labels checked separately.",
+  "category": "cars",
+  "unchanged_source_content": "All original workbook cells and panes preserved exactly by independent source audit",
+  "limitation": "No live dashboard import or application UI test performed"
+}

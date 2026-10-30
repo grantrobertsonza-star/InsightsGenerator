@@ -1,0 +1,35 @@
+variable,label,question,data_type,question_type,universe,mr_set,selected_value,derivation,unit
+respondent_id,Separate anonymous noncustomer ID,SYS,text,text,All noncustomer records,,,,code
+interview_date,Interview date,SYS,text,text,All noncustomer records,,,,code
+wave,Wave,SYS,numeric,categorical,All noncustomer records,,,,code
+company,Current main alternative provider,N1a,numeric,categorical,All noncustomer records,,,,code
+weight,Synthetic supplemental sample weight,SYS,numeric,continuous,All noncustomer records,,,,relative weight
+age,Age,N1c,numeric,continuous,All noncustomer records,,,,years
+age_band,Age group,N1c,numeric,categorical,All noncustomer records,,,From age: 18-24=1; 25-34=2; 35-49=3; 50-69=4,code
+gender,Gender,D1,numeric,categorical,All noncustomer records,,,,code
+province,Province,D2,numeric,categorical,All noncustomer records,,,,code
+income,Monthly household income,D3,numeric,categorical,All noncustomer records,,,,code
+settlement,Settlement,D4,numeric,categorical,All noncustomer records,,,,code
+focal_company,Provider the respondent does not currently use,SYS,numeric,categorical,All records,,,,code
+current_focal_use,Any current use of focal provider screened out,N1b,numeric,categorical,All records,,,,code
+focal_awareness,Aware of focal provider before this interview,N2,numeric,categorical,All records,,,,code
+focal_consider5,Would consider focal provider if choosing today,N3,numeric,categorical,focal_awareness=1,,,,code
+expect_preferred_channel,Preferred channel for future service task,N4,numeric,categorical,All records,,,,code
+expect_level_d01,Expected focal performance Services work accurately and reliably,N5,numeric,categorical,focal_awareness=1,,,,code
+expect_importance_d01,Importance for future provider Services work accurately and reliably,N6,numeric,categorical,All records,,,,code
+expect_level_d02,Expected focal performance Help is provided promptly,N5,numeric,categorical,focal_awareness=1,,,,code
+expect_importance_d02,Importance for future provider Help is provided promptly,N6,numeric,categorical,All records,,,,code
+expect_level_d03,Expected focal performance I feel confident about security,N5,numeric,categorical,focal_awareness=1,,,,code
+expect_importance_d03,Importance for future provider I feel confident about security,N6,numeric,categorical,All records,,,,code
+expect_level_d04,Expected focal performance The bank understands my needs,N5,numeric,categorical,focal_awareness=1,,,,code
+expect_importance_d04,Importance for future provider The bank understands my needs,N6,numeric,categorical,All records,,,,code
+expect_level_d05,Expected focal performance Banking channels are easy to access,N5,numeric,categorical,focal_awareness=1,,,,code
+expect_importance_d05,Importance for future provider Banking channels are easy to access,N6,numeric,categorical,All records,,,,code
+expect_level_d06,Expected focal performance Fees represent good value,N5,numeric,categorical,focal_awareness=1,,,,code
+expect_importance_d06,Importance for future provider Fees represent good value,N6,numeric,categorical,All records,,,,code
+expect_reason_text,What the respondent would need from a future provider,N7,text,text,All records,,,,code
+alternative_recent30,Personally attempted task with current alternative in past 30 days,N8,numeric,categorical,All records,,,,code
+alternative_task,Task personally attempted with current alternative,N9a,numeric,categorical,alternative_recent30=1,,,,code
+alternative_days_ago,Days since alternative task experience,N9b,numeric,continuous,alternative_recent30=1,,,,days
+alternative_channel,Channel used for alternative recent task,N9c,numeric,categorical,alternative_recent30=1,,,,code
+alternative_csat5,CSAT with personally experienced alternative task only,N10,numeric,categorical,alternative_recent30=1,,,,code
