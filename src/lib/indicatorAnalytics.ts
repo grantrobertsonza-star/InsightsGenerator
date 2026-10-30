@@ -22,13 +22,13 @@ import {
   fileReadiness,
   headlineFigures,
   observedTrend,
-  periodPosition,
   providerLines,
   recordedDecimals,
   seriesAttributesOf,
   seriesNeedsReview,
   suggestedArea,
   suggestedTrendAreas,
+  timeAxisOf,
   viewSummary,
   withheldPeriods,
   type Comparison,
@@ -38,6 +38,7 @@ import {
   type ObservedPoint,
   type Provider,
   type SeriesChoice,
+  type TimeAxis,
   type ViewSummary,
 } from "./indicatorAnalyticsFigures";
 
@@ -93,8 +94,11 @@ export type IndicatorAnalyticsReady = {
     comparePeriod: string | null;
   };
   series: { key: string; name: string; indicatorCode: string | null; unit: string; percent: boolean; chosenText: string; fixedText: string };
-  /** Calendar span of the series' observed periods in the range (every panel shares it); null when not calendar periods. */
-  axis: { min: number; max: number } | null;
+  /**
+   * The one time axis of every chart of the view (timeAxisOf over the series' periods of every area in the range):
+   * the calendar span, or withheld with the reason when a period cannot be placed. Points are placed only on it.
+   */
+  axis: TimeAxis;
   /** Value axis: 0 to 100 for a percentage on that scale, else from 0 (or the lowest negative) to the highest value. */
   valueAxis: { min: number; max: number };
   overview: { headline: Headline; trend: ObservedPoint[]; withheld: string[]; summary: ViewSummary };
@@ -169,10 +173,9 @@ export async function loadIndicatorAnalytics(tenantId: string, runId: string, re
   if (unknownPanel !== undefined) return { state: "invalid", message: `${areaName(unknownPanel, read.areas)} has no observation in this series; remove it from the trends.` };
   const panels: TrendPanel[] = panelAreas.map((a) => ({ areaCode: a, name: areaName(a, read.areas), points: observedTrend(obs, a, s, range, decimals, statuses), withheld: withheldPeriods(read.provenance, s, a, range) }));
 
-  // One calendar span for every chart of the view: the series' periods within the range, all areas.
-  const positions = periods.filter((p) => (range.from === null || p >= range.from) && (range.to === null || p <= range.to)).map(periodPosition);
-  const known = positions.filter((x): x is number => x !== null);
-  const calendar = known.length > 0 && known.length === positions.length;
+  // One time axis for every chart of the view: the series' periods within the range, all areas, so a date shared
+  // by two areas is at one position however many other dates each area has (Codex D6-F02).
+  const axis = timeAxisOf(periods.filter((p) => (range.from === null || p >= range.from) && (range.to === null || p <= range.to)));
   const choices = breakdownChoices(read.series, indicatorKeyOf(s));
   const varying = new Set(choices.map((c) => c.dimension));
   const shownValues = [...trend, ...panels.flatMap((x) => x.points), ...(compare?.rows ?? [])].map((p) => p.value);
@@ -206,7 +209,7 @@ export async function loadIndicatorAnalytics(tenantId: string, runId: string, re
       chosenText: breakdownText(s.breakdowns.filter((b) => varying.has(b.dimension))),
       fixedText: breakdownText(s.breakdowns.filter((b) => !varying.has(b.dimension))),
     },
-    axis: calendar ? { min: Math.min(...known), max: Math.max(...known) } : null,
+    axis,
     valueAxis: valueAxisOf(shownValues, isPercentUnit(s)),
     overview: { headline, trend, withheld, summary: viewSummary(name, headline, after) },
     compare,
@@ -217,4 +220,4 @@ export async function loadIndicatorAnalytics(tenantId: string, runId: string, re
   };
 }
 
-export type { FileReadiness, IndicatorArea, IndicatorSeriesSummary, SeriesChoice };
+export type { FileReadiness, IndicatorArea, IndicatorSeriesSummary, SeriesChoice, TimeAxis };

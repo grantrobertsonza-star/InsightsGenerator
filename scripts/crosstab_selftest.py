@@ -983,6 +983,15 @@ check("D2b: driver columns drop 6 = Don't know", [r[0] for r in _dc["x"]] == [1.
 check("D2b: the scale top is the declared 5, unchosen, never the non-answer 6", _sat.get("scaleTop") == 5.0 and _sat.get("scaleStated") is True and _sat["max"] == 4.0, str(_sat))
 _dn = psf.driver_columns(_wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3], "q": [1, 2, 4]}), 0, True)}), "n.xlsx", {"outcome": "y", "predictors": ["q"]})["predictors"][0]
 check("D2b: without an answer list the scale top is the highest answer, said so", _dn.get("scaleTop") == 4.0 and _dn.get("scaleStated") is False, str(_dn))
+# Codex T2-F01 (30 October 2026): each predictor carries its answer domain, so the performance measure is read from the
+# declared scale, not from the answers that happen to be present. Declared 1 to 5 (and 6 = Don't know) answered 1 to 4
+# and 6: domain 1 to 5, five codes, declared. Declared 0 to 10 answered only 0 and 1: domain 0 to 10, eleven codes.
+# Without an answer list: the observed answers, said so.
+check("T2-F01: declared domain keeps the unchosen 5 and drops 6 = Don't know", _sat.get("answerDomain") == {"source": "declared", "min": 1.0, "max": 5.0, "count": 5, "integers": True}, str(_sat.get("answerDomain")))
+_lab3 = pd.DataFrame({"variable": ["nps"] * 11, "label": ["Recommend"] * 11, "value": list(range(11)), "value_label": [str(i) for i in range(11)]})
+_d10 = psf.driver_columns(_wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3, 4], "nps": [0, 1, 0, 1]}), 0, True), "Labels": (_lab3, 0, True)}), "d10.xlsx", {"outcome": "y", "predictors": ["nps"]})["predictors"][0]
+check("T2-F01: a declared 0 to 10 scale answered only 0 and 1 keeps its eleven-point domain", _d10.get("answerDomain") == {"source": "declared", "min": 0.0, "max": 10.0, "count": 11, "integers": True} and _d10["max"] == 1.0, str(_d10))
+check("T2-F01: without an answer list the domain is the observed answers, said so", _dn.get("answerDomain") == {"source": "observed", "min": 1.0, "max": 4.0, "count": 3, "integers": True}, str(_dn.get("answerDomain")))
 
 # Decision 9 (29 October 2026): title rows above a CSV, TSV or Excel header. First part: up to 14 leading rows holding
 # at most one written value are set aside by detection. Second part: the researcher's header row (headerRowsSkipped,

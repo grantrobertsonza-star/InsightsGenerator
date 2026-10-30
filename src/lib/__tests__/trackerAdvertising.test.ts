@@ -148,6 +148,80 @@ describe("womFromResult: exclusive groups among all eligible", () => {
   });
 });
 
+// Codex D3E-F01: an awareness answer that is neither aware nor explicitly not aware is unknown, never Unaware.
+// Independent example from the review: 100 equally weighted respondents, 60 Yes (all with a word of mouth answer),
+// 30 No and 10 Don't know (none with one). The reader used to report 40% Unaware.
+describe("womFromResult: unknown awareness is never Unaware (Codex D3E-F01)", () => {
+  const WOM = { "1": "Mainly positive", "2": "Mainly negative" };
+  const vars = (awareLabels: Record<string, string> | undefined) =>
+    new Map([
+      ["aware1", v("aware1", "Aware Toyota", awareLabels)],
+      ["wom1", v("wom1", "Word of mouth Toyota", WOM)],
+    ]);
+  // One banner column per awareness code: [n, word of mouth answers in that column].
+  const banner = (perCode: Record<string, [number, number]>) =>
+    Object.entries(perCode).map(([rawCode, [n, answered]]) => ({ var: "aware1", rawCode, n, perQuestion: { aware1: n, wom1: answered } }));
+  const reviewTable = (unknownCode: string) =>
+    table({ aware1: { "0": [30, 30], "1": [60, 60], [unknownCode]: [10, 10] }, wom1: { "1": [40, 40], "2": [20, 20] } }, banner({ "0": [30, 0], "1": [60, 60], [unknownCode]: [10, 0] }));
+
+  it("the review's example: a labelled Don't know is not Unaware; the groups are not shown, with the count and the answer", () => {
+    const r = womFromResult(reviewTable("99"), "1", "aware1", "wom1", vars({ "0": "No", "1": "Yes", "99": "Dont know" }));
+    expect(r.groups).toBeNull();
+    expect(r.base).toBe(100);
+    expect(r.reason).toBe('10 respondents gave an awareness answer that is neither aware nor unaware ("Dont know" (code 99): 10 respondents). They cannot be counted as Unaware, so the exclusive groups are not shown.');
+  });
+  it("a refusal is unknown too", () => {
+    const r = womFromResult(reviewTable("98"), "1", "aware1", "wom1", vars({ "0": "No", "1": "Yes", "98": "Refused" }));
+    expect(r).toMatchObject({ groups: null, reason: expect.stringContaining('"Refused" (code 98): 10 respondents') });
+  });
+  it("an unexpected code the answer list does not label is unknown, never Unaware", () => {
+    const r = womFromResult(reviewTable("7"), "1", "aware1", "wom1", vars({ "0": "Not selected", "1": "Selected" }));
+    expect(r).toMatchObject({ groups: null, reason: expect.stringContaining("code 7, which the answer list does not label: 10 respondents") });
+  });
+  it("missing awareness (respondents without an awareness answer): not shown, with the count", () => {
+    const t = table({ aware1: { "0": [30, 30], "1": [60, 60] }, wom1: { "1": [40, 40], "2": [20, 20] } }, banner({ "0": [30, 0], "1": [60, 60] }));
+    (t.total as { n: number }).n = 100;
+    const r = womFromResult(t, "1", "aware1", "wom1", vars({ "0": "No", "1": "Yes" }));
+    expect(r).toMatchObject({ groups: null, base: 90, reason: expect.stringMatching(/^10 respondents have no awareness answer/) });
+  });
+  it("normal 0/1 coding, labelled or not: Unaware is code 0 and the groups add to 100", () => {
+    const t = table({ aware1: { "0": [30, 30], "1": [70, 70] }, wom1: { "1": [50, 50], "2": [20, 20] } }, banner({ "0": [30, 0], "1": [70, 70] }));
+    for (const labels of [{ "0": "No", "1": "Yes" }, undefined]) {
+      const r = womFromResult(t, "1", "aware1", "wom1", vars(labels));
+      expect(r.reason, JSON.stringify(labels)).toBeUndefined();
+      expect(r.groups!.map((g) => [g.key, g.share, g.n])).toEqual([["1", 50, 50], ["2", 20, 20], ["unaware", 30, 30]]);
+    }
+  });
+  it("reversed explicit coding: the code labelled Yes is aware and the one labelled No is Unaware, whatever the numbers", () => {
+    const t = table({ aware1: { "0": [70, 70], "1": [30, 30] }, wom1: { "1": [50, 50], "2": [20, 20] } }, banner({ "0": [70, 70], "1": [30, 0] }));
+    const r = womFromResult(t, "1", "aware1", "wom1", vars({ "0": "Yes", "1": "No" }));
+    expect(r.reason).toBeUndefined();
+    expect(r.groups!.find((g) => g.key === "unaware")).toMatchObject({ share: 30, n: 30 });
+    // Exclusivity is checked against the categories: here the code labelled No (1) holds a word of mouth answer.
+    const broken = table({ aware1: { "0": [70, 70], "1": [30, 30] }, wom1: { "1": [51, 51], "2": [20, 20] } }, banner({ "0": [70, 70], "1": [30, 1] }));
+    expect(womFromResult(broken, "1", "aware1", "wom1", vars({ "0": "Yes", "1": "No" }))).toMatchObject({ groups: null, reason: expect.stringMatching(/0 respondents aware of the brand have no word of mouth answer and 1 not aware of it have one/) });
+  });
+  it("weighted counts: shares from the weighted counts, n unweighted; an unknown answer is refused weighted or not", () => {
+    const t = table({ aware1: { "0": [45, 30], "1": [55, 70] }, wom1: { "1": [40, 50], "2": [15, 20] } }, banner({ "0": [30, 0], "1": [70, 70] }));
+    const r = womFromResult(t, "1", "aware1", "wom1", vars({ "0": "No", "1": "Yes" }));
+    expect(r.groups!.map((g) => [g.key, g.share, g.n])).toEqual([["1", 40, 50], ["2", 15, 20], ["unaware", 45, 30]]);
+    const dk = table({ aware1: { "0": [40, 30], "1": [55, 65], "99": [5, 5] }, wom1: { "1": [40, 45], "2": [15, 20] } }, banner({ "0": [30, 0], "1": [65, 65], "99": [5, 0] }));
+    expect(womFromResult(dk, "1", "aware1", "wom1", vars({ "0": "No", "1": "Yes", "99": "Don't know" }))).toMatchObject({ groups: null, reason: expect.stringContaining("5 respondents") });
+  });
+  it("a listed don't know code nobody gave changes nothing", () => {
+    const t = table({ aware1: { "0": [30, 30], "1": [70, 70], "99": [0, 0] }, wom1: { "1": [50, 50], "2": [20, 20] } }, banner({ "0": [30, 0], "1": [70, 70], "99": [0, 0] }));
+    const r = womFromResult(t, "1", "aware1", "wom1", vars({ "0": "No", "1": "Yes", "99": "Don't know" }));
+    expect(r.groups!.find((g) => g.key === "unaware")).toMatchObject({ share: 30, n: 30 });
+  });
+  it("recovery: once the answer list labels the code as not aware (a corrected codebook), the groups are shown, the code counted as Unaware", () => {
+    const t = reviewTable("7");
+    expect(womFromResult(t, "1", "aware1", "wom1", vars({ "0": "Not selected", "1": "Selected" })).groups).toBeNull();
+    const r = womFromResult(t, "1", "aware1", "wom1", vars({ "0": "Not selected", "1": "Selected", "7": "Not selected" }));
+    expect(r.reason).toBeUndefined();
+    expect(r.groups!.map((g) => [g.key, g.share, g.n])).toEqual([["1", 40, 40], ["2", 20, 20], ["unaware", 40, 40]]);
+  });
+});
+
 describe("womParts: the word of mouth and awareness questions", () => {
   const vars = fixture("tracker-roles", "bmw_car");
   const rec = recogniseTracker(vars);

@@ -162,8 +162,12 @@ export function normaliseBrandHealthMapping(raw: unknown): { ok: true; mapping: 
     if (o.metric !== undefined && !METRIC_VALUES.has(o.metric as string)) return false;
     return ("variable" in o && typeof o.variable === "string" && !("setKey" in o)) || ("setKey" in o && typeof o.setKey === "string" && !("variable" in o));
   };
+  // An object field (funnel, positioning) may be absent or null (a mapping saved before it existed, read as empty)
+  // or a plain object. Codex BH-F01: any other supplied value (false, 0, a string, an array) is refused, never read
+  // as an empty choice, which a save would write over the researcher's saved choices.
+  const plainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
   const funnel = (m.funnel ?? {}) as Record<string, unknown>;
-  if (typeof funnel !== "object" || Array.isArray(funnel)) return bad("the funnel is not a list of stages");
+  if (!plainObject(funnel)) return bad("the funnel is not a list of stages");
   for (const [k, v] of Object.entries(funnel)) {
     if (!["awareness", "consideration", "usage", "frequent"].includes(k)) return bad(`"${k}" is not a funnel stage`);
     if (v !== undefined && v !== null && !source(v)) return bad(`the ${k} stage is not a variable or a set`);
@@ -173,7 +177,9 @@ export function normaliseBrandHealthMapping(raw: unknown): { ok: true; mapping: 
   for (const k of ["attributes", "moments"] as const) {
     if (m[k] !== undefined && (!Array.isArray(m[k]) || !(m[k] as unknown[]).every(source))) return bad(`the ${k} are not variables or sets`);
   }
+  // A plain object without an axis is a valid empty choice (an optional axis may be absent).
   const pos = (m.positioning ?? { xVar: null, yVar: null }) as Record<string, unknown>;
+  if (!plainObject(pos)) return bad("the positioning map is not a pair of axes");
   if (!optionalName(pos.xVar) || !optionalName(pos.yVar)) return bad("the positioning axes are not variable names");
   return {
     ok: true,
