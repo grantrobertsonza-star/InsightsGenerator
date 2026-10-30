@@ -99,7 +99,7 @@ export default function ReportReadSummary({
 
       {stats && stats.failedParts > 0 && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
-          {stats.failedParts} of {stats.parts} parts could not be read, so some pages may be missing. Run Extract
+          {stats.failedParts} of {stats.parts} parts could not be read in full, so some findings may be missing. Run Extract
           findings again.
         </p>
       )}

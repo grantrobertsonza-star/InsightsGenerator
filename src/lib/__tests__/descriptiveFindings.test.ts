@@ -60,6 +60,27 @@ describe("levelFindings", () => {
     expect(levelFindings(desc)[0].stats.value).toBe(65);
   });
 
+  it("a Not sure answer after the scale is a non-answer (the engine's rule), never a scale point (registry gap closed)", () => {
+    const t = table([
+      {
+        key: "q1",
+        label: "Overall satisfaction",
+        kind: "single",
+        rows: [row("Very satisfied", 30), row("Satisfied", 35), row("Neutral", 15), row("Dissatisfied", 12), row("Very dissatisfied", 8), row("Not sure", 10)],
+      },
+    ]);
+    const [f] = levelFindings(t);
+    expect(f.stats.testType).toBe("top_two_box");
+    expect(f.stats.value).toBe(65);
+    expect(f.stats.bottomTwo).toBe(20);
+  });
+
+  it("a don't-know naming its subject is an answer and can lead (Grant's decision 7)", () => {
+    const t = table([{ key: "q2", label: "Brand used", kind: "single", rows: [row("Brand A", 20), row("Don't know which brand", 50), row("Don't know", 30)] }]);
+    const f = levelFindings(t).find((x) => x.stats.question === "Brand used" || String(x.text ?? "").includes("Brand used"));
+    expect(JSON.stringify(f ?? levelFindings(t))).toContain("Don't know which brand");
+  });
+
   it("computes NPS from a 0 to 10 question", () => {
     // 0-6: 40% in all, 7-8: 20%, 9-10: 40%.
     const rows = Array.from({ length: 11 }, (_, k) => row(String(k), k >= 9 ? 20 : k >= 7 ? 10 : 40 / 7));

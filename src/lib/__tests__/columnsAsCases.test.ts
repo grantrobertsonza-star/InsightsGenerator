@@ -1,9 +1,10 @@
 import { PYTHON } from "./helpers/pythonEngine";
+import { randomUUID } from "node:crypto";
 // IMP-009: columns-as-cases workbooks (variables in rows, one column per case).
-// (a) The actual loadImportPreviewIdentities verifies a stored preview of such a workbook by comparing
-//     it with the SAME transpose the import applied (actual transposeTable), instead of withholding
-//     every valid one. Mocked boundaries: the document read (db), the stored-file parse
-//     (parseTableDocument) and the saved layout setting (loadDataSetupWithStatus).
+// (a) The actual loadImportPreviewIdentities verifies a stored preview of such a file against the
+//     ACTUAL engine read under the saved layout (the one reader flips it; batch 26), instead of
+//     withholding every valid one. Mocked boundaries: the document read (db), storage (an in-memory
+//     CSV) and the saved layout setting (loadDataSetupWithStatus).
 // (b) End to end through the ACTUAL Python engine: the same data laid out both ways gives identical
 //     variables, case counts and category counts. Skipped, with the reason printed, without python3 +
 //     pandas/openpyxl/pyreadstat.
@@ -13,21 +14,26 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+const PYTHON_READY = spawnSync(PYTHON, ["-c", "import pandas, openpyxl, pyreadstat"], { encoding: "utf8" }).status === 0;
 const state = vi.hoisted(() => ({
   layout: "columns_are_cases" as string,
   setupOk: true,
   ingestion: "raw" as string | null,
-  parsed: { headers: [] as string[], rows: [] as Record<string, string | number | null>[] },
+  path: "",
 }));
 vi.mock("../db", () => ({
   withTenantRead: async (_t: string, cb: (c: { query: () => Promise<{ rows: unknown[] }> }) => unknown) =>
     cb({
       query: async () => ({
-        rows: [{ id: "doc-1", source_filename: "wide.xlsx", storage_path: "p", selected_sheet: "Data", kind: "table", ingestion_type: state.ingestion }],
+        rows: [{ id: "doc-1", source_filename: "wide.csv", storage_path: state.path, selected_sheet: null, kind: "table", ingestion_type: state.ingestion }],
       }),
     }),
 }));
-vi.mock("../parseTable", () => ({ parseTableDocument: vi.fn(async () => state.parsed) }));
+// Variables in rows, one column per case (3 cases).
+const WIDE_CSV = "Variable,Case 1,Case 2,Case 3\nGender,Male,Female,Female\nScore,4,5,3\n";
+vi.mock("../supabaseAdmin", () => ({
+  supabaseAdmin: { storage: { from: () => ({ download: async () => ({ data: { arrayBuffer: async () => new TextEncoder().encode(WIDE_CSV).buffer }, error: null }) }) } },
+}));
 vi.mock("../dataSetup", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../dataSetup")>();
   return {
@@ -40,30 +46,23 @@ vi.mock("../dataSetup", async (importOriginal) => {
   };
 });
 
-// Variables in rows, one column per case (3 cases).
-const WIDE = {
-  headers: ["Variable", "Case 1", "Case 2", "Case 3"],
-  rows: [
-    { Variable: "Gender", "Case 1": "Male", "Case 2": "Female", "Case 3": "Female" },
-    { Variable: "Score", "Case 1": 4, "Case 2": 5, "Case 3": 3 },
-  ],
-};
-
-async function storedFromImport(): Promise<{ headers: string[]; rows: Record<string, string | number | null>[] }> {
-  const { transposeTable } = await import("../dataSetup");
-  const flipped = transposeTable(WIDE.headers, WIDE.rows);
-  return { headers: flipped.headers, rows: flipped.rows as Record<string, string | number | null>[] };
+/** What the engine's one reader stores for the file under a layout (the actual read). */
+async function engineRead(layout: "rows_are_cases" | "columns_are_cases") {
+  const { parseTableDocument } = await import("../parseTable");
+  const t = await parseTableDocument(state.path, "wide.csv", { layout });
+  return { headers: t.headers, rows: t.rows };
 }
 
 beforeEach(() => {
   state.layout = "columns_are_cases";
   state.setupOk = true;
   state.ingestion = "raw";
-  state.parsed = WIDE;
+  // A path of its own per test: the local engine runner keeps a download by path for a few minutes.
+  state.path = `${randomUUID()}/${randomUUID()}/wide`;
 });
 
-describe("IMP-009 (a): cached-preview identity for columns-as-cases", () => {
-  const check = async (stored: { headers: string[]; rows: Record<string, string | number | null>[] }) => {
+describe.skipIf(!PYTHON_READY)("IMP-009 (a): cached-preview identity for columns-as-cases", () => {
+  const check = async (stored: { headers: string[]; rows: Record<string, string | number | boolean | null>[] }) => {
     const { loadImportPreviewIdentities } = await import("../importPreviewIdentity");
     const r = await loadImportPreviewIdentities("t", "run", [
       { document_id: "doc-1", table_index: 0, headers: stored.headers, rows: stored.rows, row_count: stored.rows.length },
@@ -71,26 +70,26 @@ describe("IMP-009 (a): cached-preview identity for columns-as-cases", () => {
     return r.get("doc-1")!;
   };
 
-  it("a valid transposed stored table is verified", async () => {
-    const stored = await storedFromImport();
+  it("the engine's flipped read is what import stores, and is verified", async () => {
+    const stored = await engineRead("columns_are_cases");
     expect(stored.headers).toEqual(["Gender", "Score"]);
-    expect(stored.rows).toHaveLength(3);
+    expect(stored.rows).toEqual([{ Gender: "Male", Score: 4 }, { Gender: "Female", Score: 5 }, { Gender: "Female", Score: 3 }]);
     expect((await check(stored)).error).toBeNull();
   });
 
-  it("an untransposed stored table under columns-as-cases is not verified (it differs from what import stores)", async () => {
-    expect((await check(WIDE)).error).toMatch(/cannot be verified/);
+  it("an unflipped stored table under columns-as-cases is not verified (it differs from what import stores)", async () => {
+    expect((await check(await engineRead("rows_are_cases"))).error).toMatch(/cannot be verified/);
   });
 
-  it("rows-as-cases is compared untransposed, as before", async () => {
+  it("rows-as-cases is compared with the unflipped read", async () => {
     state.layout = "rows_are_cases";
-    expect((await check(WIDE)).error).toBeNull();
-    expect((await check(await storedFromImport())).error).toMatch(/cannot be verified/);
+    expect((await check(await engineRead("rows_are_cases"))).error).toBeNull();
+    expect((await check(await engineRead("columns_are_cases"))).error).toMatch(/cannot be verified/);
   });
 
   it("an unreadable layout setting fails closed with the reason", async () => {
     state.setupOk = false;
-    expect((await check(await storedFromImport())).error).toMatch(/layout setting could not be read \(permission denied\)/);
+    expect((await check(await engineRead("columns_are_cases"))).error).toMatch(/layout setting could not be read \(permission denied\)/);
   });
 });
 

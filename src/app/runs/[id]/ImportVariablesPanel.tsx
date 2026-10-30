@@ -1,6 +1,6 @@
 "use client";
 
-import { ImportPreviewRecovery } from "./ImportQualityPanel";
+import { ImportPreviewRecovery, tableHeading } from "./ImportQualityPanel";
 import { useMemo, useRef, useState } from "react";
 import { computeTableQuality, type VariableType } from "@/lib/dataQuality";
 import {
@@ -18,7 +18,8 @@ const QUESTION_TYPES: QuestionType[] = ["single", "multi", "grid", "battery"];
 const VARIABLE_TYPES: VariableType[] = ["categorical", "discrete", "continuous"];
 
 const selectClass =
-  "rounded-md border border-border bg-white px-1 py-0.5 text-[11px] text-foreground";
+  // The table's own text size (text-xs), so a type choice reads like the rest of its row (Grant, 2026-10-22).
+  "rounded-md border border-border bg-white px-1 py-0.5 text-xs text-foreground";
 
 type RowOverride = { type?: VariableType; questionType?: QuestionType };
 
@@ -66,9 +67,12 @@ export function effectiveRowOverride(
 export default function ImportVariablesPanel({
   runId,
   tables,
+  withinSource = false,
 }: {
   runId: string;
   tables: ImportQualityTable[];
+  /** Shown in a selected source's tab: no file name and no box of its own (tableHeading). */
+  withinSource?: boolean;
 }) {
   // IMP-005 (P2a repair): this used to copy table.overrides into state once, at first mount.
   // The Import detail pane keeps this same component instance when the researcher selects a
@@ -135,7 +139,7 @@ export default function ImportVariablesPanel({
             table.ingestionType,
             table.stated ?? [],
           );
-        const title = `${table.documentName}${table.label ? `: ${table.label}` : table.tableIndex > 0 ? `: table ${table.tableIndex + 1}` : ""}`;
+        const title = tableHeading(table, withinSource);
 
         // table.headers (and so q.variableDetails[].name, for an SPSS/Stata/SAS file not already
         // canonically keyed via fullyCovered) can be each variable's display LABEL rather than its
@@ -172,12 +176,14 @@ export default function ImportVariablesPanel({
         return (
           <div
             key={table.id}
-            className="space-y-3 rounded-xl border border-border bg-white p-4"
+            className={withinSource ? "space-y-3" : "space-y-3 rounded-xl border border-border bg-white p-4"}
           >
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium text-foreground" title={title}>
-                {title}
-              </div>
+              {title && (
+                <div className="truncate text-sm font-medium text-foreground" title={title}>
+                  {title}
+                </div>
+              )}
               <div className="text-xs text-muted">
                 Variables, as read at import. Change the type or question type below if import got one wrong; your
                 change is kept and used everywhere this variable is classified.
@@ -296,7 +302,7 @@ export default function ImportVariablesPanel({
             {q.worstVariables.length > 0 && (
               <details className="text-xs">
                 <summary className="cursor-pointer select-none font-medium text-muted">
-                  Variables to look at ({q.worstVariables.length})
+                  Variables needing review ({q.worstVariables.length})
                 </summary>
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full min-w-[420px] text-left">

@@ -1,7 +1,11 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { waveCopyMessage } from "@/lib/waveCopyMessage";
+import { builderChoicesFrom } from "@/lib/tableDefinitionEdit";
+import { tableMethodStatus } from "@/lib/tableMethod";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { ThreePane } from "./ThreePane";
 import { useRouter } from "next/navigation";
 import {
   addCrosstabAction,
@@ -15,13 +19,12 @@ import {
   loadVariablesAction,
   setCrosstabTextAction,
   summarizeCrosstabAction,
-  replicateCrosstabsToWaveAction,
-} from "@/lib/crosstabActions";
+  replicateCrosstabsToWaveAction, loadTableDefinitionAction, replaceDraftCrosstabAction } from "@/lib/crosstabActions";
 import { listWaveFilesAction, type WaveFile } from "@/lib/waveTrackingActions";
 import type { CrosstabInsights } from "@/lib/crosstabInsights";
-import { QuickChart, Histogram, buildRCode } from "./CrosstabExtras";
+import { QuickCharts, Histogram, buildRCode } from "./CrosstabExtras";
 import FilterBuilder from "./CrosstabFilters";
-import CrosstabAsk from "./CrosstabAsk";
+import CrosstabAsk, { type AskHistory } from "./CrosstabAsk";
 import { planStarterTables } from "@/lib/starterTables";
 import { varTypeOf, type VarType } from "@/lib/crosstabVariableTypes";
 import { listEvidenceTablesAction, promoteEvidenceTableAction, type EvidenceTableListing } from "@/lib/objectiveEvidenceActions";
@@ -124,7 +127,7 @@ const fmtPct = (v: number) => (v === 0 ? "0" : v.toFixed(1));
 const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
 
 /**
- * Full-window crosstab workspace for SPSS, Stata and SAS files.
+ * Crosstab workspace for case-level files (SPSS, Stata, CSV and Excel; SAS imports are refused, importLimits.ts).
  * Left: every variable in a sortable table (name, label, responses, asked of).
  * Right: choose banner (column) variables and row questions, add the table to
  * a draft set, review each one, then commit the set to generate findings.
@@ -135,13 +138,26 @@ export default function CrosstabWorkspace({
   documentId,
   filename,
   onClose,
+  layout = "overlay",
+  fileSelector,
 }: {
   runId: string;
   documentId: string;
   filename: string;
   saved?: { id: string; label: string }[];
-  onClose: () => void;
+  /** Overlay only: closes the full-window workspace. */
+  onClose?: () => void;
+  /**
+   * "page": the Cross tabs section itself (Grant, 2026-10-20: open the workspace directly rather
+   * than through a gateway page), laid out in the shared resizable panes, with the file chooser in
+   * its header and no Close, as it is a page of the project. "overlay": the full-window workspace
+   * opened from a data file's launcher elsewhere, unchanged.
+   */
+  layout?: "overlay" | "page";
+  /** Page layout: the data file chooser, shown beside the title. */
+  fileSelector?: ReactNode;
 }) {
+  const asPage = layout === "page";
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [dict, setDict] = useState<VariableDictionary | null>(null);
@@ -166,21 +182,43 @@ export default function CrosstabWorkspace({
   const [colGroups, setColGroups] = useState<Record<string, CrosstabGroup[]>>({});
   const [grouping, setGrouping] = useState<{ variable: string; target: "col" | "row" } | null>(null);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
+  // The page in two tabs (Grant, 27 October 2026): Build table holds the variable list and the
+  // choices; View tables gives the tables the full width, for charts and the cell pane. A new table
+  // switches to View tables. The overlay keeps one view.
+  // With a count of the researcher's view choices (a tab, a way of making tables, Change settings): a
+  // new table switches to View tables only when no view was chosen since its Add was pressed. The
+  // list's refresh can land after the researcher has moved on (back to SemanticTabs, say) and must not
+  // pull them away from it (a late response never overrides newer intent).
+  const [viewState, setViewState] = useState<{ view: "build" | "tables"; choices: number }>({ view: "build", choices: 0 });
+  const view = viewState.view;
+  const chooseView = (v: "build" | "tables") => setViewState((p) => ({ view: v, choices: p.choices + 1 }));
+  // Which "Refine your table" panel is open under its card; one at a time, none at first.
+  const [refine, setRefine] = useState<"filters" | "settings" | "display" | null>(null);
   const [collapseAll, setCollapseAll] = useState<{ open: boolean; tick: number }>({ open: true, tick: 0 });
   const [layerVar, setLayerVar] = useState("");
   const [waveFiles, setWaveFiles] = useState<WaveFile[]>([]);
   const [copyFrom, setCopyFrom] = useState("");
   const [copying, setCopying] = useState(false);
+  // A saved table being edited in Build table (Grant, 29 October 2026): its id and title, and whether Update table
+  // may replace it (a draft of this file, not one panel of a layered set). A table's definition loads inside this
+  // workspace's transition, and every Edit, Stop editing, Add and Update button waits while it runs (busy /
+  // isPending), so a slow load cannot land over a later choice.
+  const [editing, setEditing] = useState<{ tableId: string; label: string; replaceable: boolean } | null>(null);
 
-  const refreshList = (added?: string) =>
+  const refreshList = (added?: string, showIfNoChoiceSince?: number) =>
     startTransition(async () => {
       const r = await listCrosstabsAction(runId, documentId);
       if (!r.ok) return setError(r.error);
       setItems(r.items);
+      // The menu's Cross tabs count (saved tables) and the file chooser's table counts are drawn by the server.
+      router.refresh();
       if (added) setLastAdded(added);
+      if (showIfNoChoiceSince !== undefined) setViewState((p) => (p.choices === showIfNoChoiceSince ? { ...p, view: "tables" } : p));
     });
 
   useEffect(() => {
+    // A page keeps the browser's own scrolling and keys; only the full-window overlay takes them.
+    if (asPage || !onClose) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -189,7 +227,7 @@ export default function CrosstabWorkspace({
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [onClose]);
+  }, [onClose, asPage]);
 
   useEffect(() => {
     // Overnight queue, package 4 (IMP-014/ANA-NPS-003): a documentId switch (the researcher
@@ -265,7 +303,8 @@ export default function CrosstabWorkspace({
   // than rebuilt by hand. Silent when the run has no wave-labelled files at all.
   useEffect(() => {
     listWaveFilesAction(runId).then((r) => {
-      if (r.ok) setWaveFiles(r.files);
+      // Any labelled wave can be copied from, including one left out of wave tracking.
+      if (r.ok) setWaveFiles([...r.files, ...r.excluded]);
     });
   }, [runId]);
   const otherWaves = waveFiles.filter((w) => w.documentId !== documentId);
@@ -279,10 +318,15 @@ export default function CrosstabWorkspace({
       const r = await replicateCrosstabsToWaveAction(runId, copyFrom, documentId);
       setCopying(false);
       if (!r.ok) return setError(r.error);
-      const skippedText = r.skipped.length
-        ? ` ${r.skipped.length} could not be rebuilt here: ${r.skipped.map((s) => `${s.label} (${s.reason})`).join("; ")}`
-        : "";
-      setMessage(`Copied ${r.built} table(s) from that wave as drafts.${skippedText}`);
+      const from = otherWaves.find((w) => w.documentId === copyFrom);
+      const said = waveCopyMessage(r, from ? `${from.wave} (${from.filename})` : "That wave");
+      if (said.tone === "error") setError(said.text);
+      else setMessage(said.text);
+      // The copies keep the way their originals were made, so All tables is where every one of them is listed.
+      if (said.showTables) {
+        setEntry("all");
+        chooseView("tables");
+      }
       refreshList();
     });
   }
@@ -298,6 +342,8 @@ export default function CrosstabWorkspace({
   // Don't know, refused and not applicable stay out of percentage bases unless the researcher asks for them.
   const [excludeDk, setExcludeDk] = useState(true);
   const [filters, setFilters] = useState<CrosstabFilter[]>([]);
+  // SemanticTabs' earlier requests (CrosstabAsk), kept here so they outlive the panel.
+  const [askHistory, setAskHistory] = useState<AskHistory>({ documentId, items: [] });
   // Survey design for Taylor series variance. Suggested from the variable names, via the same
   // heuristic (./lib/surveyDesign) every automatic caller (NPS, Objectives, brand health, CSM,
   // wave tracking) now resolves through too - previously this workspace kept its own inline copy
@@ -629,7 +675,48 @@ export default function CrosstabWorkspace({
     }
   }
 
-  function addTable(over?: { columnVars: string[]; rowItems: CrosstabRowItem[]; filters?: CrosstabFilter[] }) {
+  function editTable(it: CrosstabListItem) {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const r = await loadTableDefinitionAction(runId, it.id);
+      if (!r.ok) return setError(r.error);
+      if (!r.definition.request) return setError(`"${it.label}" was saved before tables kept their definition, so it cannot be edited. Build it here instead.`);
+      const c = builderChoicesFrom(r.definition.request, (n) => (n.startsWith("set:") ? setByKeyTop.has(n.slice(4)) : byName.has(n)));
+      setColumnVars(c.columnVars);
+      setRowItems(c.rowItems);
+      setNets(c.nets);
+      setFilters(c.filters);
+      setColGroups(c.columnGroups);
+      setCorrection(c.correction);
+      setExcludeDk(c.excludeDk);
+      setCellPrefs((p) => ({ ...p, mean: c.meanRows }));
+      setLayerVar(c.layerVariable);
+      const replaceable = r.definition.status === "draft" && r.definition.documentId === documentId && !it.layerGroup && !c.layerVariable;
+      setEditing({ tableId: it.id, label: it.label, replaceable });
+      setEntry("build");
+      chooseView("build");
+      const next = replaceable
+        ? "Change what you need, then press Update table to replace the draft, or Add table to set to keep both."
+        : "Change what you need, then press Add table to set. The saved table stays as it is.";
+      const left = c.missing.length ? ` Not in this file, so left out: ${c.missing.join(", ")}.` : "";
+      setMessage(`Editing "${it.label}". ${next}${left} The weight and survey design are this file's own settings.`);
+    });
+  }
+
+  function stopEditing() {
+    setEditing(null);
+    setColumnVars([]);
+    setRowItems([]);
+    setNets([]);
+    setFilters([]);
+    setColGroups({});
+    setLayerVar("");
+    setMessage(null);
+  }
+
+  function addTable(over?: { columnVars: string[]; rowItems: CrosstabRowItem[]; filters?: CrosstabFilter[] }, replace?: string) {
+    const choicesAtAdd = viewState.choices;
     const fl = over?.filters ?? filters;
     let cv = over?.columnVars ?? columnVars;
     let ri = over?.rowItems ?? rowItems;
@@ -652,17 +739,30 @@ export default function CrosstabWorkspace({
         weightVar: weightVar || null,
         correction,
         excludeDk,
+        meanRows: cellPrefs.mean,
         ...(designOk ? { design: { psu: psuVar || null, strata: strataVar || null } } : {}),
         columnGroups: Object.fromEntries(Object.entries(colGroups).filter(([k, g]) => cv.includes(k) && g.length)),
       };
+      if (!layerVar && replace) {
+        const r = await replaceDraftCrosstabAction(runId, documentId, replace, { ...base, ...(fl.length ? { filters: fl } : {}) });
+        if (!r.ok) return setError(r.error);
+        const skipped = r.skipped.length ? ` Skipped: ${r.skipped.map((s) => s.variable).join(", ")}.` : "";
+        setMessage(r.replaced ? `Updated the table (${r.questions} question(s)).${skipped}` : `Added the edited table (${r.questions} question(s)). The earlier one had been committed or deleted meanwhile, so it was left as it is.${skipped}`);
+        setEditing(null);
+        setRowItems([]);
+        setNets([]);
+        refreshList(r.tableId, choicesAtAdd);
+        return;
+      }
       if (!layerVar) {
         const r = await addCrosstabAction(runId, documentId, { ...base, ...(fl.length ? { filters: fl } : {}) });
         if (!r.ok) return setError(r.error);
         const skipped = r.skipped.length ? ` Skipped: ${r.skipped.map((s) => s.variable).join(", ")}.` : "";
+        setEditing(null);
         setMessage(`Added a table with ${r.questions} question(s).${skipped}`);
         setRowItems([]);
         setNets([]);
-        refreshList(r.tableId);
+        refreshList(r.tableId, choicesAtAdd);
         return;
       }
       // Layered: one saved table per category of the layer variable, SPSS-style, sharing a
@@ -700,7 +800,7 @@ export default function CrosstabWorkspace({
       setMessage(`Added ${cats.length - failures.length} layered table(s) by ${layerLabel}, ${totalQuestions} question(s) in all.${skippedText}${failedText}`);
       setRowItems([]);
       setNets([]);
-      refreshList(lastTableId);
+      refreshList(lastTableId, choicesAtAdd);
     });
   }
 
@@ -717,18 +817,25 @@ export default function CrosstabWorkspace({
   }
 
   function buildStarter() {
+    const choicesAtAdd = viewState.choices;
     setError(null);
     setMessage(null);
     startTransition(async () => {
-      const r = await buildStarterTablesAction(runId, documentId, {
-        weightVar: weightVar || null,
-        correction,
-        excludeDk,
-        ...(designOk ? { design: { psu: psuVar || null, strata: strataVar || null } } : {}),
-      });
+      const r = await buildStarterTablesAction(
+        runId,
+        documentId,
+        {
+          weightVar: weightVar || null,
+          correction,
+          excludeDk,
+          meanRows: cellPrefs.mean,
+          ...(designOk ? { design: { psu: psuVar || null, strata: strataVar || null } } : {}),
+        },
+        starterBanners ?? undefined,
+      );
       if (!r.ok) return setError(r.error);
       setMessage(`Added ${r.tables} starter table(s) as drafts, ${r.questions} question(s) each. Review them, delete what you do not need, then commit.`);
-      refreshList();
+      refreshList(undefined, choicesAtAdd);
       router.refresh();
     });
   }
@@ -751,11 +858,22 @@ export default function CrosstabWorkspace({
         ? `Delete this table and its ${it.findings} finding(s)?`
         : "Delete this table?";
     if (!window.confirm(warn)) return;
+    // Grant, 29 October 2026: after deleting every table, the earlier "Committed 5 table(s)" note was still shown, with
+    // a red error from a second delete of a table already gone. Each delete clears earlier notes and says what it did;
+    // a refusal is checked against the current list, so a table that is no longer there reads as already deleted
+    // rather than as a failure (the server still refuses it, as it must for another project's table).
+    setError(null);
+    setMessage(null);
     startTransition(async () => {
       const r = await deleteCrosstabAction(runId, it.id);
-      if (!r.ok) return setError(r.error);
-      refreshList();
+      const listed = await listCrosstabsAction(runId, documentId);
+      if (listed.ok) setItems(listed.items);
       router.refresh();
+      if (!r.ok) {
+        if (listed.ok && !listed.items.some((x) => x.id === it.id)) return setMessage(`"${it.label}" had already been deleted.`);
+        return setError(r.error);
+      }
+      setMessage(it.status === "committed" && it.findings > 0 ? `Deleted "${it.label}" and its ${it.findings} finding(s).` : `Deleted "${it.label}".`);
     });
   }
 
@@ -777,21 +895,201 @@ export default function CrosstabWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry, runId, documentId]);
   const modeName = { build: "CrossTabs", ask: "SemanticTabs", starter: "StarterTabs", objectives: "ObjectiveTabs", all: "All tables" }[entry];
-  const starterPlan = useMemo(() => (dict ? planStarterTables(dict) : null), [dict]);
+  // The starter set's columns to split by: null for the recognised ones (demographics and customer
+  // groupings), or the researcher's choice from the file's candidates. Kept with its file, so a
+  // choice made on one file is not applied to another.
+  const [starterChoice, setStarterChoice] = useState<{ documentId: string; names: string[] } | null>(null);
+  const starterBanners = starterChoice && starterChoice.documentId === documentId ? starterChoice.names : null;
+  const setStarterBanners = (names: string[] | null) => setStarterChoice(names ? { documentId, names } : null);
+  // The column chooser opens by itself when nothing is recognised; once the researcher opens,
+  // closes or uses it, it stays as they left it (choosing a first column must not fold it away).
+  const [starterChooserOpen, setStarterChooserOpen] = useState<boolean | null>(null);
+  const starterPlan = useMemo(() => (dict ? planStarterTables(dict, starterBanners ?? undefined) : null), [dict, starterBanners]);
   const hasStarter = items.some((i) => i.label.startsWith("Starter:"));
   const arrow = (k: SortKey) => (sort.key === k ? (sort.dir === 1 ? " ▲" : " ▼") : "");
   const btn = (on: boolean) =>
     `rounded border px-2 py-0.5 text-[11px] ${on ? "border-primary bg-primary text-white" : "border-border hover:border-slate-400"}`;
 
-  const body = (
-    <CellSelectContext.Provider value={{ sel: cellSel, select: setCellSel }}>
-    <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-label="Crosstab workspace">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+  // The choices that change what every table means, said in one line that is always in view
+  // (Grant's review, 2026-10-20), so collapsing the settings never hides them. An unresolved design
+  // choice (several candidates, or a named variable not found) keeps the settings open.
+  const designText = noDesignChosen
+    ? "none (weights only)"
+    : designOk
+      ? `Taylor series (${[psuVar && `PSU ${psuVar}`, strataVar && `strata ${strataVar}`].filter(Boolean).join(", ")})`
+      : psuVar || strataVar
+        ? "variable not found"
+        : "not set (weights only)";
+  const designUnresolved = designAmbiguous || (!noDesignChosen && !designOk && (psuVar !== "" || strataVar !== ""));
+  const settingsSummary = (
+    <p className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600" data-testid="crosstab-settings-summary">
+      <span>
+        <span className="font-medium text-foreground">Weight:</span> {weightVar ? (weights.find((w) => w.name === weightVar)?.label ?? weightVar) : "none (unweighted)"}
+      </span>
+      <span className={designUnresolved ? "font-medium text-amber-800" : undefined}>
+        <span className="font-medium text-foreground">Survey design:</span> {designText}
+        {designAmbiguous ? ", several candidates: choose one" : ""}
+      </span>
+      <span>
+        <span className="font-medium text-foreground">Non-answers:</span> {excludeDk ? "excluded from bases" : "included as an answer"}
+      </span>
+      <span>
+        <span className="font-medium text-foreground">Filters:</span> {filters.length === 0 ? "none" : `${filters.length} applied`}
+      </span>
+      <span>
+        <span className="font-medium text-foreground">Comparisons:</span> {correction === "fdr" ? "false discovery rate correction" : correction === "bonferroni" ? "Bonferroni correction" : "uncorrected"}
+      </span>
+      {/* The controls sit in Table settings, below the rows and columns; this goes straight to them. */}
+      <button
+        type="button"
+        onClick={() => {
+          setSettingsOpen(true);
+          setRefine("settings");
+          chooseView("build");
+          requestAnimationFrame(() => (settingsRef.current ?? refineRef.current)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+        }}
+        className="font-medium text-primary underline"
+      >
+        Change settings
+      </button>
+    </p>
+  );
+  // Rolled up by default, like Filters and Display (Grant, 2026-10-22); the summary line says what is
+  // set, and it opens by itself while the survey design needs a choice (designUnresolved).
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDetailsElement>(null);
+  const refineRef = useRef<HTMLDivElement>(null);
+  const tableSettingsSummaryText = [
+    weightVar ? `weighted by ${weights.find((w) => w.name === weightVar)?.label ?? weightVar}` : "unweighted",
+    correction === "fdr" ? "false discovery rate" : correction === "bonferroni" ? "Bonferroni" : "uncorrected",
+    designOk && (psuVar || strataVar) ? "survey design set" : "no survey design",
+    excludeDk ? "non-answers excluded" : "non-answers included",
+  ].join(" · ");
+  const tableSettingsBody = (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2">
+              <label className="flex min-w-0 items-center gap-2 text-xs">
+                <span className="font-medium text-foreground">Weight</span>
+                <select
+                  value={weightVar}
+                  onChange={(e) => setWeightChoice(e.target.value)}
+                  className="min-w-0 max-w-xs rounded border border-border px-2 py-1 text-xs"
+                >
+                  <option value="">None (unweighted)</option>
+                  {weights.map((w) => (
+                    <option key={w.name} value={w.name}>
+                      {w.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex min-w-0 items-center gap-2 text-xs">
+                <span className="font-medium text-foreground">Multiple comparisons</span>
+                <select
+                  value={correction}
+                  onChange={(e) => setCorrection(e.target.value as Correction)}
+                  className="min-w-0 max-w-xs rounded border border-border px-2 py-1 text-xs"
+                  title="Many columns are tested at once, so some differences appear by chance. The correction is applied across the columns of each banner variable, for each row."
+                >
+                  <option value="fdr">False discovery rate (Benjamini-Hochberg)</option>
+                  <option value="bonferroni">Bonferroni (strictest)</option>
+                  <option value="none">None (uncorrected)</option>
+                </select>
+              </label>
+              <label className="flex min-w-0 items-center gap-2 text-xs">
+                <span className="font-medium text-foreground">Survey design</span>
+                <input
+                  list="design-vars"
+                  value={psuVar}
+                  disabled={noDesignChosen}
+                  onChange={(e) => setPsuChoice(e.target.value.trim())}
+                  placeholder="PSU (cluster) variable"
+                  className="w-40 rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+                  title="The primary sampling unit, for example the enumeration area. Leave empty (with strata filled in) for a strata-only design, or leave both empty to use weights only."
+                />
+                <input
+                  list="design-vars"
+                  value={strataVar}
+                  disabled={noDesignChosen}
+                  onChange={(e) => setStrataChoice(e.target.value.trim())}
+                  placeholder="Strata variable"
+                  className="w-36 rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+                  title="Optional. The stratum each case was sampled from. Can be used alone, with no PSU/clustering variable."
+                />
+                <label className="flex items-center gap-1 text-[11px] text-muted" title="Explicitly record that no survey design applies to this file, distinct from simply never having chosen one - this is persisted and overrides auto-detection for every tool that reads it.">
+                  <input
+                    type="checkbox"
+                    checked={noDesignChosen}
+                    onChange={(e) => setNoDesignChosen(e.target.checked)}
+                  />
+                  No design (weights only)
+                </label>
+                <datalist id="design-vars">
+                  {(dict?.variables ?? []).filter((v) => !v.weightLike).slice(0, 4000).map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.label}
+                    </option>
+                  ))}
+                </datalist>
+                <span className={designOk ? "text-success" : "text-muted"}>
+                  {designOk ? "Taylor series variance" : (psuVar || strataVar) ? "Variable not found" : "Weights only"}
+                </span>
+                {designAmbiguous && (
+                  <span className="text-warning" title="More than one variable name looked like a PSU or strata candidate, so none was picked automatically - choose one explicitly.">
+                    Multiple design candidates found - choose explicitly
+                  </span>
+                )}
+              </label>
+              <label className="flex min-w-0 items-center gap-2 text-xs">
+                <span className="font-medium text-foreground">Non-answers (don&apos;t know, refused, n/a)</span>
+                <select
+                  value={excludeDk ? "exclude" : "include"}
+                  onChange={(e) => setExcludeDk(e.target.value === "exclude")}
+                  className="rounded border border-border px-2 py-1 text-xs"
+                  title="Excluded: these answers are left out of the percentage bases. Included: they stay in as an answer and take a share."
+                >
+                  <option value="exclude">Exclude from bases</option>
+                  <option value="include">Include as an answer</option>
+                </select>
+              </label>
+      </div>
+  );
+  const tableSettings = (
+    <details
+      ref={settingsRef}
+      open={settingsOpen || designUnresolved}
+      onToggle={(e) => setSettingsOpen(e.currentTarget.open)}
+      className="rounded-lg border border-slate-200 bg-slate-50"
+      data-testid="crosstab-table-settings"
+    >
+      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-foreground">
+        Table settings
+        <span className="ml-2 text-[11px] font-normal text-slate-600" data-testid="crosstab-table-settings-summary">
+          {tableSettingsSummaryText}
+        </span>
+      </summary>
+      <div className="border-t border-slate-200">{tableSettingsBody}</div>
+    </details>
+  );
+  const headerBar = (
+      <div className={asPage ? "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm" : "flex items-center justify-between gap-3 border-b border-border px-5 py-3"}>
         <div className="min-w-0">
-          <h2 className="truncate text-base font-semibold text-foreground">Crosstab workspace</h2>
-          <p className="truncate text-xs text-muted">
-            {filename}
-            {dict ? ` · ${dict.variables.length.toLocaleString()} variables · ${dict.nCases.toLocaleString()} cases` : ""}
+          {asPage ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h2 className="text-lg font-semibold text-foreground">Cross tabs</h2>
+              {fileSelector}
+            </div>
+          ) : (
+            <h2 className="truncate text-base font-semibold text-foreground">Crosstab workspace</h2>
+          )}
+          <p className={asPage ? "mt-0.5 text-xs text-slate-600" : "truncate text-xs text-muted"} data-testid="crosstab-file-meta">
+            {asPage ? "" : filename}
+            {/* Variables are the file's columns; the list below shows fewer rows, as a question set
+                is one row and weights, open text and single-value columns are left out unless chosen. */}
+            {dict
+              ? `${asPage ? "" : " · "}${dict.nCases.toLocaleString()} cases · ${dict.variables.length.toLocaleString()} variables in the file`
+              : asPage
+                ? "Reading the file's variables..."
+                : ""}
             {dict?.sheets?.data
               ? ` · data from sheet "${dict.sheets.data}"` +
                 (dict.sheets.variables || dict.sheets.values
@@ -800,13 +1098,13 @@ export default function CrosstabWorkspace({
               : ""}
           </p>
         </div>
-        <div className="flex min-w-0 flex-1 items-center justify-center">
-          <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-slate-100 p-1" role="group" aria-label="Choose the interface you prefer">
+        <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1">
+          <div className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-border bg-slate-100 p-1" role="group" aria-label="Choose the interface you prefer">
             {(
               [
                 ["build", "CrossTabs", "Build a table: pick columns and rows, add nets and groups"],
                 ["ask", "SemanticTabs", "Ask in plain English and check the setup"],
-                ["starter", "StarterTabs", "Suggested demographic tables"],
+                ["starter", "StarterTabs", "Suggested tables split by demographics or customer groups, or columns you choose"],
                 ["objectives", "ObjectiveTabs", "Tables built from your research objectives"],
                 ["all", `All tables (${items.length})`, "Every table from every mode, and the findings"],
               ] as const
@@ -816,19 +1114,37 @@ export default function CrosstabWorkspace({
                 type="button"
                 title={hint}
                 aria-pressed={entry === k}
-                onClick={() => setEntry(k)}
+                onClick={() => {
+                  setEntry(k);
+                  // A way of making tables opens on building one; All tables has nothing to build.
+                  chooseView(k === "all" ? "tables" : "build");
+                }}
                 className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${entry === k ? "bg-white text-primary shadow-sm ring-1 ring-primary/40" : "text-muted hover:bg-white/70 hover:text-foreground"}`}
               >
                 {title}
               </button>
             ))}
           </div>
+          {/* What the chosen way of making tables does, said under the buttons rather than only on hover. */}
+          <p className="text-center text-[11px] text-slate-600" data-testid="crosstab-mode-hint">
+            {
+              {
+                build: "CrossTabs: build a table yourself by choosing columns and rows, with nets and groups.",
+                ask: "SemanticTabs: describe the table in plain English, then check the setup it proposes before adding it.",
+                starter: "StarterTabs: a suggested set of tables split by demographics or customer groups (or columns you choose), built as drafts.",
+                objectives: "ObjectiveTabs: tables the evidence check built from your research objectives.",
+                all: "All tables: every table from every way of making them, and the commit into findings.",
+              }[entry]
+            }
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {otherWaves.length > 0 && (
             <>
               <select
                 value={copyFrom}
+                aria-label="Copy tables from"
+                data-testid="crosstab-copy-from"
                 onChange={(e) => setCopyFrom(e.target.value)}
                 title="Rebuild this wave's crosstabs from the same banner, rows and filters saved on another wave"
                 className="rounded-lg border border-border px-2 py-1.5 text-xs"
@@ -850,19 +1166,22 @@ export default function CrosstabWorkspace({
               </button>
             </>
           )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:border-slate-400"
-          >
-            Close (Esc)
-          </button>
+          {!asPage && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:border-slate-400"
+            >
+              Close (Esc)
+            </button>
+          )}
         </div>
       </div>
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(34rem,48%)_minmax(0,1fr)] xl:grid-cols-[minmax(30rem,38%)_minmax(0,1fr)_22rem]">
+  );
+  const variablesPane = (
+    <>
         {/* Variable table */}
-        <section className="flex min-h-0 flex-col border-r-2 border-sky-200 bg-sky-50">
+        <section aria-label="Variables" className={asPage ? "flex h-[36rem] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100vh-13rem)] lg:min-h-[32rem]" : "flex min-h-0 flex-col border-r-2 border-sky-200 bg-sky-50"}>
           <div className="flex flex-wrap items-center gap-3 border-b border-border p-3">
             <div className="relative min-w-0 flex-1">
             <input
@@ -874,7 +1193,7 @@ export default function CrosstabWorkspace({
               }}
               placeholder="Search name or label"
               className="w-full rounded-lg border border-border py-1.5 pl-3 pr-9 text-sm"
-              autoFocus
+              autoFocus={!asPage}
             />
               {query && (
                 <button
@@ -913,8 +1232,12 @@ export default function CrosstabWorkspace({
                 </option>
               ))}
             </select>
-            <span className="text-[11px] text-muted">
-              {dict ? `${entries.length.toLocaleString()} rows` : "Reading variables..."}
+            <span
+              className="text-[11px] text-muted"
+              title="Rows in this list, not variables: a question set (multiple response or grid) is one row, and weights, open text and columns with a single value are left out unless chosen under the type filter."
+              data-testid="crosstab-list-count"
+            >
+              {dict ? `${entries.length.toLocaleString()} ${entries.length === 1 ? "row" : "rows"} in the list` : "Reading variables..."}
             </span>
             {sort.key !== "order" && (
               <button
@@ -1036,7 +1359,10 @@ export default function CrosstabWorkspace({
             </div>
           </div>
         </section>
-
+    </>
+  );
+  const dialogs = (
+    <>
         {grouping && (
           <GroupDialog
             runId={runId}
@@ -1081,97 +1407,105 @@ export default function CrosstabWorkspace({
             }}
           />
         )}
-        {/* Build, table set, viewer */}
-        <section className="flex min-h-0 flex-col overflow-y-auto">
-          <div className="space-y-3 border-b border-border p-4">
-            {entry !== "all" && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-slate-50 px-3 py-2">
-              <label className="flex min-w-0 items-center gap-2 text-xs">
-                <span className="font-medium text-foreground">Weight</span>
-                <select
-                  value={weightVar}
-                  onChange={(e) => setWeightChoice(e.target.value)}
-                  className="min-w-0 max-w-xs rounded border border-border px-2 py-1 text-xs"
-                >
-                  <option value="">None (unweighted)</option>
-                  {weights.map((w) => (
-                    <option key={w.name} value={w.name}>
-                      {w.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex min-w-0 items-center gap-2 text-xs">
-                <span className="font-medium text-foreground">Multiple comparisons</span>
-                <select
-                  value={correction}
-                  onChange={(e) => setCorrection(e.target.value as Correction)}
-                  className="min-w-0 max-w-xs rounded border border-border px-2 py-1 text-xs"
-                  title="Many columns are tested at once, so some differences appear by chance. The correction is applied across the columns of each banner variable, for each row."
-                >
-                  <option value="fdr">False discovery rate (Benjamini-Hochberg)</option>
-                  <option value="bonferroni">Bonferroni (strictest)</option>
-                  <option value="none">None (uncorrected)</option>
-                </select>
-              </label>
-              <label className="flex min-w-0 items-center gap-2 text-xs">
-                <span className="font-medium text-foreground">Survey design</span>
-                <input
-                  list="design-vars"
-                  value={psuVar}
-                  disabled={noDesignChosen}
-                  onChange={(e) => setPsuChoice(e.target.value.trim())}
-                  placeholder="PSU (cluster) variable"
-                  className="w-40 rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
-                  title="The primary sampling unit, for example the enumeration area. Leave empty (with strata filled in) for a strata-only design, or leave both empty to use weights only."
-                />
-                <input
-                  list="design-vars"
-                  value={strataVar}
-                  disabled={noDesignChosen}
-                  onChange={(e) => setStrataChoice(e.target.value.trim())}
-                  placeholder="Strata variable"
-                  className="w-36 rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
-                  title="Optional. The stratum each case was sampled from. Can be used alone, with no PSU/clustering variable."
-                />
-                <label className="flex items-center gap-1 text-[11px] text-muted" title="Explicitly record that no survey design applies to this file, distinct from simply never having chosen one - this is persisted and overrides auto-detection for every tool that reads it.">
-                  <input
-                    type="checkbox"
-                    checked={noDesignChosen}
-                    onChange={(e) => setNoDesignChosen(e.target.checked)}
-                  />
-                  No design (weights only)
-                </label>
-                <datalist id="design-vars">
-                  {(dict?.variables ?? []).filter((v) => !v.weightLike).slice(0, 4000).map((v) => (
-                    <option key={v.name} value={v.name}>
-                      {v.label}
-                    </option>
-                  ))}
-                </datalist>
-                <span className={designOk ? "text-success" : "text-muted"}>
-                  {designOk ? "Taylor series variance" : (psuVar || strataVar) ? "Variable not found" : "Weights only"}
-                </span>
-                {designAmbiguous && (
-                  <span className="text-warning" title="More than one variable name looked like a PSU or strata candidate, so none was picked automatically - choose one explicitly.">
-                    Multiple design candidates found - choose explicitly
+    </>
+  );
+  const notices = (
+    <>
+      {message && <p className="text-xs text-success">{message}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
+    </>
+  );
+  // On the page it sits beside the tabs, so drafts waiting to be committed are in view on either tab.
+  const commitButton = drafts.length > 0 && (
+    <button
+      type="button"
+      onClick={commit}
+      disabled={isPending}
+      className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+    >
+      Commit {drafts.length} table{drafts.length > 1 ? "s" : ""}{entry === "all" ? "" : " (all modes)"} and generate findings
+    </button>
+  );
+  // The tables of the chosen way of making them. On the page, the View tables tab at full width; in
+  // the overlay, under the build controls as before.
+  const tableList = (
+          <div className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-foreground">
+                {modeName}: {visible.length} table{visible.length === 1 ? "" : "s"}
+                {entry !== "all" && items.length > visible.length ? ` (${items.length} in all)` : ""}
+              </span>
+              {visible.length > 0 && (() => {
+                // Export all (Grant, 29 October 2026): the tables listed here, in this order, one sheet or slide set each
+                // with a Contents sheet; All tables, or a list too long for a link, exports this file's saved tables.
+                const base = `/api/runs/${runId}/crosstab/export?`;
+                const scope = entry === "all" || visible.length > 150 ? `documentId=${documentId}` : `tableIds=${visible.map((v) => v.id).join(",")}`;
+                return (
+                  <span className="flex flex-wrap items-center gap-2 text-xs" data-testid="crosstab-export-all">
+                    <span className="text-muted">{entry === "all" || visible.length > 150 ? "Export every table of this file:" : `Export these ${visible.length}:`}</span>
+                    {/* Named for what they export, so "PowerPoint" alone still finds a single table's own link. */}
+                    <a className="font-medium text-primary hover:underline" aria-label="Export all to Excel" href={`${base}${scope}`}>Excel</a>
+                    <a className="font-medium text-primary hover:underline" aria-label="Export all to PowerPoint" href={`${base}${scope}&format=pptx`}>PowerPoint</a>
+                    <a className="font-medium text-primary hover:underline" aria-label="Export all to PDF" href={`${base}${scope}&format=pdf`} title="Needs LibreOffice installed on this computer">PDF</a>
                   </span>
-                )}
-              </label>
-              <label className="flex min-w-0 items-center gap-2 text-xs">
-                <span className="font-medium text-foreground">Non-answers (don&apos;t know, refused, n/a)</span>
-                <select
-                  value={excludeDk ? "exclude" : "include"}
-                  onChange={(e) => setExcludeDk(e.target.value === "exclude")}
-                  className="rounded border border-border px-2 py-1 text-xs"
-                  title="Excluded: these answers are left out of the percentage bases. Included: they stay in as an answer and take a share."
+                );
+              })()}
+              {entry === "all" && drafts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={deleteDrafts}
+                  disabled={isPending}
+                  className="ml-auto rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-danger hover:border-danger disabled:opacity-50"
                 >
-                  <option value="exclude">Exclude from bases</option>
-                  <option value="include">Include as an answer</option>
-                </select>
-              </label>
+                  Delete all drafts ({drafts.length})
+                </button>
+              )}
+              {!asPage && commitButton}
             </div>
+            {visible.length === 0 && (
+              <p className="text-xs text-muted">
+                {entry === "all"
+                  ? "No tables yet. Make some with Workspace, Ask in plain English, the Crosstabs window or the Starter set."
+                  : `No tables from ${modeName} yet. Tables you make here appear below. Every table is also listed under All tables.`}
+              </p>
             )}
+            {visible.map((it, i) => {
+              const newLayerGroup = !!it.layerGroup && it.layerGroup !== visible[i - 1]?.layerGroup;
+              return (
+                <div key={`${entry === "all" ? "all" : "mode"}-${it.id}`}>
+                  {newLayerGroup && (
+                    <p className="mb-1 mt-2 text-[11px] font-medium text-muted first:mt-0">
+                      Layered by {it.layerLabel ?? "variable"}, one table per category
+                    </p>
+                  )}
+                  <TableCard
+                    startOpen={false}
+                    runId={runId}
+                    item={it}
+                    collapse={collapseAll}
+                    cells={cellPrefs}
+                    net={cellNet}
+                    stats={statPrefs}
+                    scrollTo={lastAdded === it.id}
+                    onDelete={() => remove(it)}
+                    onEdit={() => editTable(it)}
+                    busy={isPending}
+                    layerBadge={it.layerCategory ?? undefined}
+                  />
+                </div>
+              );
+            })}
+          </div>
+  );
+  const buildPane = (
+    <>
+        {/* The build controls. On the page they are the Build table tab and grow with their content, so
+            the page has one scroll bar (Grant, 27 October 2026); the tables are the View tables tab. In
+            the overlay, the table list follows underneath. */}
+        <section aria-label={asPage ? "Build table" : "Tables"} className={asPage ? "flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm" : "flex min-h-0 flex-col overflow-y-auto"}>
+          <div className={asPage ? "space-y-3 p-4" : "space-y-3 border-b border-border p-4"}>
+            {entry !== "all" && !(asPage && entry === "build") && settingsSummary}
+            {entry !== "all" && entry !== "build" && tableSettings}
             {entry === "objectives" && (
               <div className="space-y-2 rounded-lg border border-border bg-slate-50 p-3 text-xs">
                 <p className="text-muted">
@@ -1210,7 +1544,7 @@ export default function CrosstabWorkspace({
                 )}
               </div>
             )}
-            {entry === "ask" && dict && <CrosstabAsk runId={runId} documentId={documentId} dict={dict} busy={isPending} onUse={useAsked} />}
+            {entry === "ask" && dict && <CrosstabAsk runId={runId} documentId={documentId} dict={dict} busy={isPending} onUse={useAsked} history={askHistory} onHistory={setAskHistory} />}
             {entry === "starter" && starterPlan && starterPlan.banners.length > 0 && starterPlan.items.length > 0 && !hasStarter && (
               <div
                 className={`rounded-lg border p-3 text-xs ${starterPlan.small ? "border-primary/40 bg-primary-light" : "border-border bg-slate-50"}`}
@@ -1227,6 +1561,7 @@ export default function CrosstabWorkspace({
                         ? ` of ${starterPlan.eligibleQuestions}`
                         : ""}{" "}
                       questions
+                      {starterPlan.meanScales > 0 ? ` (${starterPlan.meanScales} rated 0 to 10 or 1 to 10, shown with their mean above the answers)` : ""}
                       {weightVar ? `, weighted by ${weightVar}` : ", unweighted"}. Built as drafts: nothing becomes a
                       finding until you commit, and only differences that survive a false discovery rate correction are kept.
                     </p>
@@ -1243,14 +1578,75 @@ export default function CrosstabWorkspace({
               </div>
             )}
             {entry === "starter" && hasStarter && <p className="text-xs text-muted">A starter set is already in the table set below. Delete the drafts to build it again.</p>}
-            {entry === "starter" && !hasStarter && (!starterPlan || starterPlan.banners.length === 0 || starterPlan.items.length === 0) && (
-              <p className="text-xs text-muted">No demographic variables (gender, age, province and so on) or suitable questions were found for a starter set. Use one of the other ways to build a table.</p>
+            {entry === "starter" && !hasStarter && starterPlan && starterPlan.candidates.length === 0 && (
+              <p className="text-xs text-muted">
+                No column in this file can split a starter set (one needs 2 to 10 answers, with at least 90% of people answering). Use one of the other ways to build a table.
+              </p>
+            )}
+            {entry === "starter" && !hasStarter && starterPlan && starterPlan.candidates.length > 0 && starterPlan.banners.length === 0 && (
+              <p className="text-xs text-muted" data-testid="starter-none-recognised">
+                {starterPlan.chosen
+                  ? "Choose at least one column to split by."
+                  : "No demographic (gender, age, province and so on) or customer grouping (such as segment) was recognised. Choose the columns to split by below."}
+              </p>
+            )}
+            {entry === "starter" && !hasStarter && starterPlan && starterPlan.banners.length > 0 && starterPlan.items.length === 0 && (
+              <p className="text-xs text-muted">No questions suited a starter table besides the columns to split by. Use one of the other ways to build a table.</p>
+            )}
+            {entry === "starter" && !hasStarter && starterPlan && starterPlan.candidates.length > 0 && (
+              <details
+                className="rounded-lg border border-border bg-white p-3 text-xs"
+                open={starterChooserOpen ?? starterPlan.banners.length === 0}
+                onToggle={(e) => setStarterChooserOpen(e.currentTarget.open)}
+                data-testid="starter-banner-chooser"
+              >
+                <summary className="cursor-pointer font-medium text-foreground">
+                  {`Columns to split by (${starterPlan.banners.length} chosen, at most ${starterPlan.maxBanners})`}
+                  {starterPlan.chosen && <span className="ml-1.5 font-normal text-muted">your choice</span>}
+                </summary>
+                <p className="mt-1.5 text-muted">
+                  Each column you choose becomes one starter table, with the other questions down the side. Recognised splits are listed first.
+                  {starterPlan.chosen && (
+                    <button type="button" className="ml-1.5 underline" onClick={() => setStarterBanners(null)}>
+                      Use the recognised ones
+                    </button>
+                  )}
+                </p>
+                <ul className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {starterPlan.candidates.map((c) => {
+                    const on = starterPlan.banners.some((b) => b.name === c.name);
+                    const full = !on && starterPlan.banners.length >= starterPlan.maxBanners;
+                    return (
+                      <li key={c.name}>
+                        <label className={`flex items-start gap-1.5 ${full ? "text-muted" : "text-foreground"}`}>
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={on}
+                            disabled={full}
+                            onChange={() => {
+                              setStarterChooserOpen(true);
+                              const current = starterPlan.banners.map((b) => b.name);
+                              setStarterBanners(on ? current.filter((n) => n !== c.name) : [...current, c.name]);
+                            }}
+                          />
+                          <span>
+                            {c.label && c.label !== c.name ? `${c.label} (${c.name})` : c.name}
+                            {c.recognised && <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">recognised</span>}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
             )}
             {entry === "build" && (
               <>
+            {asPage && <h3 className="text-base font-semibold text-foreground">Build a cross-tab: choose the groups to compare and the questions to measure</h3>}
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <p className="mb-1.5 text-base font-semibold text-foreground">Columns (banner, side by side)</p>
+                <p className="mb-1.5 text-base font-semibold text-foreground">Columns <span className="text-xs font-normal uppercase tracking-wide text-slate-500">groups to compare</span></p>
                 <div className="flex h-44 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-white p-2 text-sm shadow-inner">
                   {columnVars.length === 0 && <span className="text-muted">One or more variables, for example province. Leave empty to describe all respondents.</span>}
                   {columnVars.map((n) => (
@@ -1278,7 +1674,7 @@ export default function CrosstabWorkspace({
                 </div>
               </div>
               <div>
-                <p className="mb-1.5 text-base font-semibold text-foreground">Rows (questions to measure)</p>
+                <p className="mb-1.5 text-base font-semibold text-foreground">Rows <span className="text-xs font-normal uppercase tracking-wide text-slate-500">questions to measure</span></p>
                 <div className="flex h-44 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-white p-2 text-sm shadow-inner">
                   {rowItems.length === 0 && nets.length === 0 && <span className="text-muted">One or more variables or whole sets.</span>}
                   {rowItems.map((r) => (
@@ -1328,117 +1724,225 @@ export default function CrosstabWorkspace({
             )}
             {entry === "build" && (
               <>
+            {dict && (asPage ? (
+              // The page: three cards, each opening its panel underneath (Grant, 27 October 2026). Each
+              // card says what is set, so a closed panel never hides a choice that changes the tables.
+              <div ref={refineRef} className="space-y-2" data-testid="crosstab-refine">
+                <h3 className="text-sm font-semibold text-foreground">Refine your table</h3>
+                <div className="grid gap-2 md:grid-cols-3">
+                  {(
+                    [
+                      ["filters", "Filters and layers", `${filters.length === 0 ? "No filter" : `${filters.length} ${filters.length === 1 ? "filter" : "filters"}`} · ${layerVar ? `layered by ${byName.get(layerVar)?.label || layerVar}` : "no layer"}`, "crosstab-filters-section"],
+                      ["settings", "Table settings", tableSettingsSummaryText, "crosstab-table-settings"],
+                      ["display", "Display and statistics", "Cell figures, NET columns, mean and sizes of association", "crosstab-display-section"],
+                    ] as const
+                  ).map(([key, title, summary, testId]) => {
+                    const open = refine === key || (key === "settings" && refine === null && designUnresolved);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-expanded={open}
+                        aria-controls={`crosstab-refine-${key}`}
+                        onClick={() => setRefine(open ? null : key)}
+                        data-testid={testId}
+                        className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors ${open ? "border-primary bg-primary-light" : "border-slate-200 bg-white hover:border-slate-400"}`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-foreground">{title}</span>
+                          <span className="block text-[11px] text-slate-600" data-testid={`${testId}-summary`}>{summary}</span>
+                        </span>
+                        <span aria-hidden className={`shrink-0 text-slate-500 transition-transform ${open ? "rotate-90" : ""}`}>›</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {(refine === "filters") && (
+                  <div id="crosstab-refine-filters" role="region" aria-label="Filters and layers" className="rounded-lg border border-slate-200 p-2">
+                    <CrosstabOptions part="filters" runId={runId} documentId={documentId} dict={dict} weighted={weightVar !== ""} filters={filters} setFilters={setFilters} cells={cellPrefs} setCells={setCellPrefs} net={cellNet} setNet={setCellNet} stats={statPrefs} setStats={setStatPrefs} layerVar={layerVar} setLayerVar={setLayerVar} />
+                  </div>
+                )}
+                {(refine === "settings" || (refine === null && designUnresolved)) && (
+                  <div id="crosstab-refine-settings" role="region" aria-label="Table settings" className="rounded-lg border border-slate-200 bg-slate-50">
+                    {tableSettingsBody}
+                  </div>
+                )}
+                {refine === "display" && (
+                  <div id="crosstab-refine-display" role="region" aria-label="Display and statistics" className="rounded-lg border border-slate-200 p-2">
+                    <CrosstabOptions part="display" runId={runId} documentId={documentId} dict={dict} weighted={weightVar !== ""} filters={filters} setFilters={setFilters} cells={cellPrefs} setCells={setCellPrefs} net={cellNet} setNet={setCellNet} stats={statPrefs} setStats={setStatPrefs} layerVar={layerVar} setLayerVar={setLayerVar} />
+                  </div>
+                )}
+                {/* The choices that change what every table means, in one line under the cards (Grant's mock). */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">{settingsSummary}</div>
+              </div>
+            ) : (
+              <>
             {dict && (
-              <CrosstabOptions
-                runId={runId}
-                documentId={documentId}
-                dict={dict}
-                weighted={weightVar !== ""}
-                filters={filters}
-                setFilters={setFilters}
-                cells={cellPrefs}
-                setCells={setCellPrefs}
-                net={cellNet}
-                setNet={setCellNet}
-                stats={statPrefs}
-                setStats={setStatPrefs}
-                layerVar={layerVar}
-                setLayerVar={setLayerVar}
-              />
+              <details className="rounded-lg border border-slate-200" open={filters.length > 0 || layerVar !== "" ? true : undefined} data-testid="crosstab-filters-section">
+                <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-foreground">
+                  2. Filters and optional layers
+                  <span className="ml-2 text-[11px] font-normal text-slate-600">
+                    {`${filters.length === 0 ? "No filter" : `${filters.length} ${filters.length === 1 ? "filter" : "filters"}`} · ${layerVar ? `layered by ${byName.get(layerVar)?.label || layerVar}` : "no layer"}`}
+                  </span>
+                </summary>
+                <div className="border-t border-slate-200 p-2">
+                  <CrosstabOptions part="filters" runId={runId} documentId={documentId} dict={dict} weighted={weightVar !== ""} filters={filters} setFilters={setFilters} cells={cellPrefs} setCells={setCellPrefs} net={cellNet} setNet={setCellNet} stats={statPrefs} setStats={setStatPrefs} layerVar={layerVar} setLayerVar={setLayerVar} />
+                </div>
+              </details>
             )}
-            <button
-              type="button"
-              onClick={() => addTable()}
-              disabled={isPending || (columnVars.length === 0 && rowItems.length === 0 && nets.length === 0)}
-              className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
-            >
-              {isPending ? "Working..." : layerVar ? "Add layered tables to set" : "Add table to set"}
-            </button>
+            {tableSettings}
+            {dict && (
+              <details className="rounded-lg border border-slate-200" data-testid="crosstab-display-section">
+                <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-foreground">
+                  Display and statistics options
+                  <span className="ml-2 text-[11px] font-normal text-slate-600">cell figures, NET columns and sizes of association</span>
+                </summary>
+                <div className="border-t border-slate-200 p-2">
+                  <CrosstabOptions part="display" runId={runId} documentId={documentId} dict={dict} weighted={weightVar !== ""} filters={filters} setFilters={setFilters} cells={cellPrefs} setCells={setCellPrefs} net={cellNet} setNet={setCellNet} stats={statPrefs} setStats={setStatPrefs} layerVar={layerVar} setLayerVar={setLayerVar} />
+                </div>
+              </details>
+            )}
               </>
-            )}
-            {message && <p className="text-xs text-success">{message}</p>}
-            {error && <p className="text-xs text-danger">{error}</p>}
-          </div>
-
-          <div className="space-y-3 p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-foreground">
-                {modeName}: {visible.length} table{visible.length === 1 ? "" : "s"}
-                {entry !== "all" && items.length > visible.length ? ` (${items.length} in all)` : ""}
-              </span>
-              {entry === "all" && drafts.length > 0 && (
+            ))}
+            {/* Kept in view at the foot of the pane while the sections above are scrolled. */}
+            <div className={asPage ? "sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-3 border-t border-slate-200 bg-white/95 px-4 py-2 backdrop-blur" : "flex flex-wrap items-center gap-3"}>
+              <button
+                type="button"
+                onClick={() => addTable()}
+                disabled={isPending || (columnVars.length === 0 && rowItems.length === 0 && nets.length === 0)}
+                className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+              >
+                {isPending ? "Working..." : layerVar ? "Add layered tables to set" : "Add table to set"}
+              </button>
+              {editing?.replaceable && !layerVar && (
                 <button
                   type="button"
-                  onClick={deleteDrafts}
-                  disabled={isPending}
-                  className="ml-auto rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-danger hover:border-danger disabled:opacity-50"
+                  onClick={() => addTable(undefined, editing.tableId)}
+                  disabled={isPending || (columnVars.length === 0 && rowItems.length === 0 && nets.length === 0)}
+                  className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+                  data-testid="crosstab-update-table"
                 >
-                  Delete all drafts ({drafts.length})
+                  Update table
                 </button>
               )}
-              {drafts.length > 0 && (
-                <button
-                  type="button"
-                  onClick={commit}
-                  disabled={isPending}
-                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
-                >
-                  Commit {drafts.length} table{drafts.length > 1 ? "s" : ""}{entry === "all" ? "" : " (all modes)"} and generate findings
-                </button>
+              {editing && (
+                <span className="text-[11px] text-slate-600" data-testid="crosstab-editing">
+                  {`Editing "${editing.label}". `}
+                  <button type="button" className="font-medium text-primary hover:underline disabled:opacity-50" onClick={stopEditing} disabled={isPending}>
+                    Stop editing
+                  </button>
+                </span>
+              )}
+              {columnVars.length === 0 && rowItems.length === 0 && nets.length === 0 && (
+                <span className="text-[11px] text-slate-600">Choose rows or columns in the variable list first.</span>
               )}
             </div>
-            {visible.length === 0 && (
-              <p className="text-xs text-muted">
-                {entry === "all"
-                  ? "No tables yet. Make some with Workspace, Ask in plain English, the Crosstabs window or the Starter set."
-                  : `No tables from ${modeName} yet. Tables you make here appear below. Every table is also listed under All tables.`}
-              </p>
+              </>
             )}
-            {visible.map((it, i) => {
-              const newLayerGroup = !!it.layerGroup && it.layerGroup !== visible[i - 1]?.layerGroup;
-              return (
-                <div key={`${entry === "all" ? "all" : "mode"}-${it.id}`}>
-                  {newLayerGroup && (
-                    <p className="mb-1 mt-2 text-[11px] font-medium text-muted first:mt-0">
-                      Layered by {it.layerLabel ?? "variable"}, one table per category
-                    </p>
-                  )}
-                  <TableCard
-                    startOpen={false}
-                    runId={runId}
-                    item={it}
-                    collapse={collapseAll}
-                    cells={cellPrefs}
-                    net={cellNet}
-                    stats={statPrefs}
-                    scrollTo={lastAdded === it.id}
-                    onDelete={() => remove(it)}
-                    layerBadge={it.layerCategory ?? undefined}
-                  />
-                </div>
-              );
-            })}
+            {!asPage && notices}
           </div>
+          {!asPage && tableList}
         </section>
-        <CellDetailPane />
-      </div>
-    </div>
+    </>
+  );
+  const body = (
+    <CellSelectContext.Provider value={{ sel: cellSel, select: setCellSel }}>
+      {asPage ? (
+        // The page: the shared panes, so the variable list can be collapsed and each pane resized,
+        // and the cell pane is shown only while a cell is selected (it gives its room back on Close).
+        <div className="flex flex-col gap-3" data-testid="crosstab-workspace">
+          {headerBar}
+          {dialogs}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div role="tablist" aria-label="Build or view tables" className="inline-flex self-start rounded-xl border border-border bg-slate-100 p-1">
+            {(
+              [
+                ["build", "Build table", entry === "all"],
+                ["tables", `View tables ${visible.length}`, false],
+              ] as const
+            ).map(([key, title, disabled]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                id={`crosstab-tab-${key}`}
+                aria-selected={view === key}
+                aria-controls={`crosstab-panel-${key}`}
+                disabled={disabled}
+                title={disabled ? "All tables lists every table; choose a way of making tables to build one." : undefined}
+                onClick={() => chooseView(key)}
+                className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 ${view === key ? "bg-white text-primary shadow-sm ring-1 ring-primary/40" : "text-muted hover:bg-white/70 hover:text-foreground"}`}
+              >
+                {title}
+              </button>
+            ))}
+          </div>
+          {commitButton}
+          </div>
+          {/* Messages (added, committed, refused) once, above both tabs, so each is shown once whichever tab
+              is open: with both tabs mounted, one copy per tab put the same text on the page twice. */}
+          {(message || error) && <div className="space-y-1">{notices}</div>}
+          {/* Both tabs stay mounted and the inactive one is hidden (B50-F01, Codex): unmounting it threw away
+              work in progress there, a reviewed SemanticTabs plan or a table's Mean, measures, title or AI
+              reading. A reload still starts afresh, as before. */}
+          <div role="tabpanel" id="crosstab-panel-build" aria-labelledby="crosstab-tab-build" hidden={view !== "build"}>
+              <ThreePane storageKey="crosstab-workspace" leftDefaultPx={560} leftMaxShare={0.55} left={variablesPane} middle={buildPane} />
+          </div>
+          {/* Full width: no variable list, so tables and charts have the room; the cell pane opens on the
+              right while a cell is selected and gives its room back on Close. */}
+          <div role="tabpanel" id="crosstab-panel-tables" aria-labelledby="crosstab-tab-tables" hidden={view !== "tables"}>
+              <ThreePane
+                storageKey="crosstab-tables"
+                middle={
+                  <section aria-label="Tables" className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {tableList}
+                  </section>
+                }
+                right={cellSel ? <CellDetailPane onClose={() => setCellSel(null)} /> : undefined}
+              />
+          </div>
+        </div>
+      ) : (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-label="Crosstab workspace">
+          {headerBar}
+          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(34rem,48%)_minmax(0,1fr)] xl:grid-cols-[minmax(30rem,38%)_minmax(0,1fr)_22rem]">
+            {variablesPane}
+            {dialogs}
+            {buildPane}
+            <CellDetailPane />
+          </div>
+        </div>
+      )}
     </CellSelectContext.Provider>
   );
 
-  return (
-    <>
-      {createPortal(body, document.body)}
-    </>
-  );
+  return asPage ? body : <>{createPortal(body, document.body)}</>;
 }
 
-/** The third pane: the figures behind the table cell the researcher clicked. Wide screens only. */
-function CellDetailPane() {
+/**
+ * The figures behind the table cell the researcher clicked. In the overlay, a third column on wide
+ * screens. On the page, a pane opened by selecting a cell, with Close (onClose) to give its room back.
+ */
+function CellDetailPane({ onClose }: { onClose?: () => void }) {
   const { sel } = useContext(CellSelectContext);
   return (
-    <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto border-l-2 border-slate-300 bg-white p-4 xl:flex">
-      <h3 className="text-sm font-semibold text-foreground">Selected cell</h3>
+    <aside
+      aria-label="Selected cell"
+      className={
+        onClose
+          ? "flex max-h-[36rem] flex-col gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]"
+          : "hidden min-h-0 flex-col gap-4 overflow-y-auto border-l-2 border-slate-300 bg-white p-4 xl:flex"
+      }
+      data-testid="crosstab-cell-pane"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-foreground">Selected cell</h3>
+        {onClose && (
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-foreground hover:border-slate-400">
+            Close
+          </button>
+        )}
+      </div>
       {!sel ? (
         <p className="text-sm text-muted">
           Click a figure in a table to see its base, the test behind it and how it compares with the
@@ -1537,7 +2041,14 @@ function CrosstabInsightsPanel({
       {!loading && error && <p className="text-xs text-danger">{error}</p>}
       {!loading && !error && insights && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-          <p className="flex-1 text-sm font-semibold text-foreground sm:max-w-xs">{insights.headline}</p>
+          <div className="flex-1 sm:max-w-xs">
+            <p className="text-sm font-semibold text-foreground">{insights.headline}</p>
+            {insights.partial && (
+              <p className="mt-1 text-[11px] text-amber-800" data-testid="crosstab-insights-partial">
+                {`Read from the first ${insights.partial.questionsShown} of ${insights.partial.questionsTotal} questions; the rest did not fit. A smaller table is read in full.`}
+              </p>
+            )}
+          </div>
           {insights.cards.length > 0 && (
             <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
               {insights.cards.map((c, i) => (
@@ -1571,6 +2082,8 @@ function TableCard({
   stats,
   scrollTo,
   onDelete,
+  onEdit,
+  busy = false,
   layerBadge,
 }: {
   runId: string;
@@ -1582,6 +2095,10 @@ function TableCard({
   stats: StatPrefs;
   scrollTo: boolean;
   onDelete: () => void;
+  /** Edit in Build table: the table's choices loaded into the builder of this file. */
+  onEdit?: () => void;
+  /** Another action of the workspace is running (a delete among them): Delete waits, so one click never deletes twice. */
+  busy?: boolean;
   /** This table's layer category, shown as a small chip beside its title when it is one panel of a layered set. */
   layerBadge?: string;
 }) {
@@ -1634,19 +2151,31 @@ function TableCard({
 
   return (
     <div ref={ref} className="rounded-xl border border-border bg-white shadow-sm">
-      <div className="flex items-center gap-2 px-3 py-2">
+      {/* The row wraps (Codex IR-08, 2026-10-20): in a narrow results pane the action buttons keep
+          their width, so the title and its "may be outdated" qualifications used to shrink to zero
+          width. The title keeps at least 16rem and its labels wrap under it; the actions drop to
+          the next line instead. */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          data-testid="crosstab-table-toggle"
+          className="flex min-w-0 flex-[1_1_16rem] flex-wrap items-center gap-x-2 gap-y-1 text-left"
         >
           <span className="text-xs text-muted">{open ? "▾" : "▸"}</span>
-          <span className="truncate text-sm font-medium text-foreground" title={title}>
+          <span className="min-w-0 max-w-full truncate text-sm font-medium text-foreground" title={title}>
             {title}
           </span>
           {layerBadge && (
             <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800">{layerBadge}</span>
+          )}
+          {item.source === "assistant" && (
+            // Built by the Research assistant to answer a question; listed with every other table so
+            // each figure it quoted can be opened, committed or deleted like any draft.
+            <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800" data-testid="crosstab-assistant-badge">
+              Research assistant
+            </span>
           )}
           <span
             className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${item.status === "draft" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}
@@ -1659,6 +2188,15 @@ function TableCard({
               title="A variable's data type or question type has been corrected since this table was built - its numbers may no longer match the correction. Rebuild it to pick up the change."
             >
               may be outdated
+            </span>
+          )}
+          {item.methodFreshness === "earlier" && (
+            <span
+              data-testid="table-method-earlier"
+              className="shrink-0 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-800"
+              title={`This table was ${item.methodReason}. Its findings and anything built on them are marked until then.`}
+            >
+              earlier method
             </span>
           )}
           {item.designFreshness === "stale" && (
@@ -1682,6 +2220,7 @@ function TableCard({
             </span>
           )}
         </button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -1723,13 +2262,27 @@ function TableCard({
         >
           {loadingInsights ? "Reading table..." : showInsights ? "Hide AI Insights" : "AI Insights"}
         </button>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={busy}
+            title="Load this table's columns, rows, nets and filters into Build table, to change them for this file"
+            className="rounded border border-border px-2 py-0.5 text-[11px] hover:border-slate-400 disabled:opacity-50"
+            data-testid="crosstab-edit-table"
+          >
+            Edit in Build table
+          </button>
+        )}
         <button
           type="button"
           onClick={onDelete}
-          className="rounded border border-border px-2 py-0.5 text-[11px] text-danger hover:border-danger"
+          disabled={busy}
+          className="rounded border border-border px-2 py-0.5 text-[11px] text-danger hover:border-danger disabled:opacity-50"
         >
           Delete
         </button>
+        </div>
       </div>
       {open && (
         <div className="border-t border-border p-3">
@@ -1848,9 +2401,18 @@ function CrosstabView({
   const [sortBy, setSortBy] = useState<"order" | "label" | "size">("order");
   const [hideEmpty, setHideEmpty] = useState(false);
   const [showChart, setShowChart] = useState(false);
+  const [chartsOnly, setChartsOnly] = useState(false);
   const [copied, setCopied] = useState(false);
   const { sel: cellSelected, select: selectCell } = useContext(CellSelectContext);
   const hasResp = result.questions.some((qq) => qq.rows.some((r) => r.respPct !== undefined));
+  // Batch 48: the Mean tick shows or hides the mean rows the Mean setting added when this table was built.
+  const hasAutoMean = result.questions.some((qq) => qq.rows.some((r) => r.autoMean));
+  const meanTick = hasAutoMean ? (
+    <label className="flex items-center gap-1" title="The mean row above each rating-scale question, added when this table was built with Mean on">
+      <input type="checkbox" checked={measures.mean !== false} onChange={(e) => setMeasures((m) => ({ ...m, mean: e.target.checked }))} data-testid="crosstab-mean-tick" />
+      Mean
+    </label>
+  ) : null;
   const stack = stat === "stack";
   const weighted = !!result.weightVar;
   const cols = result.columns.map((c, j) => ({ c, j })).filter(({ j }) => !hiddenCols.has(j));
@@ -1939,8 +2501,10 @@ function CrosstabView({
                 {label}
               </label>
             ))}
+            {meanTick}
           </span>
         )}
+        {!stack && meanTick}
         {hasResp && (
           <label className="flex items-center gap-1" title="Divide each option by all mentions in the column, so the options add to 100%. Percent of cases is the default.">
             <input type="checkbox" checked={showResp} onChange={(e) => setShowResp(e.target.checked)} />
@@ -1965,9 +2529,15 @@ function CrosstabView({
           <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
           Hide empty answers
         </label>
-        <button type="button" onClick={() => setShowChart((v) => !v)} className="font-medium text-primary hover:underline">
-          {showChart ? "Hide chart" : "Quick chart"}
+        <button type="button" onClick={() => setShowChart((v) => !v)} className="font-medium text-primary hover:underline" data-testid="crosstab-chart-toggle">
+          {showChart ? "Hide charts" : "Quick charts"}
         </button>
+        {showChart && (
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={chartsOnly} onChange={(e) => setChartsOnly(e.target.checked)} data-testid="crosstab-charts-only" />
+            Charts only
+          </label>
+        )}
         <button
           type="button"
           onClick={async () => {
@@ -2013,7 +2583,11 @@ function CrosstabView({
             <>
               {" "}
               <span className="text-emerald-700">▲</span>/<span className="text-rose-700">▼</span> differs from all
-              other cases in the same banner variable at 95% ({result.notes?.designUsed ? "t-test with design degrees of freedom, Taylor series variance" : "z-test on effective base, weights only"}; {correctionText(result.notes?.correction)}). Figures in grey italics rest on fewer than {reliableBase} cases: indicative only, not tested. A dash means fewer than {result.notes?.minBase ?? 10} cases, so no figure is shown.
+              other cases in the same banner variable at 95% ({result.notes?.designUsed
+                ? "t-test with design degrees of freedom, Taylor series variance"
+                : tableMethodStatus(result.notes?.methodVersion) === "current"
+                  ? "z-test on effective base, shares pooled, weights only"
+                  : "z-test on effective base, shares not pooled (built with an earlier method), weights only"}; {correctionText(result.notes?.correction)}). Figures in grey italics rest on fewer than {reliableBase} cases: indicative only, not tested. A dash means fewer than {result.notes?.minBase ?? 10} cases, so no figure is shown.
               {result.notes?.designUsed && result.notes.designUsed.casesMissingDesign > 0 && (
                 <span className="text-amber-700">
                   {" "}Warning: {result.notes.designUsed.casesMissingDesign} cases have no value for the survey design variables and were treated as unclustered, which can understate the standard errors.
@@ -2024,13 +2598,13 @@ function CrosstabView({
         </span>
         {exportHref && (
           <>
-            <a href={`${exportHref}&measures=${(stack ? (["col", "row", "n", "count", "letters", "residual"] as const).filter((k) => measures[k]).concat(showResp && hasResp ? (["resp"] as never[]) : []) : stat === "count" ? ["count"] : stat === "row" ? ["row"] : ["col", "letters"]).join(",") || "col"}&net=${showNet ? 1 : 0}`} className="font-medium text-primary hover:underline">
+            <a href={`${exportHref}&measures=${(stack ? (["col", "row", "n", "count", "letters", "residual"] as const).filter((k) => measures[k]).concat(showResp && hasResp ? (["resp"] as never[]) : []) : stat === "count" ? ["count"] : stat === "row" ? ["row"] : ["col", "letters"]).join(",") || "col"}&net=${showNet ? 1 : 0}${hasAutoMean && measures.mean === false ? "&mean=0" : ""}`} className="font-medium text-primary hover:underline">
               Download Excel
             </a>
-            <a href={`${exportHref}&format=pptx`} className="font-medium text-primary hover:underline">
+            <a href={`${exportHref}&format=pptx${hasAutoMean && measures.mean === false ? "&mean=0" : ""}`} className="font-medium text-primary hover:underline">
               PowerPoint
             </a>
-            <a href={`${exportHref}&format=pdf`} className="font-medium text-primary hover:underline" title="Needs LibreOffice installed on this computer">
+            <a href={`${exportHref}&format=pdf${hasAutoMean && measures.mean === false ? "&mean=0" : ""}`} className="font-medium text-primary hover:underline" title="Needs LibreOffice installed on this computer">
               PDF
             </a>
           </>
@@ -2041,13 +2615,16 @@ function CrosstabView({
           </button>
         )}
       </div>
+      {result.notes?.meanNotAdded && (
+        <p className="text-[11px] text-muted" data-testid="crosstab-mean-not-added">{result.notes.meanNotAdded}</p>
+      )}
       {(result.notes?.dkNote || result.notes?.filterNote) && (
         <p className="text-[11px] text-muted">
           {result.notes?.filterNote && <>{result.notes.filterNote} </>}
           {result.notes?.dkNote}
         </p>
       )}
-      {showChart && <QuickChart result={result} hiddenCols={hiddenCols} />}
+      {showChart && <QuickCharts result={result} hiddenCols={hiddenCols} />}
       {result.notes?.design && (
         <details className="text-[11px] text-muted">
           <summary className="cursor-pointer font-medium text-foreground">About these tests</summary>
@@ -2056,6 +2633,7 @@ function CrosstabView({
             <li>{result.notes.design}</li>
             {result.notes.overlap && <li>{result.notes.overlap}</li>}
             {result.notes.tableTest && <li>{result.notes.tableTest}</li>}
+            {result.notes.degenerateUntested && <li data-testid="crosstab-degenerate-untested">{result.notes.degenerateUntested}</li>}
             <li>Letters beside a figure name the columns it is significantly higher than within the same banner variable (column-pair test, 95%).</li>
             <li>{result.notes.means}</li>
             {result.provenance && (
@@ -2068,7 +2646,7 @@ function CrosstabView({
           </ul>
         </details>
       )}
-      <div className="overflow-auto rounded-lg border border-border">
+      <div className={`overflow-auto rounded-lg border border-border${showChart && chartsOnly ? " hidden" : ""}`}>
         {/* data-*: stable identity for reading a table (tests, the browser adapter): this is the
             result table, for these row questions; the nested descriptive-statistics table is not. */}
         <table
@@ -2135,7 +2713,9 @@ function CrosstabView({
           </thead>
           <tbody>
             {result.questions.map((q, qi) => {
-              let rows = q.rows.map((r, ri) => ({ r, key: `${qi}:${ri}` })).filter(({ key }) => !hiddenRows.has(key));
+              let rows = q.rows
+                .map((r, ri) => ({ r, key: `${qi}:${ri}` }))
+                .filter(({ r, key }) => !hiddenRows.has(key) && (measures.mean !== false || !r.autoMean));
               if (q.kind === "single") {
                 const isAns = (r: { isBase?: boolean; isNet?: boolean }) => !r.isBase && !r.isNet;
                 if (sortBy === "order") {
@@ -2146,7 +2726,8 @@ function CrosstabView({
                   if (hideEmpty) ans = ans.filter(({ r }) => (r.total.count ?? 0) > 0);
                   if (sortBy === "label") ans = [...ans].sort((a, b) => a.r.label.localeCompare(b.r.label));
                   if (sortBy === "size") ans = [...ans].sort((a, b) => (b.r.total.count ?? 0) - (a.r.total.count ?? 0));
-                  rows = [...rows.filter(({ r }) => r.isBase), ...ans, ...rows.filter(({ r }) => r.isNet)];
+                  // The Mean tick's row stays at the top of its question whatever the sort.
+                  rows = [...rows.filter(({ r }) => r.isBase), ...rows.filter(({ r }) => r.autoMean), ...ans, ...rows.filter(({ r }) => r.isNet && !r.autoMean)];
                 }
               } else if (hideEmpty && q.kind === "multi") {
                 rows = rows.filter(({ r }) => r.isBase || (r.total.count ?? 0) > 0);
@@ -2201,7 +2782,9 @@ function CrosstabView({
                               </span>
                             </td>
                           )}
-                          {stack && <td className="px-2 py-1 text-[11px] font-normal not-italic text-muted">{MEASURE_LABEL[mk]}</td>}
+                          {/* A mean or score row's figure is not a percentage, so its measure is named for what it is
+                              (as the Excel export names it). */}
+                          {stack && <td className="px-2 py-1 text-[11px] font-normal not-italic text-muted">{r.isScore && mk === "col" ? (r.isMean ? "Mean" : "Net score (points)") : MEASURE_LABEL[mk]}</td>}
                           {layout.map((e) => {
                             const cell = cellOf(r, e);
                             const isNetCol = e.kind === "net";

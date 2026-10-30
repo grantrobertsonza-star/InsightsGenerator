@@ -21,7 +21,8 @@ describe("criterion applicability", () => {
     expect(s["RQ-BRIEF-DECISION"].status).toBe("selected");
     expect(s["RQ-BRIEF-BACKGROUND"].status).toBe("selected");
     expect(s["RQ-BRIEF-BUDGET"].status).toBe("selected");
-    expect(s["RQ-PROP-SAMPLE"].status).toBe("excluded");
+    expect(s["RQ-PROP-SAMPLE-SIZE"].status).toBe("excluded");
+    expect(s["RQ-PROP-SAMPLE-METHOD"].status).toBe("excluded");
     expect(s["RQ-SAMPLE-RECRUIT"].status).toBe("excluded");
     expect(s["RQ-SAMPLE-RECRUIT"].reason).toMatch(/no plan or methodology document yet/);
     expect(s["RQ-DESIGN-ALIGN"].reason).toMatch(/no plan/);
@@ -120,6 +121,23 @@ describe("observation validation guards", () => {
     const o = validateObservation({ criterion_id: "RQ-SAMPLE-RECRUIT", fact_ids: [], documentation: "not_documented", methodology: "cannot_assess", decision_fitness: [], reasoning: "r", implication: "i" }, { ...base, coverageComplete: false });
     expect(o.absenceScope).toBe("partial");
   });
+  // Codex RQ-F01: quotes the model proposed from a relevant document were left out as unverifiable,
+  // so an absence there cannot be confirmed: not rated, never Absent 0.
+  it("an absence in a document with rejected quotes is not rated; a rejected quote in an unrelated document changes nothing", () => {
+    const raw = { criterion_id: "RQ-SAMPLE-RECRUIT", fact_ids: [], documentation: "not_documented", methodology: "concern", decision_fitness: [], reasoning: "r", implication: "i", score: 0 };
+    const o = validateObservation(raw, { ...base, unverifiedSourceIds: ["src-1"] });
+    expect(o.assessment.documentation).toBe("not_assessed");
+    expect(o.assessment.methodology).toBe("cannot_assess");
+    expect(o.rating.score).toBeNull();
+    expect(o.validationNotes.join(" ")).toMatch(/could not be found in them and were left out/);
+    const twoSources = { ...manifest, sources: [...manifest.sources, { ...manifest.sources[0], sourceId: "src-brief", sourceVersionId: "ver-2", filename: "brief.txt", roles: ["brief" as const] }] };
+    const unrelated = validateObservation(raw, { ...base, manifest: twoSources, unverifiedSourceIds: ["src-brief"] });
+    expect(unrelated.assessment.documentation).toBe("not_documented");
+    expect(unrelated.rating.score).toBe(0);
+    // Documented content is still rated from its verified quotes.
+    const documented = validateObservation({ ...raw, fact_ids: ["F1"], documentation: "documented", score: 3 }, { ...base, unverifiedSourceIds: ["src-1"] });
+    expect(documented.rating.score).toBe(3);
+  });
   it("refuses documented content without facts, unknown facts, criteria outside the task and bad enums", () => {
     expect(() => validateObservation({ criterion_id: "RQ-SAMPLE-RECRUIT", fact_ids: [], documentation: "documented", methodology: "concern", decision_fitness: [], reasoning: "", implication: "" }, base)).toThrow(/without citing/);
     expect(() => validateObservation({ criterion_id: "RQ-SAMPLE-RECRUIT", fact_ids: ["F9"], documentation: "documented", methodology: "concern", decision_fitness: [], reasoning: "", implication: "" }, base)).toThrow(/unknown fact/);
@@ -169,7 +187,9 @@ describe("brief and proposal rubric (RQC-2)", () => {
     const alone = byId(selectCriteria("improve_planned", "quantitative", ["proposal"], 1));
     expect(alone["RQ-PROP-RESTATEMENT"].reason).toMatch(/assessed on its own/);
     expect(alone["RQ-BRIEF-OBJECTIVES"].status).toBe("excluded");
-    for (const id of ["RQ-PROP-LITERATURE", "RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE", "RQ-PROP-ANALYSIS", "RQ-PROP-PRODUCTS", "RQ-PROP-TIMELINE", "RQ-PROP-BUDGET", "RQ-PROP-OBJECTIVES-ADDED"]) expect(alone[id].status).toBe("selected");
+    // RQC-6: sampling is rated twice, size and precision, then method; the single Sample criterion is retired.
+    expect(alone["RQ-PROP-SAMPLE"]).toBeUndefined();
+    for (const id of ["RQ-PROP-LITERATURE", "RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE-SIZE", "RQ-PROP-SAMPLE-METHOD", "RQ-PROP-ANALYSIS", "RQ-PROP-PRODUCTS", "RQ-PROP-TIMELINE", "RQ-PROP-BUDGET", "RQ-PROP-OBJECTIVES-ADDED"]) expect(alone[id].status).toBe("selected");
     // A planned study's design is assessed under the proposal criteria, not twice.
     expect(withBrief["RQ-SAMPLE-RECRUIT"].status).toBe("excluded");
   });

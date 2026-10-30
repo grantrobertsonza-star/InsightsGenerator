@@ -124,23 +124,24 @@ function evaluate(assertions: Assertion[], out: EngineOutput): Result[] {
       case "significant_at_alpha_.05": {
         const x = testedRow(a);
         const significant = !!x && x.sig.some((s) => s !== 0);
-        record(a, significant, typeof a.expectedValue === "boolean" && significant === a.expectedValue, "conclusion compared (method differs: unpooled column test)"); break;
+        record(a, significant, typeof a.expectedValue === "boolean" && significant === a.expectedValue, "conclusion compared (same pooled test)"); break;
       }
       case "pooled_two_proportion_z": {
-        // |z| from the engine's p; the reference is pooled, the engine unpooled, so the conclusion at
-        // .05 must agree and the magnitudes must be within 10% of each other.
+        // Batch 47: the engine's column test is the reference's own (pooled under the null hypothesis), so
+        // the magnitudes agree up to the engine's rounding of p to 4 places: |z| recovered from that p is
+        // within 0.005 of the reference (an unpooled test differs by more, which the earlier 10% allowed).
         const p = testedRow(a)?.p?.[0] ?? null;
         const expected = typeof a.expectedValue === "number" ? Math.abs(a.expectedValue) : NaN;
         const zEngine = p === null ? NaN : p <= 0 ? Infinity : Math.abs(normInv(p / 2));
-        const ok = Number.isFinite(expected) && Number.isFinite(zEngine) && (zEngine >= Z_CRIT) === (expected >= Z_CRIT) && Math.abs(zEngine - expected) <= 0.1 * expected;
-        record(a, zEngine, ok, "unpooled |z| from the engine's p vs pooled reference: same conclusion, within 10%"); break;
+        const ok = Number.isFinite(expected) && Number.isFinite(zEngine) && (zEngine >= Z_CRIT) === (expected >= Z_CRIT) && Math.abs(zEngine - expected) <= 0.005;
+        record(a, zEngine, ok, "pooled |z| from the engine's p (4 places) vs pooled reference, within 0.005"); break;
       }
       case "two_sided_p": {
-        // Same conclusion at .05, and within a factor of 2 (the documented SE-form difference).
+        // The same test: equal to the reference within the engine's rounding (half a unit in the 4th place).
         const p = testedRow(a)?.p?.[0] ?? null;
         const e = typeof a.expectedValue === "number" ? a.expectedValue : NaN;
-        const ok = p !== null && Number.isFinite(e) && (p < 0.05) === (e < 0.05) && Math.abs(Math.log(Math.max(p, 1e-12) / Math.max(e, 1e-12))) <= Math.log(2);
-        record(a, p, ok, "unpooled vs pooled p: same conclusion, within a factor of 2"); break;
+        const ok = p !== null && Number.isFinite(e) && (p < 0.05) === (e < 0.05) && Math.abs(p - e) <= 0.00005 + 1e-12;
+        record(a, p, ok, "pooled p, equal within the engine's rounding to 4 places"); break;
       }
       default: record(a, null, false, `no rule for statistic "${a.statistic}": unsupported assertions fail`);
     }
@@ -155,8 +156,8 @@ describe.skipIf(!PYTHON_OK)("golden thread 1: engine numbers against the indepen
   const failedIds = (assertions: Assertion[]) => evaluate(assertions, out).filter((x) => !x.ok).map((x) => x.id);
   const mutate = (id: string, change: Partial<Assertion>) => reference.assertions.map((a) => (a.id === id ? { ...a, ...change } : a));
 
-  it("the table notes name the column test actually applied (unpooled standard errors, no correction)", () => {
-    expect(out.byGender.notes.test).toMatch(/two-proportion z-test with unpooled standard errors on effective bases/);
+  it("the table notes name the column test actually applied (pooled, as the reference; no correction)", () => {
+    expect(out.byGender.notes.test).toMatch(/two-proportion z-test, shares pooled under the null hypothesis, on effective bases/);
     // The significance conclusions below are compared uncorrected, as the reference computes them.
     expect(out.byGender.notes.correction).toBe("none");
   });

@@ -11,6 +11,7 @@
 // importing a runtime value from this file would pull pg into the browser
 // bundle.
 import { withTenant, withTenantRead } from "./db";
+import { cellValue, setCell } from "./rowCells";
 import type { VariableType } from "./dataQuality";
 import type { VariableDictionary, SetKind } from "./parseStatsFile";
 import {
@@ -120,8 +121,13 @@ export async function saveVariableOverride(
     if (r.rows.length === 0) {
       throw new Error("That document was not found in this run.");
     }
+    // Variable names are researcher data and any of them can be special to a plain object (TP500-F03):
+    // reading current["__proto__"] with no such own entry returns Object.prototype, and assigning
+    // updated["__proto__"] = next sets the object's prototype instead of storing the correction, which
+    // JSON then drops while the save still reports success. The entry is read as an own property only
+    // and written as a defined own property (rowCells.cellValue / setCell), so every name is stored.
     const current: VariableOverrides = r.rows[0].variable_overrides ?? {};
-    const existing = current[variableName] ?? {};
+    const existing = cellValue(current, variableName) ?? {};
     const next: VariableOverride = { ...existing };
     if (patch.type === null) delete next.type;
     else if (patch.type !== undefined) next.type = patch.type;
@@ -130,7 +136,7 @@ export async function saveVariableOverride(
 
     const updated: VariableOverrides = { ...current };
     if (Object.keys(next).length === 0) delete updated[variableName];
-    else updated[variableName] = next;
+    else setCell(updated, variableName, next);
 
     // Scoped by run_id too, matching the select above: a write must never reach a document
     // outside the run this call was made for, even if the document ID itself is valid.

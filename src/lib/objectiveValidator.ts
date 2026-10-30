@@ -1,9 +1,12 @@
+import { loadInsightSupportOrUnchecked } from "./supportStatus";
+import { finishedToolInput } from "./modelToolResult";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { capWords, parseNumberedItems } from "./text";
 import type { ConfidenceTier, QualityTier } from "./tiers";
 import { currentItemKey, evidenceDigest } from "./objectiveEvidence";
+import { coverageFingerprint, coverageIdentitySchema, readCoverageInputs } from "./objectiveCoverage";
 
 type EvidenceInsight = {
   id: string;
@@ -16,6 +19,9 @@ type EvidenceInsight = {
 };
 
 export type ValidationStatus = "resolved" | "partial" | "gap";
+
+/** The inputs changed between reading them and saving the result (CE-1); nothing was written. */
+export class CoverageInputsChangedError extends Error {}
 
 export type ObjectiveValidation = {
   item_kind: "objective" | "decision";
@@ -85,42 +91,19 @@ export async function clearObjectiveValidations(tenantId: string, runId: string)
  * conclusion rather than one blended verdict standing in for all of them.
  */
 export async function generateObjectiveValidation(tenantId: string, runId: string): Promise<ObjectiveValidation[]> {
-  const { run, insights, candidates, decisionCandidates } = await withTenant(tenantId, async (client) => {
-    const runResult = await client.query<{
-      research_objective: string | null;
-      decision_statement: string | null;
-    }>("select research_objective, decision_statement from runs where id = $1", [runId]);
-
-    const insightsResult = await client.query<EvidenceInsight>(
-      `select si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier
-       from synthesized_insights si
-       where si.run_id = $1 and si.review_status = 'accepted'
-       order by si.quality_score desc nulls last, si.created_at`,
-      [runId]
-    );
-
-    const candidatesResult = await client.query<{ id: string; candidate_text: string; source: string }>(
-      "select id, candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
-      [runId]
-    );
-
-    const decisionCandidatesResult = await client.query<{ id: string; candidate_text: string; source: string }>(
-      "select id, candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
-      [runId]
-    );
-
-    return {
-      run: runResult.rows[0],
-      insights: insightsResult.rows,
-      candidates: candidatesResult.rows,
-      decisionCandidates: decisionCandidatesResult.rows,
-    };
-  });
+  // The inputs and their fingerprints come from one read, so the coverage records exactly what it was
+  // assessed against (objectiveCoverage.ts, CE-1).
+  const inputs = await withTenant(tenantId, (client) =>
+    readCoverageInputs<EvidenceInsight>(client, runId, "si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier"),
+  );
+  const run = inputs.runFound ? inputs.run : undefined;
+  const { insights: accepted, objectives: candidates, decisions: decisionCandidates } = inputs;
+  const assessedAgainst = coverageFingerprint(inputs);
 
   if (!run) {
     throw new Error("Project not found");
   }
-  if (insights.length === 0) {
+  if (accepted.length === 0) {
     // The prerequisite this lane assesses against is genuinely gone (every insight was
     // un-accepted, or none ever existed), not a transient failure - so the coverage from a
     // past, now-stale prerequisite must not keep being shown as if it were still current
@@ -133,6 +116,25 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
         "before validating against the project's objectives and decisions."
     );
   }
+
+  // B37-F01: a re-check never cites an insight whose support is no longer valid (its only finding was
+  // rejected, say), so it cannot certify such an insight as an answer. Support comes from the one reader
+  // (supportStatus.ts), as on the insight cards. Changed or unchecked support is still offered, marked,
+  // and the coverage reader qualifies any conclusion that cites it (objectiveCoverage.ts). The fingerprint
+  // above still records every accepted insight: that is what the check was made against.
+  const support = await loadInsightSupportOrUnchecked(tenantId, runId, accepted.map((i) => i.id));
+  const insights = accepted.filter((i) => support.statusOf(i.id).status !== "invalid");
+  if (insights.length === 0) {
+    // Not cleared: the last check is kept, and the reader shows it as resting on support that is no longer valid.
+    throw new Error(
+      "No accepted insight has valid support now (the findings behind them were rejected or are no longer usable), " +
+        "so coverage was not checked again. The last check is kept and marked as not supported. Review the findings or insights, then check again.",
+    );
+  }
+  const supportMark = (id: string) => {
+    const st = support.statusOf(id).status;
+    return st === "stale" ? " (support changed since it was drafted)" : st === "unknown" ? " (support not checked)" : "";
+  };
 
   // Per accepted candidate when there are any, so inferred objectives can be
   // told apart from stated ones; otherwise fall back to the run's own text.
@@ -183,7 +185,7 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
   const insightsBlock = insights
     .map(
       (insight, index) =>
-        `${index}. (confidence: ${insight.confidence_tier ?? "not yet triangulated"}) Headline: ${insight.headline}\n` +
+        `${index}. (confidence: ${insight.confidence_tier ?? "not yet triangulated"})${supportMark(insight.id)} Headline: ${insight.headline}\n` +
         `   Observation: ${insight.observation}\n   Implication: ${insight.implication}`
     )
     .join("\n");
@@ -210,6 +212,7 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
       "Some items carry a line of direct data evidence (supports / against / mixed / inconclusive / silent). Cite it in the conclusion when present; 'judged' stances are the model's reading, say so. An item with direct evidence but no insight is partial at most. " +
       (evidenceDigestDegraded
         ? "Direct data-evidence retrieval failed for this run (a connection or permission error, not a migration gap), so no item below carries a data-evidence line even where one might otherwise exist. Do not read that absence as 'the data was checked and found silent' -- treat it as unknown, and do not let it push an item toward gap on its own. " : "") +
+      "An insight marked 'support changed' or 'support not checked' cannot on its own make an item resolved: partial at most. " +
       "Judge only against the items and insights given below; don't invent evidence or items beyond what's " +
       "listed.\n\n" +
       `Objectives and decisions:\n${itemsBlock}\n\n` +
@@ -246,11 +249,10 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
 
   await logApiUsage(tenantId, runId, "objective_validator", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  const rawValidations =
-    toolUse && toolUse.type === "tool_use" && Array.isArray((toolUse.input as { validations?: unknown }).validations)
-      ? ((toolUse.input as { validations: unknown[] }).validations as Record<string, unknown>[])
-      : [];
+  // EC10K-F02: only a finished record_validations call is used; an unfinished one throws before
+  // anything is saved, so the previous coverage stands and the failure is recorded.
+  const finished = finishedToolInput(response, "record_validations", "The objective coverage check");
+  const rawValidations = Array.isArray(finished.validations) ? (finished.validations as Record<string, unknown>[]) : [];
 
   const byIndex = new Map<number, { status: ValidationStatus; conclusion: string; insightIds: string[] }>();
   const conflicting = new Set<number>();
@@ -367,7 +369,22 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
   // would need a savepoint around every single insert. Instead the column's existence is
   // checked ONCE, with a catalog query that cannot itself fail the transaction, and that one
   // answer picks which insert shape the whole loop uses.
+  // CE-1: written only if nothing it was assessed against changed while the model was answering.
+  // Saving takes a transaction-scoped lock per project (an advisory lock: it needs no write privilege
+  // on runs, and every coverage save takes the same one), then reads the inputs again under it, so two
+  // checks that overlap are saved one after the other and the older one's verdicts can never replace
+  // the newer one's. A change committed after this save makes the stored fingerprints differ, so
+  // readers show the coverage as out of date (objectiveCoverage.ts).
   await withTenant(tenantId, async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtextextended('objective_coverage:' || $1::text, 0))", [runId]);
+    const found = await client.query("select 1 from runs where id = $1", [runId]);
+    if (found.rowCount !== 1) throw new Error("Project not found");
+    const now = coverageFingerprint(await readCoverageInputs(client, runId));
+    if (JSON.stringify(now) !== JSON.stringify(assessedAgainst)) {
+      throw new CoverageInputsChangedError(
+        "The insights, objectives or decisions changed while the evidence check was running, so its result was not saved. Update coverage to check again.",
+      );
+    }
     const colCheck = await client.query<{ exists: boolean }>(
       `select exists (
          select 1 from information_schema.columns
@@ -375,9 +392,40 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
        ) as "exists"`,
     );
     const hasDegradedColumn = colCheck.rows[0]?.exists === true;
+    const identity = await coverageIdentitySchema(client);
     await client.query("delete from objective_validations where run_id = $1", [runId]);
-    for (const validation of validations) {
-      if (hasDegradedColumn) {
+    for (const [index, validation] of validations.entries()) {
+      if (identity) {
+        const item = items[index];
+        const row = await client.query<{ id: string }>(
+          `insert into objective_validations
+             (tenant_id, run_id, item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, generated_at,
+              evidence_digest_degraded, objective_candidate_id, decision_candidate_id, inputs)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), $10, $11, $12, $13)
+           returning id`,
+          [
+            tenantId,
+            runId,
+            validation.item_kind,
+            validation.item_order,
+            validation.item_text,
+            validation.status,
+            validation.conclusion,
+            validation.synthesized_insight_ids,
+            validation.inferred,
+            evidenceDigestDegraded,
+            item.kind === "objective" ? item.candidateId : null,
+            item.kind === "decision" ? item.candidateId : null,
+            JSON.stringify(assessedAgainst),
+          ]
+        );
+        for (const [position, insightId] of validation.synthesized_insight_ids.entries()) {
+          await client.query(
+            "insert into objective_validation_insights (validation_id, synthesized_insight_id, tenant_id, position) values ($1, $2, $3, $4)",
+            [row.rows[0].id, insightId, tenantId, position],
+          );
+        }
+      } else if (hasDegradedColumn) {
         await client.query(
           `insert into objective_validations
              (tenant_id, run_id, item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, generated_at, evidence_digest_degraded)
@@ -429,8 +477,13 @@ export async function refreshObjectiveValidationQuietly(tenantId: string, runId:
   try {
     const ready = await withTenant(tenantId, async (client) => {
       const r = await client.query<{ ok: boolean }>(
+        // The same items generateObjectiveValidation judges: accepted candidates, or the project's own
+        // text when none is accepted. Checking the text alone (as before CE-1) cleared the coverage of a
+        // project whose objectives exist only as accepted candidates.
         `select (
-           (coalesce(trim(r.research_objective), '') <> '' or coalesce(trim(r.decision_statement), '') <> '')
+           (coalesce(trim(r.research_objective), '') <> '' or coalesce(trim(r.decision_statement), '') <> ''
+            or exists (select 1 from objective_candidates c where c.run_id = r.id and c.status = 'accepted')
+            or exists (select 1 from decision_candidates d where d.run_id = r.id and d.status = 'accepted'))
            and exists (select 1 from synthesized_insights si where si.run_id = r.id and si.review_status = 'accepted')
          ) as ok
          from runs r where r.id = $1`,

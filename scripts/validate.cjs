@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- a CommonJS script run directly by node; require() is the module system here. */
 // Local/CI gate: installed tools only; integration runners require their own explicit targets.
 const cp=require('node:child_process'),path=require('node:path');
 const mode=process.argv[2]||'all';

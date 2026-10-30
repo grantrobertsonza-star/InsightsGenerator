@@ -1,12 +1,16 @@
 import { computeDataQuality, type DataQuality } from "./qualQuality";
+import { finishedToolResult } from "./modelToolResult";
 import { clearCodingLabel, relabelCodingWork } from "./codingProgress";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
+import { cachedSystem, cachedUserThen } from "./promptCache";
 import { mapWithConcurrency } from "./concurrency";
-import { withTenant, withTenantRead } from "./db";
+import type { PoolClient } from "pg";
+import { withTenant, withTenantRead, withTenantRepeatableRead } from "./db";
 import {
   applyCodebook,
   APPLY_PROMPT_HASH,
+  codingApplyModel,
   recordManifest,
   recordTrace,
   type CodeRow,
@@ -45,11 +49,28 @@ import {
 } from "./qualAnalysis";
 import type { CellValue } from "./dataQuality";
 import { changeTurnCode, codeKey } from "./codingOverrides";
+import { lockOwnedTranscript } from "./codingTranscriptOwnership";
+import {
+  baselineRefusal,
+  baselinesAvailable,
+  baselineState,
+  changesSinceBaseline,
+  codingHasGap,
+  compareMethod,
+  loadLatestBaselines,
+  modelIsPinned,
+  type BaselineCode,
+  type BaselineSegment,
+  type BaselineState,
+  type ModelBaseline,
+} from "./codingBaseline";
 import {
   attentionCheck,
   auditSampleSize,
   compareRuns,
   codeKappas,
+  codePairwiseAgreement,
+  headlineCodeAgreement,
   MIN_TURNS_TO_JUDGE,
   estimateAudit,
   extendedAgreement,
@@ -65,9 +86,11 @@ import {
 import {
   countKeyword,
   loadCodeMetaForDocuments,
+  loadOrphanTurnNotes,
   loadTurnNotes,
   splitKeywords,
   type CodeMeta,
+  type OrphanTurnNote,
 } from "./codingMeta";
 
 /**
@@ -138,14 +161,37 @@ export type StabilityView = {
     consistent: number;
     // Average pairwise Cohen's kappa over the runs; null when it cannot be worked out (older checks that did not keep each run).
     kappa: number | null;
+    // Pairwise agreement: share of (turn, pair of runs) comparisons that made the same yes/no decision on
+    // this theme, over every participant turn; comparisons is that denominator. null when the runs were not kept.
+    pairwise: number | null;
+    pairwiseComparisons: number;
     // Came up in too few turns for its agreement figure to mean much.
     tooFew: boolean;
   }[];
-  // Average kappa over the themes that came up in enough turns; null when not available.
+  // Lead figures (Grant, 28 October 2026: within-model repeatability, like intra-coder agreement):
+  // averages over the eligible themes (MIN_TURNS_TO_JUDGE turns or more) of pairwise agreement and of
+  // kappa; null when no eligible theme has the figure.
+  pairwiseAverage: number | null;
   kappaAverage: number | null;
-  // Headline figure: the average, over themes that came up at all, of the share of their turns that
-  // every run agreed on. null when no theme came up.
+  // Themes counted in the averages, and themes that came up but in too few turns and are left out.
+  eligibleCodes: number;
+  belowMinimumCodes: number;
+  // Secondary, stricter figure (headlineCodeAgreement): for each eligible theme, the share of the turns it
+  // came up in where every run gave it, averaged. null when no theme is eligible (never relaxed, STAB-F04).
   codeAgreement: number | null;
+  // How this result was made (migration 0128). recorded false: checked before batch 61, when incomplete
+  // passes could count as "no code" and the first run could include hand changes.
+  check:
+    | { recorded: false }
+    | {
+        recorded: true;
+        requested: number;
+        complete: number;
+        excluded: { pass: number; reason: string }[];
+        checkedAt: string;
+        // False when the codebook has been applied again since, so this result is about an earlier original.
+        againstCurrentOriginal: boolean;
+      };
   // Settling by majority of runs: possible once the check kept each run (migration 0074) with 3 or more runs.
   majority: { available: boolean; applied: boolean };
   // Turns the runs did not agree on, least agreed first.
@@ -288,6 +334,18 @@ export type CodingAnalysisView = {
   participantTurns: number;
   suggestedAuditSize: number;
   stability: StabilityView | null;
+  // Whether a stability check can run now against the model's original coding (batch 61).
+  stabilityBaseline: {
+    state: BaselineState | { state: "read_failed" };
+    // Why the check cannot run, in the researcher's words; null when it can.
+    refusal: string | null;
+    // The model a new run would use, and whether that name fixes one release (modelIsPinned).
+    model: string;
+    modelPinned: boolean;
+    recordedAt: string | null;
+    // The coding in force compared with the model's original: a separate measure from stability.
+    researcherChanges: { added: number; removed: number; turns: number } | null;
+  };
   respondents: RespondentView[];
   surveyTables: SurveyTableOption[];
   caseTableId: string | null;
@@ -304,6 +362,14 @@ export type CodingAnalysisView = {
   // Every coded participant turn with the themes it carries: the trail from a
   // theme back to what people actually said.
   verbatims: VerbatimView[];
+  // COD5K-F02: researcher notes whose turn is gone or changed since they were written (migration
+  // 0127), wording kept, never shown as the note of the turn now at their index. Null when they could
+  // not be read: the screen says so rather than showing none.
+  orphanNotes: OrphanTurnNote[] | null;
+  // Set when the researcher's turn notes could not be read: every verbatims[].note is then "" because
+  // it is unknown, not because there is none. The screen says so and pauses note editing; the
+  // exports refuse rather than leave the notes out (codingExportBlocker).
+  turnNotesError: string | null;
   // Model-assisted meaning saturation check per code id (migration 0049).
   meaningChecks: Record<string, MeaningCheck>;
   // Manual theme changes by the researcher (migration 0050).
@@ -324,6 +390,27 @@ function rowsToArrays(headers: string[], rows: TableRow[]): CellValue[][] {
 const normName = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 // --- Reading -----------------------------------------------------------------
+
+const TURN_NOTES_UNREAD =
+  "Your notes on turns could not be read just now. They have not been removed; try again.";
+
+/**
+ * The reason a coding export or extract must not be produced from this analysis, or null. A file
+ * built while turn notes could not be read would silently leave every researcher note out.
+ */
+export function codingExportBlocker(
+  analysis: Map<string, CodingAnalysisView>,
+  options: { setAsideNotes?: boolean } = {},
+): string | null {
+  for (const view of analysis.values()) {
+    if (view.turnNotesError)
+      return "Your notes on turns could not be read, so the export was not made (it would have left them out). Try again.";
+    if (options.setAsideNotes && view.orphanNotes === null)
+      return "Your notes set aside from changed turns could not be read, so the export was not made (it would have left them out). Try again.";
+  }
+  return null;
+}
+
 
 export async function getCodingAnalysis(
   tenantId: string,
@@ -457,6 +544,20 @@ export async function getCodingAnalysis(
     dropped_codes: number[];
     resolved_at: string | null;
   }[] = [];
+  let baselineTablesAvailable = false;
+  let baselineReadFailed = false;
+  const baselineByBook = new Map<string, ModelBaseline>();
+  const codeDefsByBook = new Map<string, BaselineCode[]>();
+  const checkByBook = new Map<
+    string,
+    {
+      baseline_id: string;
+      passes_requested: number;
+      passes_complete: number;
+      excluded: ExcludedPass[];
+      created_at: string;
+    }
+  >();
   // Migration 0074, read on its own for the same reason.
   const majorityExt = new Map<string, { withRuns: number; applied: number }>();
   const runCodesExt = new Map<string, number[][]>();
@@ -690,6 +791,58 @@ export async function getCodingAnalysis(
       // migration 0064 not applied
     }
     })(),
+    (async () => {
+    // Migration 0128 (batch 61): the model's original coding and how each stability check was made.
+    // Checked with to_regclass, so a database without it reads as "not available", never as an error.
+    try {
+      await withTenantRead(tenantId, async (client) => {
+        const bookIds = books.map((b) => b.id);
+        baselineTablesAvailable = await baselinesAvailable(client);
+        const defs = await client.query<{
+          id: string;
+          codebook_id: string;
+          name: string;
+          definition: string;
+          inclusion_criteria: string | null;
+          exclusion_criteria: string | null;
+        }>(
+          `select id, codebook_id, name, definition, inclusion_criteria, exclusion_criteria
+             from coding_codes where codebook_id = any($1::uuid[]) order by codebook_id, position`,
+          [bookIds],
+        );
+        for (const c of defs.rows) {
+          const list = codeDefsByBook.get(c.codebook_id) ?? [];
+          list.push({
+            id: c.id,
+            name: c.name,
+            definition: c.definition,
+            inclusion: c.inclusion_criteria,
+            exclusion: c.exclusion_criteria,
+          });
+          codeDefsByBook.set(c.codebook_id, list);
+        }
+        if (!baselineTablesAvailable) return;
+        for (const [k, v] of await loadLatestBaselines(client, bookIds)) baselineByBook.set(k, v);
+        const checks = await client.query<{
+          codebook_id: string;
+          baseline_id: string;
+          passes_requested: number;
+          passes_complete: number;
+          excluded: ExcludedPass[];
+          created_at: string;
+        }>(
+          `select codebook_id, baseline_id, passes_requested, passes_complete, excluded, created_at::text as created_at
+             from coding_stability_checks where codebook_id = any($1::uuid[])`,
+          [bookIds],
+        );
+        for (const r of checks.rows) checkByBook.set(r.codebook_id, r);
+      });
+      baselineReadFailed = false;
+    } catch {
+      // A failed read is reported as unavailable on the panel, not as "no original coding".
+      baselineReadFailed = true;
+    }
+    })(),
   ]);
 
   // Survey tables the respondents can be matched to.
@@ -875,20 +1028,29 @@ export async function getCodingAnalysis(
   const perBook = new Map(
     await Promise.all(
       books.map(async (b) => {
-        const [mc, tn] = await Promise.all([
+        const [mc, tn, orphans] = await Promise.all([
           loadMeaningChecks(tenantId, b.document_id),
-          loadTurnNotes(tenantId, b.document_id).catch(
-            () => new Map<number, string>(), // migration 0055 not applied
-          ),
+          // A missing 0055 table already reads as no notes inside loadTurnNotes; any other failure is
+          // reported (turnNotesError), never shown as a transcript without notes.
+          loadTurnNotes(tenantId, b.document_id).catch((error: unknown) => {
+            console.error("Turn notes could not be read", error);
+            return null;
+          }),
+          loadOrphanTurnNotes(tenantId, b.document_id).catch((error: unknown) => {
+            console.error("Notes set aside from changed turns could not be read", error);
+            return null;
+          }),
         ]);
-        return [b.document_id, { mc, tn }] as const;
+        return [b.document_id, { mc, tn, orphans }] as const;
       }),
     ),
   );
 
   for (const book of books) {
     const meaningChecks = perBook.get(book.document_id)?.mc ?? new Map();
-    const turnNotes = perBook.get(book.document_id)?.tn ?? new Map<number, string>();
+    const loadedNotes = perBook.get(book.document_id)?.tn ?? null;
+    const turnNotes = loadedNotes ?? new Map<number, string>();
+    const orphanNotes = perBook.get(book.document_id)?.orphans ?? null;
     const docMeta = metaByDoc.get(book.document_id) ?? new Map<string, CodeMeta>();
     const metaOf = (name: string): CodeMeta | undefined =>
       docMeta.get(normName(name));
@@ -1058,6 +1220,16 @@ export async function getCodingAnalysis(
         });
         return { themeShare: r.themeShare, overlap: r.overlap };
       })();
+      // Pairwise agreement needs every run's decisions, as kappa does. Averages count eligible themes only.
+      const pairwiseByCode = perTurnRuns ? codePairwiseAgreement(perTurnRuns, bookCodes.length) : [];
+      const eligibleAverage = (values: (number | null | undefined)[]): number | null => {
+        const xs = bookCodes
+          .map((_, i) => ({ x: values[i] ?? null, used: perCodeUse[i].used }))
+          .filter((v) => v.x !== null && v.used >= MIN_TURNS_TO_JUDGE)
+          .map((v) => v.x as number);
+        return xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length;
+      };
+      const headline = headlineCodeAgreement(perCodeUse);
       stabilityView = {
         runs: Math.max(...bookStability.map((r) => r.runs)),
         looser,
@@ -1066,31 +1238,37 @@ export async function getCodingAnalysis(
           const m = majorityExt.get(book.id);
           const runsHere = Math.max(...bookStability.map((r) => r.runs));
           return {
-            available: !!m && m.withRuns === bookStability.length && runsHere >= 3,
+            // Only a result recorded with its completeness (batch 61) can settle the coding.
+            available: !!m && m.withRuns === bookStability.length && runsHere >= 3 && checkByBook.has(book.id),
             applied: !!m && m.applied > 0,
           };
         })(),
-        codeAgreement: (() => {
-          const used = perCodeUse.filter((u) => u.used > 0);
-          const enough = used.filter((u) => u.used >= MIN_TURNS_TO_JUDGE);
-          // Themes with very few turns are left out of the headline; if that leaves nothing, use all.
-          const pool = enough.length > 0 ? enough : used;
-          return pool.length === 0 ? null : pool.reduce((a, u) => a + u.consistent / u.used, 0) / pool.length;
-        })(),
+        codeAgreement: headline.value,
+        eligibleCodes: headline.eligible,
+        belowMinimumCodes: headline.belowMinimum,
         perCode: bookCodes.map((c, i) => ({
           codeId: c.id,
           name: c.name,
           usedTurns: perCodeUse[i].used,
           consistent: perCodeUse[i].consistent,
           kappa: kappaByCode[i] ?? null,
+          pairwise: pairwiseByCode[i]?.agreement ?? null,
+          pairwiseComparisons: pairwiseByCode[i]?.comparisons ?? 0,
           tooFew: perCodeUse[i].used > 0 && perCodeUse[i].used < MIN_TURNS_TO_JUDGE,
         })),
-        kappaAverage: (() => {
-          const ks = bookCodes
-            .map((_, i) => ({ k: kappaByCode[i] ?? null, used: perCodeUse[i].used }))
-            .filter((x) => x.k !== null && x.used >= MIN_TURNS_TO_JUDGE)
-            .map((x) => x.k as number);
-          return ks.length === 0 ? null : ks.reduce((a, b) => a + b, 0) / ks.length;
+        pairwiseAverage: eligibleAverage(pairwiseByCode.map((p) => p?.agreement ?? null)),
+        kappaAverage: eligibleAverage(kappaByCode),
+        check: (() => {
+          const k = checkByBook.get(book.id);
+          if (!k) return { recorded: false as const };
+          return {
+            recorded: true as const,
+            requested: k.passes_requested,
+            complete: k.passes_complete,
+            excluded: k.excluded,
+            checkedAt: k.created_at,
+            againstCurrentOriginal: baselineByBook.get(book.id)?.id === k.baseline_id,
+          };
         })(),
         queue,
         attention: attentionCheck(
@@ -1104,6 +1282,42 @@ export async function getCodingAnalysis(
         ),
       };
     }
+
+    const stabilityBaseline: CodingAnalysisView["stabilityBaseline"] = (() => {
+      const model = codingApplyModel();
+      const modelPinned = modelIsPinned(model);
+      if (baselineReadFailed)
+        return {
+          state: { state: "read_failed" as const },
+          refusal: "Whether the original coding was kept could not be read. Reload the page.",
+          model,
+          modelPinned,
+          recordedAt: null,
+          researcherChanges: null,
+        };
+      const baseline = baselineByBook.get(book.id) ?? null;
+      const state = baselineState(baselineTablesAvailable, baseline, {
+        model,
+        promptHash: APPLY_PROMPT_HASH,
+        codes: codeDefsByBook.get(book.id) ?? [],
+        segments: segments.map((sg) => ({ id: sg.id, index: sg.index, role: sg.role, text: sg.text })),
+      });
+      return {
+        state,
+        refusal: baselineRefusal(state),
+        model,
+        modelPinned,
+        recordedAt: baseline?.createdAt ?? null,
+        researcherChanges: baseline
+          ? changesSinceBaseline(
+              baseline,
+              assignIdsBySeg,
+              segments.filter((sg) => sg.role !== "moderator").map((sg) => sg.id),
+              bookCodes.map((c) => c.id),
+            )
+          : null,
+      };
+    })();
 
     // Respondents and the survey join.
     const respondents = buildRespondents(
@@ -1343,6 +1557,7 @@ export async function getCodingAnalysis(
       participantTurns: participantCount,
       suggestedAuditSize: auditSampleSize(participantCount),
       stability: stabilityView,
+      stabilityBaseline,
       respondents: respondentViews,
       surveyTables,
       caseTableId: setting?.case_table_id ?? null,
@@ -1382,6 +1597,8 @@ export async function getCodingAnalysis(
             note: turnNotes.get(sg.segment_index) ?? "",
           };
         }),
+      orphanNotes,
+      turnNotesError: loadedNotes === null ? TURN_NOTES_UNREAD : null,
       overrides: overrideRows
         .filter((o) => o.document_id === book.document_id)
         .map((o) => {
@@ -1722,65 +1939,147 @@ export async function saveCalibrationTurn(
 
 // --- Stability of the coding -------------------------------------------------
 
+/** A pass of the stability check that was not compared, and why. */
+export type ExcludedPass = { pass: number; reason: string };
+
 /**
- * Stores the result of applying the codebook again. `original` is what the
- * stored coding was; each entry of `reruns` is one fresh application. The
- * original counts as one run. Replaces any earlier stability result for this
- * codebook.
+ * Stores one stability result for a codebook, replacing the previous one, in one transaction that first
+ * re-establishes what the result was computed against (Codex STAB-F02, STAB-F03, batch 61):
+ * - the transcript is this run's (shared lock, so it cannot be removed or moved before commit);
+ * - the codebook row is locked, so two checks of one codebook save one after the other;
+ * - the original model coding compared with is still the latest one, and the codebook definitions and
+ *   turns are still the ones it was made from. Otherwise nothing is saved and the previous result stays.
+ * A turn's review (blind coding, settled, whether it changed) is carried over to the new result, so a
+ * new check does not erase decisions already made. Settling by majority is not carried: it described
+ * the earlier runs.
  */
-export async function saveStability(
+async function saveStabilityResult(
   tenantId: string,
+  runId: string,
+  documentId: string,
   codebookId: string,
-  rows: { segmentId: string; stability: TurnStability; original: number[]; runCodes?: number[][] }[],
-) {
+  baseline: ModelBaseline,
+  check: { model: string; promptHash: string; requested: number; excluded: ExcludedPass[] },
+  rows: { segmentId: string; stability: TurnStability; original: number[]; runCodes: number[][] }[],
+): Promise<void> {
   await withTenant(tenantId, async (client) => {
-    await client.query(
-      "delete from coding_turn_stability where codebook_id = $1",
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "share");
+    const book = await client.query(
+      "select id from coding_codebooks where id = $1 and document_id = $2 for update",
+      [codebookId, documentId],
+    );
+    if (!book.rows[0]) throw new Error("That codebook is no longer this transcript's. Reload the page.");
+    const latest = (await loadLatestBaselines(client, [codebookId])).get(codebookId);
+    const codes = await loadBaselineCodes(client, codebookId);
+    const segments = await loadBaselineSegments(client, runId, documentId);
+    if (
+      !latest ||
+      latest.id !== baseline.id ||
+      compareMethod(baseline, { model: baseline.model, promptHash: baseline.promptHash, codes, segments }).state !==
+        "unchanged"
+    )
+      throw new Error(
+        "The coding, the codebook or the transcript's turns changed while the check was running, so its result was not saved. The previous result is unchanged. Run the check again.",
+      );
+
+    const kept = await client.query<{
+      segment_id: string;
+      resolved_at: string | null;
+      blind_codes: string[] | null;
+      blind_at: string | null;
+      changed: boolean | null;
+    }>(
+      `select segment_id, resolved_at, blind_codes, blind_at, changed
+         from coding_turn_stability
+        where codebook_id = $1 and (resolved_at is not null or blind_at is not null)`,
       [codebookId],
     );
-    if (rows.length === 0) return;
-    const base = [
-      tenantId,
-      codebookId,
-      rows.map((r) => r.segmentId),
-      rows.map((r) => r.stability.runs),
-      rows.map((r) => r.stability.agree),
-      rows.map((r) => `{${r.original.join(",")}}`),
-      rows.map((r) => `{${r.stability.altCodes.join(",")}}`),
-      rows.map((r) => `{${r.stability.droppedCodes.join(",")}}`),
-    ];
-    // Migration 0074 keeps what each re-run gave, so the coding can be settled by majority.
-    const hasColumn = await client.query(
-      `select 1 from information_schema.columns
-        where table_name = 'coding_turn_stability' and column_name = 'run_codes'`,
-    );
-    if (hasColumn.rows.length > 0) {
+    await client.query("delete from coding_turn_stability where codebook_id = $1", [codebookId]);
+    if (rows.length > 0)
       await client.query(
         `insert into coding_turn_stability
            (tenant_id, codebook_id, segment_id, runs, agree, orig_codes, alt_codes, dropped_codes, run_codes)
          select $1, $2, t.s, t.r, t.a, t.o::int[], t.al::int[], t.d::int[], t.rc::jsonb
          from unnest($3::uuid[], $4::int[], $5::int[], $6::text[], $7::text[], $8::text[], $9::text[])
            as t(s, r, a, o, al, d, rc)`,
-        [...base, rows.map((r) => JSON.stringify(r.runCodes ?? []))],
+        [
+          tenantId,
+          codebookId,
+          rows.map((r) => r.segmentId),
+          rows.map((r) => r.stability.runs),
+          rows.map((r) => r.stability.agree),
+          rows.map((r) => `{${r.original.join(",")}}`),
+          rows.map((r) => `{${r.stability.altCodes.join(",")}}`),
+          rows.map((r) => `{${r.stability.droppedCodes.join(",")}}`),
+          rows.map((r) => JSON.stringify(r.runCodes)),
+        ],
       );
-      return;
-    }
+    for (const k of kept.rows)
+      await client.query(
+        `update coding_turn_stability
+            set resolved_at = $3, blind_codes = $4::uuid[], blind_at = $5, changed = $6
+          where codebook_id = $1 and segment_id = $2`,
+        [codebookId, k.segment_id, k.resolved_at, k.blind_codes, k.blind_at, k.changed],
+      );
     await client.query(
-      `insert into coding_turn_stability
-         (tenant_id, codebook_id, segment_id, runs, agree, orig_codes, alt_codes, dropped_codes)
-       select $1, $2, t.s, t.r, t.a, t.o::int[], t.al::int[], t.d::int[]
-       from unnest($3::uuid[], $4::int[], $5::int[], $6::text[], $7::text[], $8::text[])
-         as t(s, r, a, o, al, d)`,
-      base,
+      `insert into coding_stability_checks
+         (codebook_id, tenant_id, baseline_id, model, prompt_hash, passes_requested, passes_complete, excluded)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (codebook_id) do update set
+         baseline_id = excluded.baseline_id, model = excluded.model, prompt_hash = excluded.prompt_hash,
+         passes_requested = excluded.passes_requested, passes_complete = excluded.passes_complete,
+         excluded = excluded.excluded, created_at = now()`,
+      [
+        codebookId,
+        tenantId,
+        baseline.id,
+        check.model,
+        check.promptHash,
+        check.requested,
+        check.requested - check.excluded.length,
+        JSON.stringify(check.excluded),
+      ],
     );
   });
+}
+
+async function loadBaselineCodes(client: PoolClient, codebookId: string): Promise<BaselineCode[]> {
+  const r = await client.query<{
+    id: string;
+    name: string;
+    definition: string;
+    inclusion_criteria: string | null;
+    exclusion_criteria: string | null;
+  }>(
+    `select id, name, definition, inclusion_criteria, exclusion_criteria
+       from coding_codes where codebook_id = $1 order by position`,
+    [codebookId],
+  );
+  return r.rows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    definition: c.definition,
+    inclusion: c.inclusion_criteria,
+    exclusion: c.exclusion_criteria,
+  }));
+}
+
+async function loadBaselineSegments(client: PoolClient, runId: string, documentId: string): Promise<BaselineSegment[]> {
+  const r = await client.query<{ id: string; segment_index: number; role: string; text: string }>(
+    `select id, segment_index, role, text from coding_segments
+      where document_id = $1 and run_id = $2 order by segment_index`,
+    [documentId, runId],
+  );
+  return r.rows.map((s) => ({ id: s.id, index: s.segment_index, role: s.role, text: s.text }));
 }
 
 /**
  * Settles the coding by the majority of runs: a theme stays on a turn, or is added to it, when more than
  * half of the runs (the original included) gave it. This uses runs already paid for, so it adds no cost, and
  * it removes the one-run flips that make a single application unsteady. Turns the researcher has settled,
- * and any theme the researcher added or removed by hand, are left as they are.
+ * and any theme the researcher added or removed by hand, are left as they are. Only a check recorded with
+ * its completeness and method (batch 61) can be used: an older check may have counted an incomplete
+ * re-run's missing decisions as votes against a theme.
  */
 export async function applyMajorityCoding(
   tenantId: string,
@@ -1789,14 +2088,19 @@ export async function applyMajorityCoding(
   codebookId: string,
 ): Promise<string> {
   void runId;
-  void documentId;
   return withTenant(tenantId, async (client) => {
-    const hasColumn = await client.query(
-      `select 1 from information_schema.columns
-        where table_name = 'coding_turn_stability' and column_name = 'run_codes'`,
+    if (!(await baselinesAvailable(client)))
+      throw new Error("Settling by majority needs database migration 0128. Run it, then run the stability check again.");
+    const recorded = await client.query(
+      `select 1 from coding_stability_checks k
+         join coding_codebooks b on b.id = k.codebook_id
+        where k.codebook_id = $1 and b.document_id = $2`,
+      [codebookId, documentId],
     );
-    if (hasColumn.rows.length === 0)
-      throw new Error("Settling by majority needs database migration 0074. Run it, then run the stability check again.");
+    if (recorded.rows.length === 0)
+      throw new Error(
+        "This stability result was made before the check recorded which runs were complete, so it cannot be used to settle the coding. Run the check again, then settle by majority.",
+      );
     const rows = (
       await client.query<{
         segment_id: string;
@@ -1895,10 +2199,19 @@ export async function applyMajorityCoding(
 }
 
 /**
- * Applies the stored codebook to the same turns again, `reruns` more times,
- * and keeps which turns came out differently. The original coding counts as
- * the first run. Each re-run is as long as the original application, so the
- * cost grows with `reruns`. Nothing about the stored coding changes.
+ * Applies the stored codebook to the same turns again, `reruns` more times, and compares each complete
+ * pass with the model's original coding (Codex STAB-F01 to STAB-F03, batch 61). Contract:
+ * claude/coding-stability.md.
+ *
+ * - The first run is the stored original model coding (coding_model_baselines), never the coding now in
+ *   force, which holds the researcher's changes and any settling by majority.
+ * - It runs only when that original is complete (codingHasGap) and a new pass would use the same model
+ *   name, prompt and input preparation, codebook definitions and turns. Otherwise it refuses, naming
+ *   what is unknown, incomplete or changed, and the previous result stays.
+ * - A pass with a failed or incomplete batch is left out, never read as "no code" on the turns it did
+ *   not decide, and is named in the result. With no complete pass, nothing is saved.
+ * - The original and the passes are read and saved under one revision check (saveStabilityResult).
+ * Each pass costs as much as the original application. Nothing about the coding in force changes.
  */
 export async function runStabilityCheck(
   tenantId: string,
@@ -1908,60 +2221,64 @@ export async function runStabilityCheck(
   reruns: number,
 ): Promise<string> {
   const count = Math.min(3, Math.max(1, Math.round(reruns)));
-  const { codes, segments, original } = await withTenant(
-    tenantId,
-    async (client) => {
-      const c = await client.query<{
-        id: string;
-        position: number;
-        name: string;
-        definition: string;
-        inclusion_criteria: string | null;
-        exclusion_criteria: string | null;
-        reproduced_runs: number | null;
-        total_runs: number | null;
-      }>(
-        `select id, position, name, definition, inclusion_criteria, exclusion_criteria, reproduced_runs, total_runs
-         from coding_codes where codebook_id = $1 order by position`,
-        [codebookId],
-      );
-      const sg = await client.query<{
-        id: string;
-        segment_index: number;
-        speaker: string | null;
-        role: SegmentRole;
-        page: number | null;
-        text: string;
-      }>(
-        `select id, segment_index, speaker, role, page, text
-         from coding_segments where document_id = $1 and run_id = $2 order by segment_index`,
-        [documentId, runId],
-      );
-      const a = await client.query<{ segment_id: string; code_id: string }>(
-        `select a.segment_id, a.code_id from coding_assignments a
-         join coding_codes cc on cc.id = a.code_id
-         where cc.codebook_id = $1 and a.source = 'model'`,
-        [codebookId],
-      );
-      return { codes: c.rows, segments: sg.rows, original: a.rows };
-    },
-  );
-  if (codes.length === 0 || segments.length === 0)
-    throw new Error("This transcript has no stored coding to check.");
-  // The stored coding is run 1. If it was made by an older version of the coding step, every difference
-  // the check finds would come from the update, not from the model's consistency.
-  const lastApply = await withTenant(tenantId, async (client) => {
-    const r = await client.query<{ prompt_hash: string }>(
-      `select prompt_hash from coding_run_manifest
-        where codebook_id = $1 and stage = 'apply' order by created_at desc limit 1`,
+  // One snapshot of the codebook, the turns and the original, so all three describe one state.
+  const snap = await withTenantRepeatableRead(tenantId, async (client) => {
+    const own = await client.query(
+      `select 1 from coding_codebooks b join documents d on d.id = b.document_id
+        where b.id = $1 and b.document_id = $2 and d.run_id = $3`,
+      [codebookId, documentId, runId],
+    );
+    if (own.rows.length === 0) throw new Error("That codebook is not this transcript's. Reload the page.");
+    const c = await client.query<{
+      id: string;
+      position: number;
+      name: string;
+      definition: string;
+      inclusion_criteria: string | null;
+      exclusion_criteria: string | null;
+      reproduced_runs: number | null;
+      total_runs: number | null;
+    }>(
+      `select id, position, name, definition, inclusion_criteria, exclusion_criteria, reproduced_runs, total_runs
+       from coding_codes where codebook_id = $1 order by position`,
       [codebookId],
     );
-    return r.rows[0]?.prompt_hash ?? null;
-  }).catch(() => null);
-  if (lastApply && lastApply !== APPLY_PROMPT_HASH)
-    throw new Error(
-      "This coding was made by an earlier version of the coding step. Apply the codebook again first, then check stability, otherwise the differences found come from the update and not from the model.",
+    const sg = await client.query<{
+      id: string;
+      segment_index: number;
+      speaker: string | null;
+      role: SegmentRole;
+      page: number | null;
+      text: string;
+    }>(
+      `select id, segment_index, speaker, role, page, text
+       from coding_segments where document_id = $1 and run_id = $2 order by segment_index`,
+      [documentId, runId],
     );
+    const available = await baselinesAvailable(client);
+    const baseline = available ? ((await loadLatestBaselines(client, [codebookId])).get(codebookId) ?? null) : null;
+    return { codes: c.rows, segments: sg.rows, available, baseline };
+  });
+  const { codes, segments } = snap;
+  if (codes.length === 0 || segments.length === 0)
+    throw new Error("This transcript has no stored coding to check.");
+  const model = codingApplyModel();
+  const state = baselineState(snap.available, snap.baseline, {
+    model,
+    promptHash: APPLY_PROMPT_HASH,
+    codes: codes.map((c) => ({
+      id: c.id,
+      name: c.name,
+      definition: c.definition,
+      inclusion: c.inclusion_criteria,
+      exclusion: c.exclusion_criteria,
+    })),
+    segments: segments.map((s) => ({ id: s.id, index: s.segment_index, role: s.role, text: s.text })),
+  });
+  const refusal = baselineRefusal(state);
+  if (refusal || !snap.baseline) throw new Error(refusal ?? "The original coding is unknown.");
+  const baseline = snap.baseline;
+
   const codeRows: CodeRow[] = codes.map((c) => ({
     id: c.id,
     position: c.position,
@@ -1983,49 +2300,57 @@ export async function runStabilityCheck(
   const numberOf = new Map(codes.map((c, i) => [c.id, i + 1]));
   const indexOfSeg = new Map(segments.map((s) => [s.id, s.segment_index]));
   const originalByIndex = new Map<number, number[]>();
-  for (const a of original) {
-    const n = numberOf.get(a.code_id);
-    const idx = indexOfSeg.get(a.segment_id);
-    if (!n || idx === undefined) continue;
-    originalByIndex.set(idx, [...(originalByIndex.get(idx) ?? []), n]);
+  for (const [segmentId, codeIds] of Object.entries(baseline.decisions)) {
+    const idx = indexOfSeg.get(segmentId);
+    if (idx === undefined) continue;
+    const nums = codeIds.map((id) => numberOf.get(id)).filter((n): n is number => n !== undefined);
+    if (nums.length > 0) originalByIndex.set(idx, nums.sort((a, b) => a - b));
   }
 
   const results: Map<number, number[]>[] = [];
-  let failedAny = 0;
-  let creditStopAt = 0;
+  const excluded: ExcludedPass[] = [];
   for (let i = 0; i < count; i++) {
     relabelCodingWork(documentId, `Stability check, pass ${i + 1} of ${count}`);
     let applied: Awaited<ReturnType<typeof applyCodebook>>;
     try {
-      applied = await applyCodebook(
-        tenantId,
-        runId,
-        documentId,
-        codebookId,
-        codeRows,
-        stored,
-        "stability_rerun",
-      );
+      applied = await applyCodebook(tenantId, runId, documentId, codebookId, codeRows, stored, "stability_rerun");
     } catch (error) {
       // Out of credit part-way: keep the passes that finished instead of throwing away the money already spent.
       if (error instanceof Error && /run out of credit/i.test(error.message) && results.length > 0) {
-        creditStopAt = i + 1;
+        for (let k = i; k < count; k++)
+          excluded.push({ pass: k + 1, reason: "not run: the AI service ran out of credit" });
         clearCodingLabel(documentId);
         break;
       }
+      clearCodingLabel(documentId);
       throw error;
     }
     if (i === count - 1) clearCodingLabel(documentId);
-    // A re-run with failed batches would read as disagreement. Drop it.
-    if (applied.failedBatches > 0) {
-      failedAny += 1;
+    // STAB-F01: a pass with any decision missing is left out whole. Its missing decisions are unknown,
+    // and reading them as "no code" would show as disagreement that the model never expressed.
+    if (codingHasGap(applied)) {
+      const parts: string[] = [];
+      if (applied.failedBatches > 0) parts.push(`${applied.failedBatches} of ${applied.totalBatches} batches failed`);
+      if (applied.incompleteBatches > 0)
+        parts.push(`${applied.incompleteBatches} of ${applied.totalBatches} batches left some turns undecided`);
+      excluded.push({ pass: i + 1, reason: `incomplete: ${parts.join(" and ")}` });
+      continue;
+    }
+    // STAB-F03: the pass must have used the original's model and prompt. A pass that does not say which
+    // it used is not assumed to match.
+    if (applied.model !== baseline.model || applied.promptHash !== baseline.promptHash) {
+      excluded.push({
+        pass: i + 1,
+        reason: `different method: used ${applied.model ?? "an unrecorded model"} where the original used ${baseline.model}`,
+      });
       continue;
     }
     results.push(applied.assignments);
   }
+  const excludedText = excluded.map((e) => `pass ${e.pass} ${e.reason}`).join("; ");
   if (results.length === 0)
     throw new Error(
-      "The codebook could not be applied again. Try again in a moment.",
+      `No pass came back complete, so nothing was compared and the previous result is unchanged (${excludedText}). Try again in a moment.`,
     );
 
   const participants = stored.filter((s) => s.role !== "moderator");
@@ -2035,9 +2360,13 @@ export async function runStabilityCheck(
     participants.map((p) => p.index),
   );
   const idByIndex = new Map(stored.map((s) => [s.index, s.id]));
-  await saveStability(
+  await saveStabilityResult(
     tenantId,
+    runId,
+    documentId,
     codebookId,
+    baseline,
+    { model: baseline.model, promptHash: baseline.promptHash, requested: count, excluded },
     stability.map((st) => ({
       segmentId: idByIndex.get(st.index)!,
       stability: st,
@@ -2047,14 +2376,9 @@ export async function runStabilityCheck(
   );
   const summary = summariseStability(stability);
   return (
-    `Applied the codebook ${results.length} more time${results.length === 1 ? "" : "s"}. ` +
+    `Applied the codebook ${count} more time${count === 1 ? "" : "s"}; ${results.length} complete pass${results.length === 1 ? "" : "es"} compared with the original coding. ` +
     `${summary.stable} of ${summary.turns} turns came out the same every time.` +
-    (failedAny > 0
-      ? ` ${failedAny} re-run${failedAny === 1 ? "" : "s"} failed and ${failedAny === 1 ? "was" : "were"} left out.`
-      : "") +
-    (creditStopAt > 0
-      ? ` The AI service ran out of credit during pass ${creditStopAt} of ${count}, so this uses the ${results.length} pass${results.length === 1 ? "" : "es"} that finished.`
-      : "")
+    (excluded.length > 0 ? ` Left out: ${excludedText}.` : "")
   );
 }
 
@@ -2272,11 +2596,11 @@ export async function proposeVariableLinks(
     messages: [{ role: "user", content: user }],
   });
   await logApiUsage(tenantId, runId, "coding_link_proposal", response.usage);
-  const toolUse = response.content.find((b) => b.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use")
-    throw new Error("The model did not return any proposals.");
+  // EC10K-F02 (batch 64): only a finished record_links call is used; anything else throws, nothing saved.
+  const result = finishedToolResult(response, "record_links", "The proposal of links to variables");
+  if (!result.input) throw new Error(result.unfinished.reason === "no_tool_use" ? "The model did not return any proposals." : result.unfinished.message);
   const proposals = validateLinkProposals(
-    (toolUse.input as { links?: unknown }).links,
+    (result.input as { links?: unknown }).links,
     codes.length,
     vars.map((v) => v.name),
   );
@@ -2442,14 +2766,19 @@ export async function searchNegativeCases(
               item.text,
           )
           .join("\n");
-        const user = `Codebook:\n${block}\n\nTurns:\n${turns}`;
+        // Every batch sends the same codebook: it comes first and is cached (promptCache.ts), with
+        // the instructions, so later batches read it at a tenth of the price. Same text as before,
+        // so the recorded input hash is unchanged.
+        const codebookPart = `Codebook:\n${block}`;
+        const turnsPart = `\n\nTurns:\n${turns}`;
+        const user = codebookPart + turnsPart;
         const response = await anthropic.messages.create({
           model: CLAUDE_MODEL,
           max_tokens: 4000,
-          system: NEGATIVE_SYSTEM,
+          system: cachedSystem(NEGATIVE_SYSTEM),
           tool_choice: { type: "tool", name: "record_negative_cases" },
           tools: NEGATIVE_TOOLS,
-          messages: [{ role: "user", content: user }],
+          messages: [cachedUserThen(codebookPart, turnsPart)],
         });
         await logApiUsage(
           tenantId,
@@ -2457,24 +2786,18 @@ export async function searchNegativeCases(
           "coding_negative_cases",
           response.usage,
         );
-        const toolUse = response.content.find((b) => b.type === "tool_use");
-        if (
-          !toolUse ||
-          toolUse.type !== "tool_use" ||
-          response.stop_reason === "max_tokens"
-        ) {
+        // EC10K-F02 (batch 64): a cut-off, refused, other-stop or other-tool answer fails the batch (traced).
+        const result = finishedToolResult(response, "record_negative_cases", "The search for negative cases");
+        if (!result.input) {
           await recordTrace(tenantId, runId, "negative_case_batch_failed", {
             document_id: documentId,
             batch: batchIndex,
-            reason:
-              response.stop_reason === "max_tokens"
-                ? "max_tokens"
-                : "no_tool_use",
+            reason: result.unfinished.reason === "malformed" ? "no_tool_use" : result.unfinished.reason,
           });
           return null;
         }
         const parsed = parseNegativeCases(
-          (toolUse.input as { cases?: unknown }).cases,
+          (result.input as { cases?: unknown }).cases,
           new Set(batch.items.map((i) => i.index)),
           codes.length,
         );

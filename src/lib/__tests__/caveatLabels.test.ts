@@ -55,9 +55,10 @@ describe("exportCaveatLabels", () => {
     ).toEqual(["Survey design not modelled", "Stage ratio: equivalent population not established"]);
   });
 
-  it("the allow-list is exactly the four tags named by the counter-review, no wider", () => {
+  it("the allow-list is exactly the four tags named by the counter-review plus the brand overlap Grant named, no wider", () => {
     expect(Array.from(EXPORT_CAVEAT_ALLOWLIST).sort()).toEqual(
       [
+        "brand_groups_overlap",
         "stage_ratio_population_comparability_unverified",
         "survey_design_candidates_ambiguous",
         "survey_design_missing_for_some_cases",

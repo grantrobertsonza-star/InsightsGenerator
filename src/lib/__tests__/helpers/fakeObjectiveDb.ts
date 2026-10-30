@@ -189,6 +189,9 @@ export function createFakeObjectiveDb(initial: Partial<ObjStore> = {}, options: 
         db.results = db.results.filter((r) => !(r.evidence_id === params[0] && r.run_id === params[1]));
         return { rows: [] };
       }
+      // CE-6: the plan reads the stated methodology; this fixture's projects state none and never read one.
+      if (s === "select methodology from runs where id = $1") return after(db.runs.filter((r) => r.id === params[0]).map(() => ({ methodology: null })));
+      if (s.startsWith("select event from trace where run_id = $1")) return { rows: [] };
       throw new Error(`unhandled fake-objective-db query: ${sql}`);
     }
 

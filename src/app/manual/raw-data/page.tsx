@@ -57,18 +57,18 @@ export default function RawDataPage() {
         verify the weight and multiple-response setup before calculating.
       </P>
       <P>
-        If your raw data comes from labelled statistical software, a <code>.sav</code> or <code>.dta</code> file (SAS is excluded pending verification), the app reads it directly, including the variable labels (so a
+        If your raw data comes from labelled statistical software, a <code>.sav</code>, <code>.dta</code>, <code>.sas7bdat</code> or <code>.xpt</code> file (or an R <code>.rds</code> or <code>.RData</code> file, whose factors come through as answer labels, or a Parquet file), the app reads it directly, including the variable labels (so a
         column literally named <code>Q7a</code> shows up as &quot;Preferred channel&quot; if that&apos;s
         its label) and value labels (so a code like <code>1</code> shows up as &quot;Male&quot; rather
         than a bare number) wherever your file defines them.
       </P>
 
       <WhyBox>
-        The honest option, when a genuinely rigorous answer (a true stratified survey design, with
-        design weights) isn&apos;t built yet, is to say so plainly rather than quietly approximate it
-        and let a caveat tag do the disclosing on its own. That is exactly the situation here: a
-        stratified-design statistical path is scoped for later, not built yet, see{" "}
-        <em>What this doesn&apos;t do yet</em> for what that specifically means for your results today.
+        The banner plan does not model a survey design: its tests treat the sample as random, and
+        each result says so with a caveat rather than quietly approximating a design. Cross tabs and the
+        Net Promoter Score do model one, with Taylor series variance, when you name the PSU (cluster) and
+        strata variables for the data file, so use those for a stratified or clustered sample. See{" "}
+        <em>What this doesn&apos;t do yet</em> for what that means for your results today.
       </WhyBox>
 
       <DoesDoesNot
@@ -80,8 +80,8 @@ export default function RawDataPage() {
         ]}
         doesNot={[
           "Scan a raw table automatically the way it does an aggregated one: that is a deliberate choice, not a missing feature",
-          "Apply a statistical correction (like a Bonferroni adjustment) for the multiple comparisons it runs: the risk is disclosed, not adjusted away, for now",
-          "Account for a genuine stratified or weighted survey design yet: today's checks assume a simple random or quota sample",
+          "Apply a statistical correction (like a Bonferroni adjustment) for the multiple comparisons a banner plan runs: the risk is disclosed, not adjusted away (cross tabs built in the app do correct, with a false discovery rate correction by default)",
+          "Account for a survey design in a banner plan: it assumes a simple random or quota sample (cross tabs and NPS use the PSU and strata you name)",
         ]}
       />
 

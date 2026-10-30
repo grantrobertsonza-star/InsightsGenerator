@@ -1,4 +1,8 @@
+import { readFindingRoutes, routeText, type FindingRoute } from "@/lib/analysisPlan";
+import { loadAssistantConversation } from "@/lib/researchAssistant";
+import { cellText, type TableCell } from "@/lib/rowCells";
 import Link from "next/link";
+import { Fragment } from "react";
 import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -7,7 +11,7 @@ import { withTenant, withTenantRead } from "@/lib/db";
 import { loadImportQuestionDefinitions } from "@/lib/importQuestionDefinitions";
 import { extractFindingsFromDocument, readContextDocument } from "@/lib/extractFindings";
 import { findingProvenanceAvailable } from "@/lib/findingProvenance";
-import { processTableDocument } from "@/lib/documentTables";
+import { processTableDocument, readProvenanceAvailable, type TableReadProvenance } from "@/lib/documentTables";
 import { generateFindingsFromBannerPlan } from "@/lib/generateFindingsFromBannerPlan";
 import {
   extractThemesFromTranscript,
@@ -31,11 +35,11 @@ import {
   finishProcessProgress,
   isPipelineActive,
 } from "@/lib/processProgress";
-import { refreshInsights } from "@/lib/insightGenerator";
+import { loadInsightCoverageGap, refreshInsights } from "@/lib/insightGenerator";
 import { refreshRecommendations } from "@/lib/recommendationAgent";
-import { generateStoryNarrative, type DeckPillar } from "@/lib/storyNarrative";
+import { generateStoryNarrative, latestNarrativeFailure, type DeckPillar } from "@/lib/storyNarrative";
 import { loadInsightSupportOrUnchecked, loadPreInsightSupportOrUnchecked, type InsightSupportResult } from "@/lib/supportStatus";
-import { summariseSupport } from "@/lib/supportStatusShared";
+import { SUPPORT_STATUS_LABEL, summariseSupport } from "@/lib/supportStatusShared";
 import { NarrativeSupportBanner } from "./NarrativeSupportBanner";
 import { loadWordingEdits } from "@/lib/findingWording";
 import { loadRunFigureChecks, type RunFigureChecks } from "@/lib/figureChecks";
@@ -43,12 +47,12 @@ import { FigureChecksProvider, FigureCheckNotice } from "./FigureCheckNotice";
 import type { WordingEdits } from "./FindingsTable";
 import {
   generateObjectiveValidation,
-  type ObjectiveValidation,
 } from "@/lib/objectiveValidator";
 import { generateMethodologySummary } from "@/lib/methodologyExtractor";
+import { latestMethodologyFailure } from "@/lib/methodologyStatus";
 import { refreshSynthesizedInsights } from "@/lib/insightSynthesizer";
 import { refreshSynthesizedInsightQuality } from "@/lib/synthesizedInsightQualityScorer";
-import { estimateCostUsd } from "@/lib/apiUsage";
+import { costOfUsage } from "@/lib/apiUsage";
 import {
   summarizeSynthesizedProvenance,
   type DiscoveryType,
@@ -59,18 +63,23 @@ import { decisionContextMismatch, decisionRefreshPending } from "@/lib/decisionR
 import { recommendationDecisionContextAvailable, recommendationDecisionStateSql, writtenForEarlierDecisionsSql } from "@/lib/decisionContext";
 import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
 import RunContextForm from "./RunContextForm";
-import UploadForm from "./UploadForm";
+import { loadFailedBriefFill, loadLastBriefFill, loadObjectiveSources, sourceLabelFromRationale } from "@/lib/briefFillRecord";
+import AddFilesPanel from "./AddFilesPanel";
+import { listProjects } from "@/lib/projectList";
 import StorageCleanupNotice from "./StorageCleanupNotice";
+import BinNotice from "./BinNotice";
 import StatedObjectivesList from "./StatedObjectivesList";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
-import ObjectiveCoverage from "./ObjectiveCoverage";
+import { loadObjectiveQualityStatus, objectiveQualityLookup } from "@/lib/objectiveQualityStatus";
+import ObjectiveCoverage, { SelectedObjectiveCoverage } from "./ObjectiveCoverage";
 import ObjectiveEvidence from "./ObjectiveEvidence";
 import { ObjectiveSelectionProvider } from "./ObjectiveSelection";
-import { ObjectiveList, ObjectiveMiddle } from "./ObjectivesWorkspace";
+import { ObjectiveBadges, ObjectiveList, ObjectiveMiddle } from "./ObjectivesWorkspace";
+import { objectiveListPositions } from "./objectiveAccents";
 import ClaimTableChecks from "./ClaimTableChecks";
 import RecommendationsReview from "./RecommendationsReview";
-import SynthesizedRecommendationsReview from "./SynthesizedRecommendationsReview";
+import RecommendationsWorkspace from "./RecommendationsWorkspace";
 import InsightsReview from "./InsightsReview";
 import StatedInsightValidationsReview, {
   type StatedInsightValidation,
@@ -94,9 +103,20 @@ import { impactFor, loadDocumentDeletionImpact } from "@/lib/documentDeletionImp
 import { deleteDocumentConfirmation } from "@/lib/documentDeletionMessage";
 import SubmitButton from "@/components/SubmitButton";
 import { Pane, ThreePane } from "./ThreePane";
+import SectionDashboard, { ModuleStatusBar } from "./SectionDashboard";
+import { loadProjectStageFacts, objectiveUnscoredReason } from "@/lib/projectStageFacts";
+import { SECTIONS, sectionStatuses, type ProjectStageFacts } from "@/lib/sectionStatus";
+import ProjectOverview from "./ProjectOverview";
+import { summarizeFindings, summarizeInsights } from "@/lib/evidenceOverview";
+import { summarizeRecommendations } from "@/lib/recommendationOverview";
 import RerunExtractButton from "./RerunExtractButton";
 import ProcessProgress from "./ProcessProgress";
 import CodingFormProgress from "./CodingFormProgress";
+import CodeThemesSubmit from "./CodeThemesSubmit";
+import FindingsWorkspace from "./FindingsWorkspace";
+import InsightsWorkspace from "./InsightsWorkspace";
+import InsightsReportWorkspace from "./InsightsReportWorkspace";
+import { claimCodingRun, releaseCodingRun } from "@/lib/codingProgress";
 import ReportReadSummary, { type ReportReadStats } from "./ReportReadSummary";
 import PipelineStatus from "./PipelineStatus";
 import WorkingDataTabs from "./WorkingDataTabs";
@@ -105,18 +125,36 @@ import { loadImportPreviewIdentities } from "@/lib/importPreviewIdentity";
 import ImportVariablesPanel from "./ImportVariablesPanel";
 import DocumentPicker from "./DocumentPicker";
 import DataAuditPanel from "./DataAuditPanel";
+import RespondentQualityPanel from "./RespondentQualityPanel";
+import LabelDocumentationPanel from "./LabelDocumentationPanel";
 import { TranscriptImportQualityPanel, AggregatedQualityPanel } from "./ImportQualityChecks";
 import { getTranscriptImportQuality } from "@/lib/transcriptImportQuality";
 import { computeAggregatedQuality } from "@/lib/aggregatedQuality";
-import { getInstrumentSummaries, getConfirmedItemsForData } from "@/lib/instruments";
+import { isRereadSuggestion } from "@/lib/briefFillText";
+import { likelyRestates } from "@/lib/objectiveSimilarity";
+import { flaggedChecks, sourceGroup, sourceTypeLabel } from "@/lib/importSources";
+import { getDocumentRoles } from "@/lib/researchQualityRepository";
+import { narrativeFreshnessNote } from "@/lib/narrativeFreshness";
+import { loadBriefPassages, passageSourceText } from "@/lib/briefPassages";
+import { decisionOptionKey, loadDecisionItems, loadRecommendationDecisions, type DecisionOption, type ServedDecision } from "@/lib/recommendationDecisions";
+import { loadObjectiveCoverage, coverageNote, coverageRowCurrent, coverageSupportNote, type ObjectiveCoverage as LoadedObjectiveCoverage } from "@/lib/objectiveCoverage";
+import { getInstrumentSummaries, getConfirmedItemsForData, InstrumentMeaningUnavailableError } from "@/lib/instruments";
 import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
 import { computeTableQuality, computeFullTableQuality, type TableQuality } from "@/lib/dataQuality";
+import { earlierMethodText, tableMethodStatus, type TableMethodStatus } from "@/lib/tableMethod";
 import { loadVariableDictionary, resolveCurrentDesignSnapshotStatus, designFreshnessStatus, type DesignFreshness, type CurrentDesignSnapshotStatus } from "@/lib/crosstabs";
 import { loadVariableOverrides, type QuestionType } from "@/lib/variableOverrides";
 import type { VariableDictionary } from "@/lib/parseStatsFile";
 import InstrumentCard from "./InstrumentCard";
-import AttachedInstruments from "./AttachedInstruments";
+import InstrumentAutoRead from "./InstrumentAutoRead";
+import AttachedInstruments, { QuestionnaireLinkingNote } from "./AttachedInstruments";
+import DocumentIndicatorsPanel from "./DocumentIndicatorsPanel";
+import IndicatorDataPanel from "./IndicatorDataPanel";
+import { IndicatorAnalyticsLauncher } from "./IndicatorAnalyticsPanel";
 import AcceptDataButton from "./AcceptDataButton";
+import CrosstabsSection, { type CrosstabDataset } from "./CrosstabsSection";
+import DataFileSection from "./DataFileSection";
+import { crosstabDatasetState } from "@/lib/crosstabEntry";
 import OutputSetCard from "./OutputSetCard";
 import RelatedOutputSets from "./RelatedOutputSets";
 import { getOutputSets } from "@/lib/outputSets";
@@ -124,10 +162,13 @@ import TranscriptQualityPanel from "./TranscriptQualityPanel";
 import CodebookPanel, { type CodebookView } from "./CodebookPanel";
 import CodingExtras from "./CodingExtras";
 import CodingAnalysisPanel from "./CodingAnalysisPanel";
-import TranscriptSetupTable, {
+import {
+  SourcesPane,
   CodeGate,
   ImportDetailProvider,
   SelectedFileDetail,
+  type SourcePanel,
+  type SourceRow,
   MODE_LABEL,
   SESSION_LABEL,
 } from "./TranscriptSetup";
@@ -135,6 +176,7 @@ import {
   findUnconfirmedTranscripts,
   getSetupSuggestions,
   getTranscriptSetups,
+  transcriptWaveAvailable,
   SETUP_NEEDED_MESSAGE,
 } from "@/lib/transcriptSetup";
 import { loadDataSetups } from "@/lib/dataSetup";
@@ -149,7 +191,7 @@ import { listWaveFilesAction, type WaveFile } from "@/lib/waveTrackingActions";
 import { isStatsFileName, isCaseTableFileName } from "@/lib/statsFileName";
 import FindingsTable from "./FindingsTable";
 import TableDigest from "./TableDigest";
-import { parseObjectiveLines } from "@/lib/objectiveLines";
+import { objectiveIdentityKey, parseObjectiveLines, setupLineCandidateIds } from "@/lib/objectiveLines";
 import ResearchAssistantCard, {
   type AssistantChatMessage,
 } from "./ResearchAssistantCard";
@@ -172,6 +214,9 @@ import {
 import { latestVerdictLateral } from "@/lib/latestVerdict";
 import { getSampleFailedVerdicts, getVerdictSummary } from "@/lib/verdictSummary";
 import { requireTenantId } from "@/lib/requestContext";
+import { RUN_NOT_AVAILABLE, assertRunAccessible, runAccessible } from "@/lib/runOwnership";
+import { loadProgramOptions, loadProgramWaves, loadRunHeader, type RunHeader } from "@/lib/projectReads";
+import { updateProgramLinkAction } from "@/lib/programActions";
 
 // Opening an already-processed run used to take as long as processing it,
 // because these three self-heal checks (retry a framer or the
@@ -222,28 +267,11 @@ function refreshInBackground(
     .finally(() => inFlight.delete(runId));
 }
 
-type Run = {
-  id: string;
-  project_name: string | null;
-  business_problem: string | null;
-  research_objective: string | null;
-  decision_statement: string | null;
-  evidence_synthesis: string | null;
-  audience: string | null;
-  status: string;
-  entry_point: "generate" | "validate" | null;
-  initial_research_objective: string | null;
-  // OBJ-SET-M01: the current, editable list of stated objectives. Null on a
-  // pre-migration-0080 database (getRun falls back to a column-less query,
-  // same guard pattern used elsewhere for a not-yet-applied migration).
-  stated_objectives_text: string | null;
-  program_id: string | null;
-  wave_label: string | null;
-};
+type Run = RunHeader;
 
 type Document = {
   id: string;
-  kind: "report" | "table" | "evidence" | "transcript" | "instrument" | "output";
+  kind: "report" | "table" | "evidence" | "transcript" | "instrument" | "output" | "technical" | "indicator";
   source_filename: string;
   uploaded_at: string;
   ingestion_type: "raw" | "aggregated" | null;
@@ -265,6 +293,8 @@ type Finding = {
   theme: string | null;
   status: "pending" | "accepted" | "rejected";
   source_filename: string | null;
+  /** The wave label of the data file the finding comes from, when it is a wave of a tracker. */
+  source_wave: string | null;
   source_page: number | null;
   quote_verified: boolean | null;
   source_document_id: string | null;
@@ -303,41 +333,21 @@ type Finding = {
   // any human wording - purely an additional, read-only signal. Null for a finding with no
   // source table at all (nothing to compare, a different thing from "couldn't compare").
   designFreshness: DesignFreshness | null;
+  /** Batch 47: for a finding from a calculated table, whether that table was built with the current table
+   * method (tableMethod.ts); null when the finding has no calculated table behind it. */
+  methodFreshness: TableMethodStatus | null;
+  /** Why the table is earlier, in words (tableMethod.ts earlierMethodText); null when not from a calculated table. */
+  methodReason: string | null;
+  /** CE-6: planned, discovered or stated, and for a planned finding the plan line and its objective. */
+  route: FindingRoute;
+  routeText: string;
 };
 
+// SEC1: the header, program list and linked projects are filtered by tenant in the statement
+// itself (projectReads.ts), not only by row-level security; another organisation's project reads
+// as missing, so the page answers not found.
 async function getRun(runId: string): Promise<Run | null> {
-  const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    try {
-      const result = await client.query<Run>(
-        `select id, project_name, business_problem, research_objective, decision_statement,
-                evidence_synthesis, audience, status, entry_point, initial_research_objective,
-                stated_objectives_text, program_id, wave_label
-         from runs where id = $1`,
-        [runId],
-      );
-      return result.rows[0] ?? null;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/stated_objectives_text/.test(message)) throw error;
-      // Pre-migration-0080 database: same query without the new column.
-      const result = await client.query<Omit<Run, "stated_objectives_text">>(
-        `select id, project_name, business_problem, research_objective, decision_statement,
-                evidence_synthesis, audience, status, entry_point, initial_research_objective,
-                program_id, wave_label
-         from runs where id = $1`,
-        [runId],
-      );
-      const row = result.rows[0];
-      // Pre-migration-0080, a run's current objective list lived in initial_research_objective
-      // (migration 0080's own backfill is `stated_objectives_text = initial_research_objective`
-      // for exactly this reason - see its comment). Hardcoding null here instead ignored that
-      // and made every existing project's objectives vanish from Setup's display with nothing
-      // to say why (OBJ-SET-005): falling back to the same column the migration itself treats
-      // as the legacy source of truth keeps them visible until the migration actually runs.
-      return row ? { ...row, stated_objectives_text: row.initial_research_objective } : null;
-    }
-  });
+  return loadRunHeader(await requireTenantId(), runId);
 }
 
 type Program = {
@@ -346,38 +356,14 @@ type Program = {
 };
 
 async function getPrograms(): Promise<Program[]> {
-  const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<Program>(
-      "select id, name from programs order by name asc",
-    );
-    return result.rows;
-  });
+  return loadProgramOptions(await requireTenantId());
 }
 
-type ProgramWave = {
-  id: string;
-  project_name: string | null;
-  wave_label: string | null;
-};
-
-// Other waves already attached to this run's program, shown so linking a
-// run doesn't feel like shouting into the void: the researcher immediately
-// sees which other projects this one is now grouped with.
-async function getProgramWaves(
-  programId: string,
-  excludeRunId: string,
-): Promise<ProgramWave[]> {
-  const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<ProgramWave>(
-      `select id, project_name, wave_label from runs
-       where program_id = $1 and id <> $2
-       order by created_at asc`,
-      [programId, excludeRunId],
-    );
-    return result.rows;
-  });
+// Other waves already attached to this run's program, shown so linking a run doesn't feel like
+// shouting into the void: the researcher immediately sees which other projects this one is now
+// grouped with.
+async function getProgramWaves(programId: string, excludeRunId: string) {
+  return loadProgramWaves(await requireTenantId(), programId, excludeRunId);
 }
 
 async function getReportReadStats(runId: string): Promise<Map<string, NonNullable<ReportReadStats>>> {
@@ -462,7 +448,7 @@ type DocumentTablePreview = {
   label: string | null;
   source_page: number | null;
   headers: string[];
-  rows: Record<string, string | number | null>[];
+  rows: Record<string, TableCell>[];
   ingestion_type: "raw" | "aggregated";
   banner_columns: string[] | null;
   stub_columns: string[] | null;
@@ -470,6 +456,10 @@ type DocumentTablePreview = {
   row_count: number;
   /** Changes whenever the stored table is rewritten. Keys the quality cache. */
   row_version: string;
+  /** A crosstab's place in its set (table_index 100 and up); null for an imported table. */
+  crosstab_status: "draft" | "committed" | null;
+  /** How an engine-read table was read (migration 0116; documentTables.TableReadProvenance), else null. */
+  read_provenance: TableReadProvenance | null;
 };
 
 /**
@@ -480,11 +470,13 @@ type DocumentTablePreview = {
  * model misread a column or dropped a row, this is where that shows up,
  * rather than only surfacing later as a finding that looks wrong. Wrapped
  * in try/catch and defaulting to [] for the same reason getFindingHistory
- * is: document_tables only exists once migration 0023 has been applied.
+ * is: document_tables only exists once migration 0023 has been applied. The
+ * failure is reported alongside (failed), so the stage status blocks say the
+ * tables could not be checked rather than counting none.
  */
 async function getDocumentTablePreviews(
   runId: string,
-): Promise<DocumentTablePreview[]> {
+): Promise<{ rows: DocumentTablePreview[]; failed: boolean }> {
   const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
@@ -505,16 +497,17 @@ async function getDocumentTablePreviews(
                 end as rows,
                 jsonb_array_length(rows)::int as row_count,
                 xmin::text as row_version,
-                ingestion_type, banner_columns, stub_columns
+                ingestion_type, banner_columns, stub_columns, crosstab_status,
+                ${(await readProvenanceAvailable(client)) ? "read_provenance" : "null::jsonb as read_provenance"}
          from document_tables
          where run_id = $1 and coalesce(crosstab_status, 'committed') <> 'evidence'
          order by document_id, table_index`,
         [runId],
       );
-      return result.rows;
+      return { rows: result.rows, failed: false };
     });
   } catch {
-    return [];
+    return { rows: [], failed: true };
   }
 }
 
@@ -546,6 +539,32 @@ async function getRawQuality(
     return q;
   } catch {
     return null;
+  }
+}
+
+/**
+ * The brief or proposal role recorded for each document (at upload through Import's Brief and
+ * Proposal pickers, or by a review), for Set Objectives' "Fill in from" choice. A convenience: before
+ * migration 0105 there is no such table, and every document is simply offered without a role.
+ */
+async function getDocumentReviewRoles(runId: string): Promise<Map<string, "brief" | "proposal">> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    return await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query<{ document_id: string; roles: string[] }>(
+        `select document_id, roles from research_quality_sources where run_id = $1 and document_id is not null`,
+        [runId],
+      );
+      const out = new Map<string, "brief" | "proposal">();
+      for (const x of r.rows) {
+        if (x.roles.includes("brief")) out.set(x.document_id, "brief");
+        else if (x.roles.includes("proposal")) out.set(x.document_id, "proposal");
+      }
+      return out;
+    });
+  } catch (error) {
+    if (/research_quality_sources/.test(error instanceof Error ? error.message : String(error))) return new Map();
+    throw error;
   }
 }
 
@@ -831,8 +850,13 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
   return out;
 }
 
-type FindingRow = Omit<Finding, "designFreshness"> & {
+type FindingRow = Omit<Finding, "designFreshness" | "methodFreshness" | "methodReason" | "route" | "routeText"> & {
   source_table_document_id: string | null;
+  /** Set only when the source table is a calculated table (crosstab not null). */
+  from_calculated_table: boolean | null;
+  table_method: string | null;
+  table_source: string | null;
+  table_label_reader: string | null;
   design_snapshot: { design: { psu: string | null; strata: string | null } | null } | null;
 };
 
@@ -869,6 +893,8 @@ async function getWordingEdits(runId: string): Promise<WordingEdits> {
   }
 }
 
+// V-R1000-01: findings saved in one statement share a created_at; the id breaks the tie so the list
+// keeps one order across reloads (the exports use the same key after their theme grouping).
 async function getFindings(runId: string): Promise<Finding[]> {
   const TENANT_ID = await requireTenantId();
   const rows = await withTenantRead(TENANT_ID, async (client) => {
@@ -876,6 +902,7 @@ async function getFindings(runId: string): Promise<Finding[]> {
       const result = await client.query<FindingRow>(
         `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
                 coalesce(d1.source_filename, d2.source_filename) as source_filename,
+                nullif(btrim(coalesce(d2.data_setup, d1.data_setup)->>'wave'), '') as source_wave,
                 c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
                 c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
                 c.pattern_type, c.stated_stats, c.created_at::text as created_at,
@@ -883,13 +910,14 @@ async function getFindings(runId: string): Promise<Finding[]> {
                 exists (select 1 from findings g where g.grounded_by_finding_id = c.id) as corroborates_report_claim,
                 exists (select 1 from finding_contradictions fc where fc.original_finding_id = c.id) as is_contradicted,
                 exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report,
-                dt2.document_id as source_table_document_id, dt2.design_snapshot
+                dt2.document_id as source_table_document_id, dt2.design_snapshot,
+                dt2.crosstab is not null as from_calculated_table, dt2.crosstab->'notes'->>'methodVersion' as table_method, dt2.crosstab->'provenance'->>'sourceFile' as table_source, dt2.crosstab->'notes'->>'labelReader' as table_label_reader
          from findings c
          left join documents d1 on d1.id = c.source_document_id
          left join document_tables dt2 on dt2.id = c.source_table_id
          left join documents d2 on d2.id = dt2.document_id
          where c.run_id = $1
-         order by c.created_at`,
+         order by c.created_at, c.id`,
         [runId],
       );
       return result.rows;
@@ -910,6 +938,7 @@ async function getFindings(runId: string): Promise<Finding[]> {
       const result = await client.query<Omit<FindingRow, "design_snapshot">>(
         `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
                 coalesce(d1.source_filename, d2.source_filename) as source_filename,
+                nullif(btrim(coalesce(d2.data_setup, d1.data_setup)->>'wave'), '') as source_wave,
                 c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
                 c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
                 c.pattern_type, c.stated_stats, c.created_at::text as created_at,
@@ -917,13 +946,14 @@ async function getFindings(runId: string): Promise<Finding[]> {
                 exists (select 1 from findings g where g.grounded_by_finding_id = c.id) as corroborates_report_claim,
                 exists (select 1 from finding_contradictions fc where fc.original_finding_id = c.id) as is_contradicted,
                 exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report,
-                dt2.document_id as source_table_document_id
+                dt2.document_id as source_table_document_id,
+                dt2.crosstab is not null as from_calculated_table, dt2.crosstab->'notes'->>'methodVersion' as table_method, dt2.crosstab->'provenance'->>'sourceFile' as table_source, dt2.crosstab->'notes'->>'labelReader' as table_label_reader
          from findings c
          left join documents d1 on d1.id = c.source_document_id
          left join document_tables dt2 on dt2.id = c.source_table_id
          left join documents d2 on d2.id = dt2.document_id
          where c.run_id = $1
-         order by c.created_at`,
+         order by c.created_at, c.id`,
         [runId],
       );
       // `source_table_document_id` is now a real selected column (present whenever the finding
@@ -955,8 +985,15 @@ async function getFindings(runId: string): Promise<Finding[]> {
     }),
   );
 
+  // CE-6: each finding's route. A failed read shows every route as unknown, never as discovered.
+  const routes = await withTenantRead(TENANT_ID, (client) => readFindingRoutes(client, runId)).catch(() => null);
+  const routeOf = (id: string) => {
+    const info = routes?.get(id) ?? { route: "unknown" as const, planLine: null };
+    return { route: info.route, routeText: routeText(info) };
+  };
   return rows.map((r) => {
-    const { source_table_document_id, design_snapshot, ...finding } = r;
+    const { source_table_document_id, design_snapshot, from_calculated_table, table_method, table_source, table_label_reader, ...rest } = r;
+    const finding = { ...rest, ...routeOf(rest.id), methodFreshness: from_calculated_table ? tableMethodStatus(table_method, { sourceFile: table_source, labelReader: table_label_reader }) : null, methodReason: from_calculated_table ? earlierMethodText(table_method, { sourceFile: table_source, labelReader: table_label_reader }) : null };
     if (!source_table_document_id) {
       // No source table at all - there is nothing to compare, a different thing from having
       // tried to compare and failed. Unchanged from before this repair.
@@ -979,6 +1016,7 @@ type ObjectiveCandidate = {
   source: "researcher_authored" | "ai_suggested";
   status: "pending" | "accepted" | "rejected";
   edited: boolean;
+  source_removed_at: string | null;
 };
 
 async function getObjectiveCandidates(
@@ -987,8 +1025,9 @@ async function getObjectiveCandidates(
   const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<ObjectiveCandidate>(
-      `select id, candidate_text, rationale, source, status, edited
-       from objective_candidates
+      // source_removed_at (migration 0115) read through to_jsonb so the page loads before it is applied.
+      `select id, candidate_text, rationale, source, status, edited, to_jsonb(c)->>'source_removed_at' as source_removed_at
+       from objective_candidates c
        where run_id = $1
        order by created_at`,
       [runId],
@@ -1004,6 +1043,7 @@ type DecisionCandidate = {
   source: "researcher_authored" | "ai_suggested";
   status: "pending" | "accepted" | "rejected";
   edited: boolean;
+  source_removed_at: string | null;
 };
 
 async function getDecisionCandidates(
@@ -1012,8 +1052,9 @@ async function getDecisionCandidates(
   const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<DecisionCandidate>(
-      `select id, candidate_text, rationale, source, status, edited
-       from decision_candidates
+      // source_removed_at (migration 0115) read through to_jsonb so the page loads before it is applied.
+      `select id, candidate_text, rationale, source, status, edited, to_jsonb(c)->>'source_removed_at' as source_removed_at
+       from decision_candidates c
        where run_id = $1
        order by created_at`,
       [runId],
@@ -1568,6 +1609,8 @@ type SynthesizedRecommendation = {
   /** GT-007: the decisions it was written for, and whether they are earlier or unrecorded. */
   decision_context: string | null;
   decision_state: "earlier" | "unknown" | null;
+  /** CE-2: the decisions it serves; undefined before migration 0120. */
+  served_decisions?: ServedDecision[];
 };
 
 type RecommendationQuality = {
@@ -1671,7 +1714,8 @@ async function getSynthesizedRecommendations(
        order by si.quality_score desc nulls last, r.created_at, r.id`,
       [runId],
     );
-    return result.rows;
+    const served = await loadRecommendationDecisions(client, runId, result.rows.map((r) => r.id));
+    return result.rows.map((r) => (served ? { ...r, served_decisions: served.get(r.id) ?? [] } : r));
   });
   const support = await supportPromise;
   return rows.map((row) => ({ ...row, support: support.statusOf(row.synthesized_insight_id) }));
@@ -1731,6 +1775,8 @@ type StoryNarrative = {
   recommendations_intro: string;
   caveats: string[];
   generated_at: string;
+  /** CE-3: why the narrative may not be written for the project as it now stands (narrativeFreshness.ts), or null. */
+  freshness_note: string | null;
 };
 
 /**
@@ -1744,36 +1790,20 @@ async function getStoryNarrative(
 ): Promise<StoryNarrative | null> {
   const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<StoryNarrative>(
+    const result = await client.query<Omit<StoryNarrative, "freshness_note">>(
       `select executive_summary, situation, complication, question, governing_thought, pillars,
               recommendations_intro, caveats, generated_at
        from deck_narratives where run_id = $1`,
       [runId],
     );
-    return result.rows[0] ?? null;
+    if (!result.rows[0]) return null;
+    return { ...result.rows[0], freshness_note: await narrativeFreshnessNote(client, runId) };
   });
 }
 
-/**
- * The Research assistant card's chat history for this run (see
- * src/lib/researchAssistant.ts). Oldest first, matching reading order in
- * the chat panel; the card itself caps how many of these it keeps visible,
- * this just hands back everything that's been said so far on this run.
- */
-async function getAssistantMessages(
-  runId: string,
-): Promise<AssistantChatMessage[]> {
-  const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<AssistantChatMessage>(
-      `select id, role, content, created_at::text
-       from assistant_messages
-       where run_id = $1
-       order by created_at asc`,
-      [runId],
-    );
-    return result.rows;
-  });
+/** The Research assistant card's chat history for this run, oldest first (shared with the floating drawer). */
+async function getAssistantMessages(runId: string): Promise<AssistantChatMessage[]> {
+  return loadAssistantConversation(await requireTenantId(), runId);
 }
 
 /**
@@ -1786,39 +1816,20 @@ async function getAssistantMessages(
  */
 async function getObjectiveValidations(
   runId: string,
-): Promise<ObjectiveValidation[]> {
+): Promise<LoadedObjectiveCoverage> {
   const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    // OBJ-REV-012: evidence_digest_degraded (migration 0087) is migration-guarded with a
-    // catalog probe rather than try/catch - a failed SELECT (the column doesn't exist
-    // pre-migration) would abort the rest of this transaction, taking a plain fallback query
-    // down with it, the same failure mode this fix's own package (OBJ-REV-007) had to correct
-    // elsewhere. The catalog check below cannot itself fail the transaction.
-    const colCheck = await client.query<{ exists: boolean }>(
-      `select exists (
-         select 1 from information_schema.columns
-         where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded'
-       ) as "exists"`,
-    );
-    if (colCheck.rows[0]?.exists === true) {
-      const result = await client.query<ObjectiveValidation>(
-        `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, evidence_digest_degraded
-         from objective_validations
-         where run_id = $1
-         order by item_kind, item_order`,
-        [runId],
-      );
-      return result.rows;
-    }
-    const result = await client.query<Omit<ObjectiveValidation, "evidence_digest_degraded">>(
-      `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred
-       from objective_validations
-       where run_id = $1
-       order by item_kind, item_order`,
-      [runId],
-    );
-    return result.rows.map((row) => ({ ...row, evidence_digest_degraded: false }));
-  });
+  // One owner for reading coverage and whether it is still current (objectiveCoverage.ts, CE-1).
+  return loadObjectiveCoverage(TENANT_ID, runId);
+}
+
+/** The project's current decisions as choices (recommendationDecisions.ts); null when they could not be read. */
+async function getDecisionOptions(runId: string): Promise<DecisionOption[] | null> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    return await withTenantRead(TENANT_ID, async (client) => (await loadDecisionItems(client, runId)).map((d) => ({ key: decisionOptionKey(d), text: d.text })));
+  } catch {
+    return null;
+  }
 }
 
 type ApiUsageRow = {
@@ -1826,6 +1837,9 @@ type ApiUsageRow = {
   calls: number;
   input_tokens: number;
   output_tokens: number;
+  /** Prompt caching (promptCache.ts): tokens written to and read from the cache, priced by costOfUsage. */
+  cache_write_tokens: number;
+  cache_read_tokens: number;
 };
 
 /**
@@ -1845,12 +1859,16 @@ async function getApiUsage(runId: string): Promise<ApiUsageRow[]> {
       calls: string;
       input_tokens: string;
       output_tokens: string;
+      cache_write_tokens: string;
+      cache_read_tokens: string;
     }>(
       `select
          detail->>'agent' as agent,
          count(*) as calls,
          coalesce(sum((detail->>'input_tokens')::bigint), 0) as input_tokens,
-         coalesce(sum((detail->>'output_tokens')::bigint), 0) as output_tokens
+         coalesce(sum((detail->>'output_tokens')::bigint), 0) as output_tokens,
+         coalesce(sum((detail->>'cache_creation_input_tokens')::bigint), 0) as cache_write_tokens,
+         coalesce(sum((detail->>'cache_read_input_tokens')::bigint), 0) as cache_read_tokens
        from trace
        where run_id = $1 and event = 'api_usage'
        group by detail->>'agent'
@@ -1862,6 +1880,8 @@ async function getApiUsage(runId: string): Promise<ApiUsageRow[]> {
       calls: Number(row.calls),
       input_tokens: Number(row.input_tokens),
       output_tokens: Number(row.output_tokens),
+      cache_write_tokens: Number(row.cache_write_tokens),
+      cache_read_tokens: Number(row.cache_read_tokens),
     }));
   });
 }
@@ -1876,6 +1896,8 @@ export type FindingHistoryRow = {
   archived_at: string;
   insight_headline: string | null;
   insight_quality_tier: string | null;
+  /** The researcher's note at retirement (migration 0114, Codex DI-F07); null when none or not kept. */
+  researcher_note: string | null;
 };
 
 /**
@@ -1906,7 +1928,9 @@ async function getFindingHistory(runId: string): Promise<FindingHistoryRow[]> {
            fh.archived_reason,
            fh.archived_at,
            ih.headline as insight_headline,
-           ih.quality_tier as insight_quality_tier
+           ih.quality_tier as insight_quality_tier,
+           -- Read through to_jsonb so the page works before migration 0114 adds the column.
+           to_jsonb(fh)->>'researcher_note' as researcher_note
          from finding_history fh
          left join insight_history ih on ih.original_finding_id = fh.original_finding_id
          where fh.run_id = $1
@@ -1928,6 +1952,9 @@ export type ApiUsageBatchRow = {
   calls: number;
   input_tokens: number;
   output_tokens: number;
+  /** Prompt caching (promptCache.ts): tokens written to and read from the cache, priced by costOfUsage. */
+  cache_write_tokens: number;
+  cache_read_tokens: number;
 };
 
 /**
@@ -1953,6 +1980,8 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
         calls: string;
         input_tokens: string;
         output_tokens: string;
+        cache_write_tokens: string;
+        cache_read_tokens: string;
       }>(
         `with batches as (
            select
@@ -1969,7 +1998,9 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
            b.started_at,
            count(t.id) as calls,
            coalesce(sum((t.detail->>'input_tokens')::bigint), 0) as input_tokens,
-           coalesce(sum((t.detail->>'output_tokens')::bigint), 0) as output_tokens
+           coalesce(sum((t.detail->>'output_tokens')::bigint), 0) as output_tokens,
+           coalesce(sum((t.detail->>'cache_creation_input_tokens')::bigint), 0) as cache_write_tokens,
+           coalesce(sum((t.detail->>'cache_read_input_tokens')::bigint), 0) as cache_read_tokens
          from batches b
          left join trace t
            on t.run_id = $1
@@ -1987,6 +2018,8 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
         calls: Number(row.calls),
         input_tokens: Number(row.input_tokens),
         output_tokens: Number(row.output_tokens),
+        cache_write_tokens: Number(row.cache_write_tokens),
+        cache_read_tokens: Number(row.cache_read_tokens),
       }));
     });
   } catch {
@@ -2013,8 +2046,8 @@ async function refreshObjectiveValidation(runId: string) {
     const has = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: boolean }>(
         `select (coalesce(trim(research_objective), '') <> '' or coalesce(trim(decision_statement), '') <> '') as n
-         from runs where id = $1`,
-        [runId],
+         from runs where id = $1 and tenant_id = $2 and (to_jsonb(runs)->>'bin_of') is null`,
+        [runId, TENANT_ID],
       );
       return r.rows[0]?.n === true;
     });
@@ -2023,7 +2056,7 @@ async function refreshObjectiveValidation(runId: string) {
   } catch (error) {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_validation_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'objective_validation_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })],
       );
     }).catch(() => {});
@@ -2058,7 +2091,7 @@ async function refreshInferredObjectives(runId: string) {
   } catch (error) {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_framer_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'objective_framer_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })],
       );
     }).catch(() => {});
@@ -2072,7 +2105,7 @@ async function refreshDecisionCandidates(runId: string) {
   } catch (error) {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'decision_framer_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'decision_framer_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [
           TENANT_ID,
           runId,
@@ -2099,7 +2132,7 @@ async function stampSingleDocumentBatch(runId: string, mode: string) {
   try {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_batch', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_run_batch', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ batch_id: randomUUID(), mode })],
       );
     });
@@ -2126,7 +2159,7 @@ async function recordSingleDocumentError(
   const message = error instanceof Error ? error.message : String(error);
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
-      `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_errors', $3)`,
+      `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_run_errors', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
       [
         TENANT_ID,
         runId,
@@ -2139,7 +2172,8 @@ async function recordSingleDocumentError(
 async function extractFindingsAction(runId: string, documentId: string) {
   "use server";
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await runReportExtraction(runId, documentId, {});
 }
 
@@ -2152,7 +2186,8 @@ async function extractFindingsAction(runId: string, documentId: string) {
 async function confirmLegacyReplacementAction(runId: string, documentId: string, formData: FormData) {
   "use server";
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   const findingIds = formData
     .getAll("findingId")
     .filter((value): value is string => typeof value === "string" && value.length > 0);
@@ -2186,7 +2221,7 @@ async function runReportExtraction(
         runId,
         documentId,
         new Error(
-          `extraction finished (${status}), but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge`,
+          `extraction finished (${status}), but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
         ),
       );
     }
@@ -2198,7 +2233,7 @@ async function runReportExtraction(
         runId,
         documentId,
         new Error(
-          "extraction failed, and its failed status could not be saved either (a database migration is pending) - do not trust this document's status badge",
+          "extraction failed, and its failed status could not be saved either (the document may have been removed, or a database migration is pending) - do not trust this document's status badge",
         ),
       );
     }
@@ -2241,6 +2276,7 @@ async function runReportExtraction(
 async function generateFindingsAction(runId: string, documentId: string) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await stampSingleDocumentBatch(runId, "single_document");
   try {
     await processTableDocument(TENANT_ID, runId, documentId);
@@ -2297,6 +2333,7 @@ async function reapplyCodebookAction(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   "use server";
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   await stampSingleDocumentBatch(runId, "single_document");
   try {
     // ANA-QUAL-001: reapplyCodebook stamps "ready"/"incomplete" itself now - see
@@ -2307,7 +2344,7 @@ async function reapplyCodebookAction(
         runId,
         documentId,
         new Error(
-          "Coding finished, but its completion status could not be saved (a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
+          "Coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
         ),
       );
     }
@@ -2337,6 +2374,7 @@ async function reapplyCodebookAction(
 async function codeThemesAction(runId: string, documentId: string) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await stampSingleDocumentBatch(runId, "single_document");
   const waiting = await findUnconfirmedTranscripts(TENANT_ID, runId);
   if (waiting.some((w) => w.id === documentId)) {
@@ -2344,6 +2382,16 @@ async function codeThemesAction(runId: string, documentId: string) {
       runId,
       documentId,
       new Error(SETUP_NEEDED_MESSAGE),
+    );
+    revalidatePath(`/runs/${runId}`);
+    return;
+  }
+  // One run per transcript (Codex IR-07): a second start while one is running is refused, not queued.
+  if (!claimCodingRun(runId, documentId)) {
+    await recordSingleDocumentError(
+      runId,
+      documentId,
+      new Error("This transcript is already being coded. Wait for that run to finish; its progress shows on the transcript's card."),
     );
     revalidatePath(`/runs/${runId}`);
     return;
@@ -2363,13 +2411,15 @@ async function codeThemesAction(runId: string, documentId: string) {
         runId,
         documentId,
         new Error(
-          "Coding finished, but its completion status could not be saved (a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
+          "Coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
         ),
       );
     }
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
     await setDocumentProcessingStatus(documentId, "failed");
+  } finally {
+    releaseCodingRun(documentId);
   }
   await refreshAfterCoding(runId);
 }
@@ -2429,6 +2479,7 @@ async function importCodingAction(
 ) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await stampSingleDocumentBatch(runId, "single_document");
   const waiting = await findUnconfirmedTranscripts(TENANT_ID, runId);
   if (waiting.some((w) => w.id === documentId)) {
@@ -2475,7 +2526,7 @@ async function importCodingAction(
     // advisory note from this import already does - one combined message, not two competing ones.
     if (!result.statusPersisted) {
       notes.push(
-        "coding finished, but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge until that migration is applied and coding is re-run",
+        "coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge until that migration is applied and coding is re-run",
       );
     }
     if (result.quotesMatched < result.quotesTotal) {
@@ -2544,6 +2595,7 @@ async function importCodingAction(
 async function reverifyFindingsAction(runId: string) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await reverifyFindings(TENANT_ID, runId);
   // reverifyFindings just wiped every verdict on this run, including the
   // chain-trace verdicts stated_insight claims had; without this they would
@@ -2570,6 +2622,7 @@ async function reverifyFindingsAction(runId: string) {
 async function synthesizeInsightsAction(runId: string) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await refreshSynthesizedInsights(TENANT_ID, runId);
   await refreshSynthesizedInsightQuality(TENANT_ID, runId);
   // Every other workflow trigger in this file already chains
@@ -2604,13 +2657,14 @@ async function synthesizeInsightsAction(runId: string) {
 async function generateStoryReportAction(runId: string) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   try {
     await generateStoryNarrative(TENANT_ID, runId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'story_narrative_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'story_narrative_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message })],
       );
     });
@@ -2621,7 +2675,7 @@ async function generateStoryReportAction(runId: string) {
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_validation_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'objective_validation_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message })],
       );
     });
@@ -2635,63 +2689,11 @@ async function generateStoryReportAction(runId: string) {
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'methodology_extraction_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'methodology_extraction_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message })],
       );
     });
   }
-  revalidatePath(`/runs/${runId}`);
-}
-
-// Links (or re-links) this run to a program as one of its waves, or
-// creates a brand new program inline rather than making the researcher
-// detour to /programs first. Unlinking just clears both columns; nothing
-// about the run's own data changes either way, since tracking is an
-// attribute a project can pick up or drop at any time, never a separate
-// pipeline (see supabase/migrations/0026_programs.sql).
-async function updateProgramLinkAction(runId: string, formData: FormData) {
-  "use server";
-  const TENANT_ID = await requireTenantId();
-  const action = String(formData.get("action") ?? "link");
-
-  if (action === "unlink") {
-    await withTenant(TENANT_ID, async (client) => {
-      await client.query(
-        `update runs set program_id = null, wave_label = null where id = $1`,
-        [runId],
-      );
-    });
-    revalidatePath(`/runs/${runId}`);
-    return;
-  }
-
-  const waveLabelRaw = String(formData.get("waveLabel") ?? "").trim();
-  const waveLabel = waveLabelRaw.length > 0 ? waveLabelRaw : null;
-  const existingProgramId = String(formData.get("programId") ?? "").trim();
-  const newProgramName = String(formData.get("newProgramName") ?? "").trim();
-
-  let programId = existingProgramId.length > 0 ? existingProgramId : null;
-
-  if (!programId && newProgramName.length > 0) {
-    programId = await withTenant(TENANT_ID, async (client) => {
-      const result = await client.query<{ id: string }>(
-        `insert into programs (tenant_id, name) values ($1, $2) returning id`,
-        [TENANT_ID, newProgramName],
-      );
-      return result.rows[0].id;
-    });
-  }
-
-  if (!programId) {
-    return;
-  }
-
-  await withTenant(TENANT_ID, async (client) => {
-    await client.query(
-      `update runs set program_id = $1, wave_label = $2 where id = $3`,
-      [programId, waveLabel, runId],
-    );
-  });
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -2763,6 +2765,7 @@ async function processRunAction(
 ) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   // A previous click's later stages may still be running in the background.
   // Starting another pass on top of them would reset the progress card and
   // race the same writes, so do nothing; the status card shows it is running.
@@ -2770,7 +2773,7 @@ async function processRunAction(
   const allDocuments = await withTenant(TENANT_ID, async (client) => {
     const result = await client.query<{
       id: string;
-      kind: "report" | "table" | "evidence" | "transcript";
+      kind: "report" | "table" | "evidence" | "transcript" | "technical" | "indicator";
       has_findings: boolean;
     }>(
       `select d.id, d.kind,
@@ -2810,7 +2813,7 @@ async function processRunAction(
   try {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_batch', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_run_batch', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ batch_id: randomUUID(), mode })],
       );
     });
@@ -2847,6 +2850,9 @@ async function processRunAction(
     DOCUMENT_PROCESSING_CONCURRENCY,
     async (doc) => {
       try {
+        // Indicator data is read when it is added and with Read the file again (indicatorData.ts), and
+        // is not mined for findings: processing leaves it and its own status as they are.
+        if (doc.kind === "indicator") return;
         if (doc.kind === "report") {
           const result = await extractFindingsFromDocument(TENANT_ID, runId, doc.id, {
             onlyReplacePending,
@@ -2865,7 +2871,7 @@ async function processRunAction(
           const persisted = await setDocumentProcessingStatus(doc.id, status);
           if (!persisted) {
             errors.push(
-              `${doc.id}: extraction finished (${status}), but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge`,
+              `${doc.id}: extraction finished (${status}), but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
             );
           }
         } else if (doc.kind === "table") {
@@ -2883,12 +2889,14 @@ async function processRunAction(
             // comment. Pushed into the same batch `errors` array as a real processing
             // failure would be, so it reaches the same process_run_errors banner below.
             errors.push(
-              `${doc.id}: coding finished, but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge`,
+              `${doc.id}: coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
             );
           }
-        } else if (doc.kind === "evidence") {
-          // Context documents are not mined for findings, but their text is read and kept
-          // so they preview and the brief and methodology steps can use them.
+        } else if (doc.kind === "evidence" || doc.kind === "technical") {
+          // Context and technical documents are not mined for findings, but their text is read and
+          // kept so they preview, the brief and methodology steps can use them, and the Research
+          // assistant can quote a technical document. One whose text could not be read is read
+          // again here, and fails visibly if it still cannot be, rather than being stamped ready.
           const has = await withTenant(TENANT_ID, async (client) => {
             const r = await client.query<{ n: number }>(
               "select coalesce(length(extracted_text), 0)::int as n from documents where id = $1",
@@ -2920,7 +2928,7 @@ async function processRunAction(
         const persisted = await setDocumentProcessingStatus(doc.id, "failed");
         if (!persisted) {
           errors.push(
-            `${doc.id}: failed, and its failed status could not be saved either (a database migration is pending) - do not trust this document's status badge`,
+            `${doc.id}: failed, and its failed status could not be saved either (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
           );
         }
       } finally {
@@ -2938,7 +2946,7 @@ async function processRunAction(
     try {
       await withTenant(TENANT_ID, async (client) => {
         await client.query(
-          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_errors', $3)`,
+          `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_run_errors', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
           [TENANT_ID, runId, JSON.stringify({ errors })],
         );
       });
@@ -2965,7 +2973,7 @@ async function processRunAction(
         try {
           await withTenant(TENANT_ID, async (client) => {
             await client.query(
-              `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_stage_error', $3)`,
+              `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_stage_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
               [
                 TENANT_ID,
                 runId,
@@ -2994,7 +3002,11 @@ async function processRunAction(
             await refreshVerdicts(TENANT_ID, runId);
             await refreshStatedInsightValidations(TENANT_ID, runId);
           });
-          await stage("insights", () => refreshInsights(TENANT_ID, runId));
+          // EC10K-F01: an incomplete or failed generation is the stage's error, never "done".
+          await stage("insights", async () => {
+            const problem = await refreshInsights(TENANT_ID, runId);
+            if (problem) throw new Error(problem);
+          });
         })(),
         refreshObjectiveCandidates(runId).catch(() => undefined),
       ]);
@@ -3064,13 +3076,21 @@ function startPageTiming() {
   return timing;
 }
 
+/** "1 transcript", "3 transcripts": a count with its noun, singular for one. */
+function countOf(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 export default async function RunPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const TENANT_ID = await requireTenantId();
   const { id } = await params;
+  const requestedSection = (await searchParams)?.section;
   // Every loader below only needs the run id, so they all run at once. They
   // used to run one after another, which meant the page waited on the sum of
   // some thirty database round trips instead of the slowest one.
@@ -3087,10 +3107,11 @@ export default async function RunPage({
     transcriptSetups,
     dataSetups,
     documentExcerpts,
+    documentReviewRoles,
     setupSuggestions,
     latestProcessErrors,
     pendingLegacyConfirmations,
-    documentTablePreviews,
+    documentTablePreviewsResult,
     codebooksByDocument,
     objectiveCandidates,
     decisionCandidates,
@@ -3105,7 +3126,8 @@ export default async function RunPage({
     apiUsage,
     findingHistory,
     storyNarrative,
-    objectiveValidations,
+    objectiveCoverage,
+    briefPassages,
     assistantMessages,
     programs,
     apiUsageBatches,
@@ -3114,12 +3136,16 @@ export default async function RunPage({
     labelDiagnosticsByDoc,
     transcriptQuality,
     instrumentSummaries,
+    contextRoles,
     outputSets,
     reportReadStats,
     waveFilesResult,
     decisionRefreshIsPending,
     earlierDecisionCounts,
     deletionImpact,
+    transcriptWaveSaves,
+    projectList,
+    stageFactsResult,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
@@ -3128,6 +3154,7 @@ export default async function RunPage({
     timing("transcriptSetups", getTranscriptSetups(TENANT_ID, id)),
     timing("dataSetups", loadDataSetups(TENANT_ID, id)),
     timing("documentExcerpts", getDocumentExcerpts(id)),
+    timing("documentReviewRoles", getDocumentReviewRoles(id)),
     timing("setupSuggestions", getSetupSuggestions(TENANT_ID, id)),
     timing("latestProcessErrors", getLatestProcessErrors(id)),
     timing("pendingLegacyConfirmations", getPendingLegacyConfirmations(id)),
@@ -3147,6 +3174,7 @@ export default async function RunPage({
     timing("findingHistory", getFindingHistory(id)),
     timing("storyNarrative", getStoryNarrative(id)),
     timing("objectiveValidations", getObjectiveValidations(id)),
+    timing("briefPassages", requireTenantId().then((t) => withTenantRead(t, (client) => loadBriefPassages(client, id)))),
     timing("assistantMessages", getAssistantMessages(id)),
     timing("programs", getPrograms()),
     timing("apiUsageBatches", getApiUsageBatches(id)),
@@ -3155,6 +3183,7 @@ export default async function RunPage({
     timing("labelDiagnosticsByDoc", getLabelDiagnostics(id)),
     timing("transcriptQuality", getTranscriptImportQuality(TENANT_ID, id)),
     timing("instrumentSummaries", getInstrumentSummaries(TENANT_ID, id)),
+    timing("contextRoles", getDocumentRoles(TENANT_ID, id)),
     timing("outputSets", getOutputSets(TENANT_ID, id)),
     timing("reportReadStats", getReportReadStats(id)),
     timing("waveFiles", listWaveFilesAction(id)),
@@ -3162,11 +3191,33 @@ export default async function RunPage({
     timing("decisionContextMismatch", decisionContextMismatch(TENANT_ID, id)),
     // GT-010: what deleting each document takes with it, for its confirmation.
     timing("deletionImpact", loadDocumentDeletionImpact(TENANT_ID, id)),
+    timing("transcriptWaveAvailable", transcriptWaveAvailable(TENANT_ID)),
+    timing("projectList", listProjects(TENANT_ID)),
+    // The section dashboards' stored-record facts (projectStageFacts.ts), the same the main
+    // dashboard reads; a failed read is shown on the dashboards, never taken as an empty project.
+    timing(
+      "stageFacts",
+      loadProjectStageFacts(TENANT_ID, id).then(
+        (facts) => ({ ok: true as const, facts }),
+        (error: unknown) => ({ ok: false as const, error: error instanceof Error ? error.message : String(error) }),
+      ),
+    ),
   ]);
+  // B37-F01: each conclusion carries whether the insights it cites still support it.
+  const objectiveValidations = objectiveCoverage.rows.map((v) => ({
+    ...v,
+    support_note: coverageSupportNote(v.support),
+    support_label: v.support && v.support.status !== "current" ? SUPPORT_STATUS_LABEL[v.support.status] : null,
+  }));
+  const objectiveCoverageNote = coverageNote(objectiveCoverage);
+  // CE-2: the project's current decisions, offered when the researcher chooses what a recommendation serves.
+  const decisionOptions = await getDecisionOptions(id);
   if (!run) {
     notFound();
   }
 
+  const documentTablePreviews = documentTablePreviewsResult.rows;
+  const documentTablesReadFailed = documentTablePreviewsResult.failed;
   const waveFiles: WaveFile[] = waveFilesResult.ok ? waveFilesResult.files : [];
 
   // Only what depends on the first batch, again all at once.
@@ -3178,6 +3229,8 @@ export default async function RunPage({
     storyReportError,
     objectiveValidationError,
     programWaves,
+    methodologyFailure,
+    insightCoverage,
   ] = await Promise.all([
     timing(
       "findingCodingCounts",
@@ -3190,16 +3243,22 @@ export default async function RunPage({
           "verify_findings_error",
         ])
       : Promise.resolve(null),
-    !storyNarrative
-      ? getLatestTraceMessage(id, ["story_narrative_error"])
-      : Promise.resolve(null),
+    // RR-F06: a failed generation newer than the saved narrative, shown even when one exists.
+    latestNarrativeFailure(TENANT_ID, id),
     objectiveValidations.length === 0
       ? getLatestTraceMessage(id, ["objective_validation_error"])
       : Promise.resolve(null),
     run.program_id
       ? getProgramWaves(run.program_id, id)
       : Promise.resolve([]),
+    latestMethodologyFailure(TENANT_ID, id),
+    // EC10K-F01: verified findings still without an insight, counted now.
+    loadInsightCoverageGap(TENANT_ID, id),
   ]);
+  const insightGapReason =
+    insightCoverage.uncovered !== null && insightCoverage.uncovered > 0
+      ? await getLatestTraceMessage(id, ["insight_generator_incomplete", "insight_generator_error"])
+      : null;
   const failedVerdictSamples =
     verdictSummary &&
     verdictSummary.verdictedCount > 0 &&
@@ -3238,6 +3297,10 @@ export default async function RunPage({
   // Skip logic from a confirmed questionnaire, per raw data file. Best
   // effort: without a questionnaire the detected routing is used.
   const statedRoutingByDoc = new Map<string, StatedRouting[]>();
+  // GT100-F01: a file whose confirmed questionnaire could not be read. Its quality check still runs
+  // on the routing detected in the data, but says so, rather than reading as if no questionnaire
+  // had been confirmed.
+  const statedRoutingUnread = new Set<string>();
   await Promise.all(
     documents
       .filter((d) => d.kind === "table" && d.ingestion_type === "raw")
@@ -3248,16 +3311,36 @@ export default async function RunPage({
           if (!items.some((i) => i.routing)) return;
           const dict = await loadVariableDictionary(TENANT_ID, id, d.id);
           statedRoutingByDoc.set(d.id, buildStatedRouting(items, dict.variables));
-        } catch {
-          // fall back to detected routing
+        } catch (e) {
+          // Fall back to detected routing; a failed questionnaire read is said on the check below.
+          if (e instanceof InstrumentMeaningUnavailableError) statedRoutingUnread.add(d.id);
         }
       }),
   );
   const importQualityBase = documentTablePreviews.filter((t) => t.headers.length > 0 && t.table_index < 100);
-  const rawQualities = await Promise.all(
-    importQualityBase.map((t) =>
-      t.ingestion_type === "raw" ? getRawQuality(t, statedRoutingByDoc.get(t.document_id) ?? []) : Promise.resolve(null),
-    ),
+  const rawQualities = (
+    await Promise.all(
+      importQualityBase.map((t) =>
+        t.ingestion_type === "raw" ? getRawQuality(t, statedRoutingByDoc.get(t.document_id) ?? []) : Promise.resolve(null),
+      ),
+    )
+  ).map((q, i): TableQuality | null =>
+    // A new object: getRawQuality's results are cached and shared between requests.
+    q && statedRoutingUnread.has(importQualityBase[i].document_id)
+      ? {
+          ...q,
+          status: q.status === "fail" ? "fail" : "warn",
+          checks: [
+            ...q.checks,
+            {
+              id: "stated_routing",
+              label: "Questionnaire routing",
+              status: "warn",
+              detail: "The confirmed questionnaire could not be read, so empty answers are judged by the routing detected in the data. Reload the page to try again.",
+            },
+          ],
+        }
+      : q,
   );
 
   // A file too wide to store whole only has the capped quality above, which
@@ -3382,6 +3465,14 @@ export default async function RunPage({
         trimmed: trimmedFiles.get(t.document_id) ?? null,
         previewError: importPreviewIdentities.get(t.document_id)?.error,
         unsupportedIdentifierColumns: unsupportedIdentifierColumnsByDoc.get(t.document_id) ?? [],
+        readNotes: t.read_provenance
+          ? {
+              encoding: t.read_provenance.encoding ?? null,
+              dateColumns: Array.isArray(t.read_provenance.dateColumns) ? t.read_provenance.dateColumns : [],
+              naCodeColumns: Array.isArray(t.read_provenance.naCodeColumns) ? t.read_provenance.naCodeColumns : [],
+              titleRows: Array.isArray(t.read_provenance.titleRows) ? t.read_provenance.titleRows : [],
+            }
+          : undefined,
         labelConflicts: labelDiagnosticsByDoc.get(t.document_id)?.conflicts ?? [],
         unmatchedLabelVariables: labelDiagnosticsByDoc.get(t.document_id)?.unmatched ?? [],
         fullyCovered: !!full,
@@ -3465,54 +3556,95 @@ export default async function RunPage({
   const synthesizeInsightsWithId = synthesizeInsightsAction.bind(null, id);
   const updateProgramLinkWithId = updateProgramLinkAction.bind(null, id);
 
-  // Each section below opens itself automatically the one time it first
-  // becomes relevant, then is left exactly as the researcher leaves it from
-  // then on, no matter what else changes elsewhere on the page. That's done
-  // with a `reached`/`done` pair per section rather than one shared
-  // "current stage": `reached` flips true once evidence exists for this
-  // section to act on, `done` flips true once its own step is finished, and
-  // the section's key is built from its own two flags, not from a single
-  // global stage. Accepting a decision, say, only changes the flags for
-  // Decision and whatever becomes newly reached by it (Recommendations,
-  // and Insights in validate mode); it can no longer force every other
-  // section on the page to remount and re-collapse along with it, which is
-  // what made the page feel like it "rolled up" on every accept.
-  //
-  // The objective is always settled before anything else downstream, since
-  // both the decision framer and the insight generator read whichever
-  // objective is accepted as their own strongest signal of what this
-  // project is trying to learn. Past that, the two entry points genuinely
-  // diverge: "generate" runs the ordinary pyramid (insight leads to
-  // decision), so Insights is reached as soon as the objective is set, and
-  // Decision only once there are insights to reason from. "validate" keeps
-  // a decision-first order, so Decision is reached as soon as the
-  // objective is set, and Insights only once a decision is confirmed.
-  // Findings is deliberately never gated this way: it's the raw evidence,
-  // always available to browse, never the thing you're being steered
-  // toward, and neither is Insights once reached, since insights stay
-  // worth glancing back at the same way findings do.
-  const generateMode = run.entry_point === "generate";
-
   // Questionnaires and guides sit inside the card of the file they belong to,
   // above its data quality. One with nowhere to go yet keeps its own card.
   const rawDataDocs = documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw");
   const transcriptDocs = documents.filter((x) => x.kind === "transcript");
-  const instrumentHome = new Map<string, string>(); // instrument id to host document id, "*" for every transcript
+  // The data files a questionnaire or codebook is linked to: those it has suggested or confirmed links
+  // to (several waves can share one questionnaire), plus the file it was last matched to. Never a default:
+  // one not matched yet keeps its own card, where the data file is chosen (chooseMatchTarget), rather
+  // than being shown as "Linked to" whichever data file happens to be first.
+  const instrumentHome = new Map<string, string[] | "*">(); // instrument id to host data file ids, "*" for every transcript
   for (const x of documents) {
     if (x.kind !== "instrument") continue;
     const sm = instrumentSummaries.get(x.id);
     if (!sm) continue;
     if (sm.type === "interview_guide" || sm.type === "focus_group_guide") {
       if (transcriptDocs.length > 0) instrumentHome.set(x.id, "*");
-    } else if (rawDataDocs.length > 0) {
-      instrumentHome.set(x.id, rawDataDocs.find((r) => r.id === sm.forDocumentId)?.id ?? rawDataDocs[0].id);
+    } else {
+      const ids = [...sm.linkedDataDocumentIds, ...(sm.forDocumentId ? [sm.forDocumentId] : [])];
+      // In the order the summary gives (oldest upload first), so waves read in order.
+      const hosts = [...new Set(ids)].filter((hid) => rawDataDocs.some((r) => r.id === hid));
+      if (hosts.length > 0) instrumentHome.set(x.id, hosts);
     }
   }
+  const hostedIn = (instrumentId: string, d: (typeof documents)[number]) => {
+    const h = instrumentHome.get(instrumentId);
+    return h !== undefined && (h === "*" ? d.kind === "transcript" : h.includes(d.id));
+  };
+  const hostedBy = (d: (typeof documents)[number]) => documents.filter((x) => hostedIn(x.id, d));
+  // What one file is for and its next step, for the right-hand pane. A brief or proposal ("evidence")
+  // is context, not mined for findings: its own quality is checked in Research quality review.
+  const findingsByDocument = new Map<string, number>();
+  for (const f of findings) if (f.source_document_id) findingsByDocument.set(f.source_document_id, (findingsByDocument.get(f.source_document_id) ?? 0) + 1);
+  // What one source is for, in a line under its name, and its next step beside View original.
+  const purposeOf = (d: (typeof documents)[number]): { text: string; nextStep: React.ReactNode } => {
+    const n = findingsByDocument.get(d.id) ?? 0;
+    switch (d.kind) {
+      case "evidence":
+        return {
+          text: "Context for the project, such as a brief or proposal. It is not mined for findings; it informs objectives and decisions. Check how well it is written in Research quality.",
+          nextStep: <ReviewResearchQualityLink key="next-step" documentId={d.id} />,
+        };
+      case "technical":
+        return {
+          text: "Technical documentation (methodology, fieldwork, sampling, weighting or analysis). The Research assistant reads and quotes it when you ask about how the study was done. It is not mined for findings, and what it describes is not checked against the data.",
+          nextStep: null,
+        };
+      case "report":
+        return { text: `Report, read for the findings it states: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`, nextStep: <GoToSection key="next-step" id="findings">Open Findings</GoToSection> };
+      case "instrument": {
+        const type = instrumentSummaries.get(d.id)?.type;
+        return {
+          text:
+            type === "interview_guide" || type === "focus_group_guide"
+              ? `${type === "interview_guide" ? "Interview guide" : "Focus group guide"}. Read once it is added, then checked against your transcripts: which of its questions each session raised.`
+              : type === "codebook"
+              ? "Codebook. Read once it is added, then matched to your raw data file's variables by name, so tables show its labels and answer codes once you confirm the links."
+              : "Questionnaire. Read once it is added, then matched to your raw data file's variables, so answers carry its wording and codes once you confirm the links.",
+          nextStep: null,
+        };
+      }
+      case "table":
+        return {
+          text: d.ingestion_type === "raw" ? "Case-level data. Build tables in Cross tabs and run analyses in Analytics once you accept it." : `Tables, already aggregated: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`,
+          // The button says where it goes: tables are built in Cross tabs; case-level data can also be
+          // analysed in Analytics (Grant, 2026-10-22).
+          nextStep:
+            d.ingestion_type === "raw" ? (
+              <span key="next-step" className="flex flex-wrap gap-2">
+                <GoToSection id="crosstabs">Open Crosstabs</GoToSection>
+                <GoToSection id="analytics" secondary>
+                  Open Analytics
+                </GoToSection>
+              </span>
+            ) : (
+              <GoToSection key="next-step" id="crosstabs">Open Crosstabs</GoToSection>
+            ),
+        };
+      case "transcript":
+        return { text: "Transcript. Code it under Coding once its setup is accepted.", nextStep: <GoToSection key="next-step" id="coding">Open Coding</GoToSection> };
+      case "indicator":
+        return {
+          text: "Indicator data: published statistics by area and period, read as series over time rather than as respondents. Chart an indicator for chosen areas on its Indicator data tab. It is not mined for findings.",
+          nextStep: null,
+        };
+      default:
+        return { text: "", nextStep: null };
+    }
+  };
   const attachedFor = (d: (typeof documents)[number]): React.ReactNode => {
-    const hosted = documents.filter((x) => {
-      const h = instrumentHome.get(x.id);
-      return h !== undefined && (h === d.id || (h === "*" && d.kind === "transcript"));
-    });
+    const hosted = hostedBy(d);
     if (hosted.length === 0) return null;
     return (
         <AttachedInstruments
@@ -3522,32 +3654,24 @@ export default async function RunPage({
             documentId: x.id,
             filename: x.source_filename,
             summary: instrumentSummaries.get(x.id)!,
-            deleteAction: deleteDocument.bind(null, id, x.id),
-            deleteConfirm: deleteDocumentConfirmation(impactFor(deletionImpact, x.id)),
           }))}
           targetId={d.kind === "table" ? d.id : undefined}
           dataDocs={d.kind === "table" ? rawDataDocs.map((r) => ({ id: r.id, name: r.source_filename })) : undefined}
           autoStart={d.kind === "table" || transcriptDocs[0]?.id === d.id}
-          onlyTranscript={d.kind === "transcript" ? d.id : undefined}
         />
     );
   };
-  const uploadDone = documents.length > 0;
-  const objectiveDone = Boolean(run.research_objective);
-  const decisionReached = generateMode ? insights.length > 0 : objectiveDone;
-  const decisionDone = Boolean(run.decision_statement);
-  const recommendationsReached = Boolean(run.decision_statement);
 
   const startingPointLabel =
     run.entry_point === "generate"
       ? "Generate from data"
       : "Validate existing insights";
 
+  // No key that follows progress: a key that changed when the first decision was accepted remounted
+  // the section and closed every other decision's open editor, losing its draft (Codex R2P-F02). The
+  // cards are keyed by candidate id inside, so each editor keeps its draft through other cards' changes.
   const decisionSection = (
-    <div
-      key={`decision-${decisionReached}-${decisionDone}`}
-      className="flex flex-col gap-4"
-    >
+    <div className="flex flex-col gap-4">
       <DecisionBriefReview
         runId={id}
         candidates={decisionCandidates}
@@ -3603,15 +3727,15 @@ export default async function RunPage({
       verdictSummary={verdictSummary}
       insightError={insightError}
       failedVerdictSamples={failedVerdictSamples}
+      coverageGap={{ ...insightCoverage, reason: insightGapReason }}
     />
   );
 
-  const synthesizedInsightsSection = (
-    <div
-      key={`synthesized-insights-${synthesizedInsights.length}`}
-      className="flex flex-col gap-4"
-    >
-      <div className="flex flex-wrap items-center gap-3">
+  // The exports and Run synthesis, shown above the Insights review (InsightsWorkspace).
+  // Elements built here and handed to a client workspace sit beside its own children, so each carries a
+  // key (React warns about unkeyed server elements in that position in development).
+  const synthesizedToolbar = (
+      <div key="insights-toolbar" className="flex flex-wrap items-center gap-3">
         <div className="ml-auto">
         <div className="flex flex-wrap items-center gap-2">
           {synthesizedInsights.length > 0 && (
@@ -3668,9 +3792,8 @@ export default async function RunPage({
         </div>
         </div>
       </div>
-      <SynthesizedInsightsReview runId={id} insights={synthesizedInsights} />
-    </div>
   );
+
 
   // GT-007: exports of this (main) list, separate from the per-pre-insight list's exports on the
   // Working data tab. Shown whenever the list has anything, including only rejected items. The
@@ -3723,13 +3846,11 @@ export default async function RunPage({
       </div>
     ) : null;
 
+  // Not keyed on whether a decision is set, for the reason given at decisionSection (R2P-F02).
   const recommendationsSection = (
-    <div
-      key={`recommendations-${recommendationsReached}`}
-      className="flex flex-col gap-4"
-    >
-      {mainRecommendationExportControls && <div className="flex justify-end">{mainRecommendationExportControls}</div>}
-      <SynthesizedRecommendationsReview
+    <div className="flex flex-col gap-4">
+      <RecommendationsWorkspace
+        toolbar={mainRecommendationExportControls ? <div key="recommendations-toolbar" className="flex justify-end">{mainRecommendationExportControls}</div> : null}
         runId={id}
         recommendations={synthesizedRecommendations}
         insightOptions={synthesizedInsights
@@ -3738,6 +3859,7 @@ export default async function RunPage({
         parkedInsights={parkedInsights}
         hasDecision={Boolean(run.decision_statement)}
         hasInsights={acceptedSynthesizedInsightCount > 0}
+        decisionOptions={decisionOptions}
       />
     </div>
   );
@@ -3813,9 +3935,23 @@ export default async function RunPage({
   );
 
   const storyReportSection = (
-    <div
-      key={`story-report-${storyNarrative ? storyNarrative.generated_at : "none"}`}
-    >
+    <div>
+      {/* The readiness overview first, this screen as its second tab (Grant, 2026-10-21). */}
+      <InsightsReportWorkspace
+        runId={id}
+        insights={synthesizedInsights.map((insight) => ({ id: insight.id, review_status: insight.review_status, support: insight.support }))}
+        recommendations={synthesizedRecommendations.map((rec) => ({ id: rec.id, status: rec.status, synthesized_insight_id: rec.synthesized_insight_id }))}
+        narrative={
+          storyNarrative
+            ? { generated_at: storyNarrative.generated_at, pillars: storyNarrative.pillars.map((pillar) => ({ insight_ids: pillar.insight_ids, insight_overflow_count: pillar.insight_overflow_count })) }
+            : null
+        }
+        // A failed load is not "nothing to review": the overview then claims nothing about figures.
+        narrativeFigures={figureChecks.error ? null : (figureChecks.narrative?.status ?? null)}
+        // Keyed on the narrative so a new one resets the narrative screen's state; the key sits
+        // here, not on the workspace, so regenerating keeps the researcher on this tab.
+        narrativeView={
+      <div key={`story-report-${storyNarrative ? storyNarrative.generated_at : "none"}`}>
       <ThreePane
         left={
           <Pane side="left" title="Generate and export">
@@ -3835,8 +3971,19 @@ export default async function RunPage({
         </p>
 
         {storyReportError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-            {storyReportError}
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" data-testid="story-report-error">
+            {storyNarrative
+              ? `The last generation did not finish: ${storyReportError.replace(/\.?\s*Try again\.?$/, "").replace(/\.$/, "")}. The report below is the previous one, unchanged; use Regenerate report content to try again.`
+              : storyReportError}
+          </div>
+        )}
+
+        {/* RR-F02: the methodology step failed on the last generation; the saved text was kept. */}
+        {methodologyFailure && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="methodology-failure">
+            {`${methodologyFailure.message.replace(/\.?\s*Try again\.?$/, "").replace(/\.$/, "")}. ${
+              methodologyFailure.savedEarlier ? "The report keeps the methodology read before." : "The Word report says the methodology could not be read, not that none was stated."
+            } Use Regenerate report content to try again.`}
           </div>
         )}
 
@@ -3893,6 +4040,11 @@ export default async function RunPage({
             {/* FND-001 / REP-OUT-001: counts each support status separately; unknown is never
                 reported as changed or removed. Placed above the executive summary and governing
                 thought, which it qualifies, so the saved framing never reads unqualified. */}
+            {storyNarrative.freshness_note && (
+              <p role="status" data-testid="narrative-freshness" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {storyNarrative.freshness_note}
+              </p>
+            )}
             <NarrativeSupportBanner
               insightIds={storyNarrative.pillars.flatMap((pillar) => pillar.insight_ids)}
               supportById={Object.fromEntries(
@@ -3972,6 +4124,11 @@ export default async function RunPage({
               Objectives &amp; decisions, checked against the evidence (
               {objectiveValidations.length})
             </p>
+            {objectiveCoverageNote && (
+              <p role="status" data-testid="report-coverage-stale" className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                {objectiveCoverageNote}
+              </p>
+            )}
             <ul className="space-y-2">
               {objectiveValidations.map((item, index) => {
                 const badge =
@@ -4034,6 +4191,9 @@ export default async function RunPage({
           </Pane>
         }
       />
+      </div>
+        }
+      />
     </div>
   );
 
@@ -4045,21 +4205,10 @@ export default async function RunPage({
   // its decision framer reads raw findings rather than insights, Decision
   // too) can render ahead of Findings, since generateObjectiveCandidates
   // has no evidence to infer an objective from until findings exist.
-  const findingsSection = (
-    <CollapsibleSection
-      key={`findings-${findings.length > 0}`}
-      title="Findings"
-      bare
-      icon={<ChartIcon className="h-4 w-4 text-primary" />}
-      // Findings insert as 'accepted' by default now, so there's no
-      // 'pending' state left to key this open/closed on; it opens whenever
-      // there's anything to look at, since review is now by exception
-      // (rejecting the ones that are wrong) rather than a gate everything
-      // waits behind.
-      defaultOpen={findings.length > 0}
-      headerRight={
+  // Re-verify and the exports, shown above the Findings review (FindingsWorkspace).
+  const findingsToolbar =
         findings.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
+          <div key="findings-toolbar" className="flex flex-wrap items-center gap-2">
             <form action={reverifyFindingsWithId}>
               <SubmitButton
                 pendingLabel="Re-verifying..."
@@ -4106,16 +4255,8 @@ export default async function RunPage({
               </a>
             </div>
           </div>
-        ) : undefined
-      }
-    >
-      {findings.length === 0 ? (
-        <p className="text-sm text-muted">None extracted yet.</p>
-      ) : (
-        <FindingsTable runId={id} findings={findings} wordingEdits={wordingEdits} />
-      )}
-    </CollapsibleSection>
-  );
+        ) : undefined;
+
 
   // Objective setting sits adjacent to Findings, but which side depends on
   // whether the objective was already known before any evidence existed
@@ -4129,19 +4270,42 @@ export default async function RunPage({
   // below, computed once in RunPage and used to order both this section and
   // Decision (in validate mode only; in generate mode Decision has its own
   // hard dependency on Insights, unrelated to this).
+  // Which brief or proposal last filled Set objectives, and which objectives came from one.
+  const [lastBriefFill, failedBriefFill, objectiveSources] = await Promise.all([loadLastBriefFill(TENANT_ID, id), loadFailedBriefFill(TENANT_ID, id), loadObjectiveSources(TENANT_ID, id)]);
+  const objectiveSourceLabels = (lines: string[]) =>
+    lines.map((line) => {
+      if (!(objectiveSources instanceof Map)) return null;
+      const rationale = objectiveSources.get(objectiveIdentityKey(line));
+      return rationale ? sourceLabelFromRationale(rationale) : null;
+    });
   const objectiveQuality = await getObjectiveQuality(id);
-  const qualityByText = new Map(
-    objectiveQuality.rows.map((r) => [r.item_text.trim(), r] as const),
-  );
+  // Scores are matched by objective identity (markers, case, punctuation ignored), and an unscored
+  // accepted objective carries the reason it is unscored (objectiveQualityStatus.ts).
+  const objectiveQualityStatus = await loadObjectiveQualityStatus(TENANT_ID, id);
+  const qualityFor = objectiveQualityLookup(objectiveQuality.rows);
+  // A suggestion from re-reading a document is shown beside the existing objective it most likely
+  // restates (Grant, 2026-10-22; objectiveSimilarity.ts), so the researcher keeps one or the other.
+  const similarToOf = (c: (typeof objectiveCandidates)[number]): string | null =>
+    c.status === "pending" && isRereadSuggestion(c.rationale)
+      ? likelyRestates(
+          c.candidate_text,
+          objectiveCandidates.filter((o) => o.id !== c.id && o.status !== "rejected" && !isRereadSuggestion(o.rationale)).map((o) => ({ text: o.candidate_text })),
+        )?.text ?? null
+      : null;
   const objectiveRows: ObjectiveRow[] = objectiveCandidates.map((c): ObjectiveRow => {
-        const q = qualityByText.get(c.candidate_text.trim());
+        const q = qualityFor(c.candidate_text);
+        const accepted = c.status === "accepted";
         return {
+          unscoredReason: objectiveUnscoredReason(c.candidate_text, accepted, Boolean(q), objectiveQualityStatus),
           id: c.id,
           text: c.candidate_text,
           rationale: c.rationale,
           source: c.source,
           status: c.status,
           edited: c.edited,
+          sourceRemovedAt: c.source_removed_at,
+          passages: (briefPassages?.objectives.get(c.id) ?? []).map((p) => ({ quote: p.quote, source: passageSourceText(p), verified: p.verified })),
+          similarTo: similarToOf(c),
           scores:
             q && c.status === "accepted"
               ? {
@@ -4157,12 +4321,17 @@ export default async function RunPage({
               : null,
         };
   });
+  // One colour per objective across the left list, the scores table and the detail (objectiveAccents).
+  const statedObjectiveLines = parseObjectiveLines(run.stated_objectives_text);
+  const statedObjectiveIds = setupLineCandidateIds(statedObjectiveLines, objectiveCandidates);
+  const objectivePositions = objectiveListPositions(statedObjectiveIds, objectiveRows);
   const objectiveReviewList = (
     <ObjectiveReviewTable
       runId={id}
       hasFindings={findings.length > 0}
       missingMigration={objectiveQuality.missing}
       rows={objectiveRows}
+      positions={objectivePositions}
     />
   );
 
@@ -4216,6 +4385,11 @@ export default async function RunPage({
                 >
                   <td className="py-1.5 pr-4 text-foreground">
                     {row.finding_text}
+                    {row.researcher_note?.trim() ? (
+                      <div className="mt-0.5 text-xs text-muted" data-testid="history-researcher-note">
+                        Your note: {row.researcher_note}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="py-1.5 pr-4 text-foreground">
                     {findingHistoryStatusLabel[row.status] ?? row.status}
@@ -4291,11 +4465,49 @@ export default async function RunPage({
   // order (RunPage) but never for this list.
   // Per-document cards, one list per kind of document, so Cross tabs (tables),
   // Coding (transcripts) and Reports each show only their own.
+  // The project's data files for Cross tabs and Analytics (DataFileSection): each file's state, and
+  // what the section shows for a file that cannot open there (or, with readyNode, for one that can).
+  const dataFileOptions = (readyNode?: (d: (typeof documents)[number]) => React.ReactNode): CrosstabDataset[] =>
+    documents
+                .filter((d) => d.kind === "table")
+                .map((d): CrosstabDataset => {
+                  const state = crosstabDatasetState({
+                    filename: d.source_filename,
+                    ingestion: d.ingestion_type,
+                    processingStatus: d.processing_status,
+                    setupAccepted: dataSetups.has(d.id) ? dataSetups.get(d.id)?.accepted === true : undefined,
+                  });
+                  return {
+                    id: d.id,
+                    filename: d.source_filename,
+                    wave: dataSetups.get(d.id)?.wave ?? null,
+                    latestWave: waveFiles.length > 0 && waveFiles[waveFiles.length - 1].documentId === d.id,
+                    state,
+                    savedTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length,
+                    draftTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100 && t.crosstab_status === "draft").length,
+                    // A crosstab with no status predates the draft set and counts as committed (crosstabs.ts reads it so).
+                    committedTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100 && t.crosstab_status !== "draft").length,
+                    node:
+                      state === "ready" ? readyNode?.(d) : state === "needs_setup" ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          <span>The setup for this file changed, or acceptance was undone. Accept it to open it here, or review it in Sources first.</span>
+                          <span className="flex flex-wrap items-center gap-2">
+                            <GoToSection id="upload">Review in Sources</GoToSection>
+                            <AcceptDataButton runId={id} documentId={d.id} setup={dataSetups.get(d.id)!} />
+                          </span>
+                        </div>
+                      ) : state === "aggregated" ? (
+                        documentCards("table", true, d.id, false, "crosstabs")
+                      ) : undefined,
+                  };
+                });
   const documentCards = (
     kind: "table" | "transcript" | "report",
     single = false,
     onlyId?: string,
     omitSide = false,
+    // Which tiles a data file's launcher shows: the Cross tabs and Analytics sections each show theirs.
+    analyticsPart: "crosstabs" | "analytics" | "all" = "all",
   ) => (
                         <ul
                           className={`grid grid-cols-1 items-start gap-4 ${single ? "" : "xl:grid-cols-2"}`}
@@ -4326,16 +4538,23 @@ export default async function RunPage({
                             return (
                               <li
                                 key={doc.id}
-                                className={`flex flex-col justify-between gap-3 rounded-lg border border-l-4 border-border bg-white p-3 transition hover:border-primary/30 ${DOC_ACCENTS[documents.indexOf(doc) % DOC_ACCENTS.length].border}`}
+                                className={
+                                  single
+                                    ? "flex flex-col gap-3"
+                                    : `flex flex-col justify-between gap-3 rounded-lg border border-l-4 border-border bg-white p-3 transition hover:border-primary/30 ${DOC_ACCENTS[documents.indexOf(doc) % DOC_ACCENTS.length].border}`
+                                }
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="min-w-0">
-                                    <div
-                                      className="truncate text-sm font-medium text-foreground"
-                                      title={doc.source_filename}
-                                    >
-                                      {doc.source_filename}
-                                    </div>
+                                    {/* Alone in a pane, the pane's title already names the file. */}
+                                    {!single && (
+                                      <div
+                                        className="truncate text-sm font-medium text-foreground"
+                                        title={doc.source_filename}
+                                      >
+                                        {doc.source_filename}
+                                      </div>
+                                    )}
                                     <div className="text-xs text-muted">
                                       <span
                                         className={`mr-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${DOC_KIND_STYLE[doc.kind]?.badge ?? ""}`}
@@ -4354,7 +4573,7 @@ export default async function RunPage({
                                       {doc.processing_status === "incomplete" && (
                                         <span
                                           className="mr-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-800"
-                                          title="Coding finished, but at least one batch of turns came back without a decision for every unit it was asked about. Findings from this transcript may be missing some coded passages. Try Code again."
+                                          title="Coding finished, but at least one batch of turns came back without a decision for every unit it was asked about. Findings from this transcript may be missing some coded passages. Run Code themes again for this transcript."
                                         >
                                           coding incomplete
                                         </span>
@@ -4364,15 +4583,19 @@ export default async function RunPage({
                                       ).toLocaleDateString()}
                                     </div>
                                   </div>
-                                  {/\.(pdf|docx|txt)$/i.test(doc.source_filename) && (
+                                  {/* Research quality reviews briefs and proposals, which are context files. */}
+                                  {doc.kind === "evidence" && /\.(pdf|docx|txt)$/i.test(doc.source_filename) && (
                                     <ReviewResearchQualityLink documentId={doc.id} />
                                   )}
-                                  <form
-                                    action={deleteAction}
-                                    className="shrink-0"
-                                  >
-                                    <DeleteDocumentButton confirmMessage={deleteDocumentConfirmation(impactFor(deletionImpact, doc.id))} />
-                                  </form>
+                                  {/* Alone in a section's pane, a file is deleted in Sources, with the rest. */}
+                                  {!single && (
+                                    <form
+                                      action={deleteAction}
+                                      className="shrink-0"
+                                    >
+                                      <DeleteDocumentButton confirmMessage={deleteDocumentConfirmation(impactFor(deletionImpact, doc.id))} />
+                                    </form>
+                                  )}
                                 </div>
                                 {doc.kind === "report" && (
                                   <form action={extractAction}>
@@ -4438,13 +4661,12 @@ export default async function RunPage({
                                   doc.ingestion_type === "raw" &&
                                   !single && (
                                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
-                                      Case-level data. Nothing is compared automatically.
-                                      Build tables with the cross tab tool below, or start
-                                      from a set of suggested tables, and keep the ones
-                                      worth keeping. Committed tables become findings.
-                                      Every comparison is flagged as uncorrected for
-                                      multiple comparisons and assumes simple random
-                                      sampling; complex survey designs are not applied yet.
+                                      Case-level data. Nothing is compared until you build a
+                                      table in Cross tabs (or start from suggested tables), and
+                                      committed tables become findings. Column differences use
+                                      the multiple-comparison correction chosen there (false
+                                      discovery rate by default), and a survey design is applied
+                                      when a PSU or strata variable is set.
                                     </div>
                                   )}
                                 {doc.kind === "table" &&
@@ -4453,6 +4675,7 @@ export default async function RunPage({
                                       isCaseTableFileName(doc.source_filename))) &&
                                   (!dataSetups.has(doc.id) || dataSetups.get(doc.id)?.accepted ? (
                                     <AnalyticsBuilder
+                                      part={analyticsPart}
                                       runId={id}
                                       documentId={doc.id}
                                       filename={doc.source_filename}
@@ -4539,7 +4762,7 @@ export default async function RunPage({
                                                                   key={h}
                                                                   className="py-1 pr-3 text-foreground"
                                                                 >
-                                                                  {row[h] ?? ""}
+                                                                  {cellText(row[h])}
                                                                 </td>
                                                               ),
                                                             )}
@@ -4570,6 +4793,13 @@ export default async function RunPage({
                                       </details>
                                     );
                                   })()}
+                                {doc.kind === "transcript" && transcriptSetups.get(doc.id)?.wave && (
+                                  // Recorded on Import (migration 0107). Shown so a coder knows which
+                                  // round this is; themes are not yet compared across waves.
+                                  <p className="text-[11px] text-muted" data-testid="coding-wave">
+                                    {`Wave: ${transcriptSetups.get(doc.id)!.wave}`}
+                                  </p>
+                                )}
                                 {doc.kind === "transcript" && (
                                   <CodeGate
                                     documentId={doc.id}
@@ -4594,16 +4824,16 @@ export default async function RunPage({
                                     })()}
                                   >
                                     <form action={codeAction}>
-                                      <SubmitButton
-                                        pendingLabel="Coding..."
-                                        className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+                                      <CodeThemesSubmit
+                                        runId={id}
+                                        documentId={doc.id}
+                                        className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
                                         icon={
                                           <DocumentIcon className="h-3.5 w-3.5" />
                                         }
                                       >
                                         Code themes
-                                      </SubmitButton>
-                                      <CodingFormProgress runId={id} />
+                                      </CodeThemesSubmit>
                                     </form>
                                     <details className="rounded-lg border border-border bg-white p-2 text-xs">
                                       <summary className="cursor-pointer select-none font-medium text-muted">
@@ -4640,7 +4870,7 @@ export default async function RunPage({
                                         />
                                         <SubmitButton
                                           pendingLabel="Importing..."
-                                          className="flex w-fit items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:opacity-90"
+                                          className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-primary-hover"
                                           icon={
                                             <UploadIcon className="h-3.5 w-3.5" />
                                           }
@@ -4720,7 +4950,8 @@ export default async function RunPage({
                         </ul>
   );
   // The quality checks, extras and exports of one transcript, shown in the right-hand pane of Coding.
-  const transcriptSide = (doc: (typeof documents)[number]) => (
+  // Nothing until the transcript is coded, so its pane is not shown empty.
+  const transcriptSide = (doc: (typeof documents)[number]) => !codebooksByDocument.has(doc.id) && !codingAnalysis.has(doc.id) ? null : (
     <div className="flex flex-col gap-3">
                                 {doc.kind === "transcript" &&
                                   codebooksByDocument.has(doc.id) && (
@@ -4806,69 +5037,46 @@ export default async function RunPage({
     ) : null;
 
   const navSections: RunNavSection[] = [
-    // Order agreed with Grant, 2026-10-18: import first; the research quality review of the brief,
-    // proposal and other documents next, as its own module; then objectives with the business
-    // decisions they serve. The menu shows one section at a time, so this order is the menu's only.
-    { id: "upload", group: "Setup", label: "Import data" },
-    { id: "research-quality", group: "Quality review", label: "Research quality review" },
-    { id: "objective", group: "Objectives", label: "Set Objectives" },
-    { id: "objectives", group: "Objectives", label: "Review Objectives" },
-    // Under Objectives in both modes. Decisions can always be added by hand here. Suggestions are
-    // offered once there are findings; in generate mode generateDecisionCandidates reads insights,
-    // and says so when none exist yet, so suggestions there come after the analysis.
-    { id: "decisions", group: "Objectives", label: "Business decisions" },
+    // Grant's sidebar, 2026-10-19, adopted on this copy 2026-10-20 without the two-letter codes:
+    // four stages (Prepare, Analyse, Develop findings, Deliver), then Tools. Within Prepare the order
+    // agreed on 2026-10-18 stands: import first, then the research quality review, then objectives
+    // with the business decisions they serve. Objectives is one entry for two sections (Set and
+    // Review), switched by tabs inside them. Cross tabs and Analytics are two entries over the same
+    // data files, each showing its own part of a file's launcher.
+    // Each stage opens with its overview (Grant, 2026-10-23): the state of every module in it.
+    // Where a project opens (Grant, 2026-10-27): its stages and its next step.
+    { id: "project-overview", group: "Project", label: "Project overview" },
+    { id: "overview-prepare", group: "Prepare", label: "Prepare overview" },
+    { id: "upload", group: "Prepare", label: "Import data" },
+    { id: "research-quality", group: "Prepare", label: "Research quality" },
+    { id: "objective", group: "Prepare", label: "Objectives" },
+    // Decisions can always be added by hand here. Suggestions are offered once there are findings; in
+    // generate mode generateDecisionCandidates reads insights, and says so when none exist yet.
+    { id: "decisions", group: "Prepare", label: "Business decisions" },
+    { id: "overview-analyse", group: "Analyse", label: "Analyse overview" },
+    // The count is the project's saved tables (drafts and committed, as "All tables" lists them), not its data files
+    // (Grant, 29 October 2026: a "3" stayed beside Cross tabs after every table was deleted). Tables made for one
+    // answer only ("evidence") are not listed in Cross tabs and are left out by the query that loads these.
     {
       id: "crosstabs",
-      group: "Analysis",
-      label: "Analytics",
-      badge: documents.filter((d) => d.kind === "table").length,
+      group: "Analyse",
+      label: "Cross tabs",
+      badge: [...documentTablesByDocument.values()].flat().filter((t) => t.table_index >= 100).length,
     },
-    {
-      id: "coding",
-      group: "Analysis",
-      label: "Coding",
-      badge: documents.filter((d) => d.kind === "transcript").length,
-    },
-    {
-      id: "reports",
-      group: "Analysis",
-      label: "Reports and decks",
-      badge: documents.filter((d) => d.kind === "report").length,
-    },
-    {
-      id: "findings",
-      group: "Findings",
-      label: "Findings",
-      badge: findings.length,
-    },
-    {
-      id: "synthesized",
-      group: "Findings",
-      label: "Insights",
-      badge: synthesizedInsights.length,
-    },
-    {
-      id: "recommendations",
-      group: "Decisions",
-      label: "Recommendations",
-      badge: synthesizedRecommendations.length,
-    },
-    // Lives in Decisions, not Analysis: generating it draws on the
-    // decision statement and on accepted recommendations, both of which
-    // sit above it in this same group, not on raw findings analysis alone.
-    { id: "insights-report", group: "Decisions", label: "Insights report" },
+    { id: "analytics", group: "Analyse", label: "Analytics" },
+    { id: "coding", group: "Analyse", label: "Coding", badge: documents.filter((d) => d.kind === "transcript").length },
+    { id: "reports", group: "Analyse", label: "Secondary analysis", badge: documents.filter((d) => d.kind === "report").length },
+    { id: "overview-develop", group: "Develop findings", label: "Develop overview" },
+    { id: "findings", group: "Develop findings", label: "Findings", badge: findings.length },
+    { id: "synthesized", group: "Develop findings", label: "Insights", badge: synthesizedInsights.length },
+    { id: "overview-deliver", group: "Deliver", label: "Deliver overview" },
+    { id: "recommendations", group: "Deliver", label: "Recommendations", badge: synthesizedRecommendations.length },
+    // In Deliver: generating it draws on the decision statement and on accepted recommendations.
+    { id: "insights-report", group: "Deliver", label: "Insights report" },
     { id: "assistant", group: "Tools", label: "Research assistant" },
-    // Grouped with Tools, not Analysis, and placed right before API usage &
-    // cost: this nav list is meant to mirror the page's own scroll order
-    // (see SectionPanel id="working-data" below, which sits directly between
-    // the assistant and api-usage panels), and "Analysis" would have put it
-    // near the top of the sidebar while the actual section lives at the very
-    // bottom of the page -- clicking it jumped the reader straight past
-    // everything the sidebar implied came after it.
+    // Working data sits at the very bottom of the page's own order, so it stays in Tools.
     { id: "working-data", group: "Tools", label: "Working data" },
-    ...(apiUsage.length > 0
-      ? [{ id: "api-usage", group: "Tools", label: "API usage & cost" }]
-      : []),
+    ...(apiUsage.length > 0 ? [{ id: "api-usage", group: "Tools", label: "API usage & cost" }] : []),
   ];
   // The section a researcher lands on: whichever of the workflow's own
   // gating steps (see the reached/done flags above) is next up, falling
@@ -4876,22 +5084,285 @@ export default async function RunPage({
   // is pending.
   // A new project starts with context (all optional), then data import;
   // once there are documents, the work is Findings.
-  const defaultSectionId =
-    documents.length === 0
-      ? "objective"
-      : findings.length === 0
-        ? "upload"
-        : "findings";
+  // A project always opens on its overview (Grant, 2026-10-27: "Should we not always open on the same
+  // page?"); a link naming a section, or a reload, still opens that section (RunShell).
+  // A ?section= link is rendered on the server too, so the section it names is there before the
+  // scripts load (RunShell then keeps it).
+  const knownSections = navSections.flatMap((s) => [s.id, ...(s.activeFor ?? [])]);
+  const defaultSectionId = typeof requestedSection === "string" && knownSections.includes(requestedSection) ? requestedSection : "project-overview";
+
+  // The Import screen's sources (TranscriptSetup.tsx): every document, then each statistical output
+  // set, with the tabs its type has after Preview and Setup. Grant, 2026-10-20, from his prototype:
+  // raw data has Variables, Data quality, Respondents, Weights and Labels and documentation; qualitative data Data quality and
+  // Guide; aggregated tables Data quality; a questionnaire or guide its questions and links; a
+  // brief, proposal or report its document details; an output set its overview and related sets.
+  const importRows: SourceRow[] = [
+    ...documents
+      .filter((d) => d.kind !== "output")
+      .map((d): SourceRow => {
+        const isRaw = d.kind === "table" && d.ingestion_type === "raw";
+        const previewError = importPreviewIdentities.get(d.id)?.error ?? null;
+        const ownTables = importQualityTables.filter((t) => t.documentId === d.id);
+        const attached = attachedFor(d);
+        const instrument = d.kind === "instrument" ? instrumentSummaries.get(d.id) : undefined;
+        const isGuide = instrument?.type === "interview_guide" || instrument?.type === "focus_group_guide";
+        const panels: SourcePanel[] = [];
+        // A count on a tab brings a problem forward without opening it (Grant, 2026-10-20): the
+        // import checks flagged Check or Problem, and questions whose suggested links are still to
+        // confirm (counted by question, as a grid question can carry dozens of links).
+        const qualityBadge = (n: number): SourcePanel["badge"] =>
+          n > 0 ? { text: String(n), title: `${n} ${n === 1 ? "check is" : "checks are"} flagged Check or Problem` } : undefined;
+        const linksBadge = (n: number): SourcePanel["badge"] =>
+          n > 0 ? { text: `${n} to check`, title: `${n} ${n === 1 ? "question has" : "questions have"} suggested links waiting for your confirmation` } : undefined;
+        // The same counts, kept as numbers for the stage status block (ImportStageStatus).
+        let qualityFlags = 0;
+        let linksWaiting = 0;
+        const flagQuality = (n: number) => ((qualityFlags += n), qualityBadge(n));
+        const flagLinks = (n: number) => ((linksWaiting += n), linksBadge(n));
+        const tableFlags = ownTables
+          .filter((t) => !t.previewError)
+          .reduce((n, t) => n + flaggedChecks((t.quality ?? computeTableQuality(t.headers, t.rows, t.ingestionType, t.stated ?? [])).checks), 0);
+        if (previewError) panels.push({ id: "preview", label: "Preview", node: <ImportPreviewRecovery key="panel" error={previewError} reread={d.kind === "table" ? { runId: id, documentId: d.id } : undefined} /> });
+        if (d.kind === "table" && !previewError) {
+          if (isRaw && ownTables.length > 0) {
+            // The missing-value check sits with the variables it describes, as its own fold; weights have
+            // their own tab (Grant, 2026-10-22: the two did not belong together).
+            panels.push({
+              id: "variables",
+              label: "Variables",
+              node: (
+                <div key="panel" className="flex flex-col gap-3">
+                  <ImportVariablesPanel runId={id} tables={ownTables} withinSource />
+                  <DataAuditPanel runId={id} documentId={d.id} part="missing" />
+                </div>
+              ),
+            });
+            panels.push({
+              id: "quality",
+              label: "Data quality",
+              badge: flagQuality(tableFlags),
+              node: <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource />,
+            });
+            // The checks of each respondent across the whole file have their own tab (Grant, 28 October 2026),
+            // beside the file-level Data quality checks rather than below them.
+            panels.push({ id: "respondents", label: "Respondents", node: <RespondentQualityPanel key="panel" runId={id} documentId={d.id} /> });
+            // Its own tab (Grant, 2026-10-20), read from the whole file when the tab is first shown.
+            panels.push({ id: "weights", label: "Weights", node: <DataAuditPanel key="panel" runId={id} documentId={d.id} asTab part="weights" /> });
+          } else if (!isRaw && (documentTablesByDocument.get(d.id) ?? []).length > 0) {
+            const aggregated = computeAggregatedQuality(
+              (documentTablesByDocument.get(d.id) ?? [])
+                .filter((t) => t.table_index < 100)
+                .map((t) => ({ label: t.label, headers: t.headers, rows: t.rows })),
+            );
+            panels.push({ id: "quality", label: "Data quality", badge: flagQuality(flaggedChecks(aggregated.checks)), node: <AggregatedQualityPanel key="panel" q={aggregated} /> });
+          } else if (ownTables.length > 0) {
+            panels.push({ id: "quality", label: "Data quality", badge: flagQuality(tableFlags), node: <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource /> });
+          }
+        }
+        if (d.kind === "transcript" && transcriptQuality.has(d.id)) {
+          panels.push({ id: "quality", label: "Data quality", badge: flagQuality(flaggedChecks(transcriptQuality.get(d.id)!.checks)), node: <TranscriptImportQualityPanel key="panel" q={transcriptQuality.get(d.id)!} /> });
+        }
+        // A raw data file's links tab is "Labels and documentation" (LBL-01, Grant, 2026-10-26): its own
+        // labels, codebook and questionnaire side by side, with the links to confirm below them.
+        const linksLabel = d.kind === "transcript" ? "Guide" : isRaw ? "Labels and documentation" : "Questionnaire links";
+        if (attached)
+          panels.push({
+            id: "links",
+            label: linksLabel,
+            // Counted for the stage status on the questionnaire's own row only, so one set of links is one item.
+            badge: linksBadge(hostedBy(d).reduce((n, x) => n + (instrumentSummaries.get(x.id)?.itemsToCheck ?? 0), 0)),
+            node:
+              d.kind === "transcript" ? (
+                attached
+              ) : (
+                <div key="panel" className="flex flex-col gap-3">
+                  {isRaw && <LabelDocumentationPanel key={d.id} runId={id} documentId={d.id} />}
+                  <QuestionnaireLinkingNote />
+                  {attached}
+                </div>
+              ),
+          });
+        else if (isRaw)
+          panels.push({
+            id: "links",
+            label: linksLabel,
+            node: (
+              <div key="panel" className="flex flex-col gap-3">
+                <LabelDocumentationPanel key={d.id} runId={id} documentId={d.id} />
+                <QuestionnaireLinkingNote />
+                <p className="text-xs text-muted">No codebook or questionnaire is linked to this file. Add one with Add files, as a codebook or a questionnaire; it is read and matched to this file&apos;s variables, and nothing is applied until you confirm the links.</p>
+              </div>
+            ),
+          });
+        if (instrument) {
+          panels.push({
+            id: "links",
+            // Named for the document it belongs to (Grant, 27 October 2026: a codebook's tab said "Questionnaire links").
+            label: isGuide ? "Guide" : instrument.type === "codebook" ? "Codebook links" : "Questionnaire links",
+            badge: flagLinks(instrument.itemsToCheck),
+            node: (
+              <div key="panel" className="flex flex-col gap-3">
+              {!isGuide && <QuestionnaireLinkingNote />}
+              <InstrumentCard
+                runId={id}
+                documentId={d.id}
+                summary={instrument}
+                autoStart
+                dataDocs={
+                  instrument.type === "questionnaire" || instrument.type === "codebook" || instrument.type === null
+                    ? documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw").map((x) => ({ id: x.id, name: x.source_filename }))
+                    : []
+                }
+              />
+              </div>
+            ),
+          });
+        }
+        if (d.kind === "evidence" || d.kind === "report") {
+          panels.push({ id: "details", label: "Document details", node: <DocumentIndicatorsPanel key="panel" runId={id} documentId={d.id} /> });
+        }
+        if (d.kind === "indicator") {
+          panels.push({ id: "indicators", label: "Indicator data", node: <IndicatorDataPanel key={`indicators-${d.id}`} runId={id} documentId={d.id} /> });
+        }
+        const excerpt = documentExcerpts.get(d.id);
+        const purpose = purposeOf(d);
+        return {
+          documentId: d.id,
+          runId: id,
+          filename: d.source_filename,
+          kind: d.kind,
+          kindLabel: sourceTypeLabel(d.kind, d.ingestion_type, contextRoles === null ? undefined : (contextRoles.get(d.id) ?? []), instrument?.type),
+          uploadedAt: d.uploaded_at,
+          isRawData: isRaw,
+          dataSetup: dataSetups.get(d.id) ?? null,
+          // A questionnaire's own read record (instrument_items) says whether its questions were read,
+          // and whether that read was complete; every instrument has a summary, read or not.
+          processingStatus: instrument?.readStatus && !instrument.readStatus.complete ? "incomplete" : d.processing_status,
+          instrumentRead: instrument ? instrument.items > 0 || instrument.readStatus !== undefined : undefined,
+          instrumentReadFailed: instrument ? instrument.readFailure !== undefined : undefined,
+          previewUnverified: previewError !== null,
+          preview:
+            d.kind === "instrument" || previewError
+              ? null
+              : d.kind === "table"
+                ? {
+                    kind: "tables" as const,
+                    // row_count, not rows.length: getDocumentTablePreviews caps a raw table's rows at a
+                    // small sample, with row_count holding the true count. Counting rows.length here used
+                    // to read every raw file as having zero rows, which made the setup form see "no
+                    // tables yet" and re-read the file on every page load (IMP-010).
+                    tables: (documentTablesByDocument.get(d.id) ?? [])
+                      .filter((t) => t.table_index < 100 && t.headers.length > 0 && t.row_count > 0)
+                      .map((t) => ({
+                        label: t.label ?? `Table ${t.table_index + 1}`,
+                        headers: t.headers.slice(0, 12),
+                        totalColumns: t.headers.length,
+                        rows: t.rows.slice(0, 8),
+                        totalRows: t.row_count,
+                      })),
+                  }
+                : excerpt
+                  ? { kind: "text" as const, excerpt: excerpt.excerpt, length: excerpt.length }
+                  : null,
+          linked: hostedBy(d).map((x) => ({ documentId: x.id, filename: x.source_filename })),
+          linkedTo:
+            d.kind === "instrument" && instrumentHome.has(d.id)
+              ? (() => {
+                  const h = instrumentHome.get(d.id)!;
+                  if (h === "*") return "your transcripts";
+                  const names = h.map((hid) => documents.find((x) => x.id === hid)?.source_filename).filter((n): n is string => !!n);
+                  return names.length <= 1 ? (names[0] ?? null) : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+                })()
+              : null,
+          purposeText: purpose.text,
+          nextStep: purpose.nextStep,
+          typeGroup: sourceGroup(d.kind, instrument?.type),
+          autoWork: instrument ? (
+            <InstrumentAutoRead key="auto" runId={id} documentId={d.id} summary={instrument} />
+          ) : undefined,
+          // The same colour as this file's card under Cross tabs, Analytics, Coding and Secondary analysis.
+          accent: DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border,
+          panels,
+          flaggedChecks: qualityFlags,
+          linksToCheck: linksWaiting,
+          initial: transcriptSetups.get(d.id) ?? null,
+          waveAvailable: transcriptWaveSaves,
+          suggestion: setupSuggestions.get(d.id) ?? null,
+          hasCoding: codebooksByDocument.has(d.id),
+          deleteAction: deleteDocument.bind(null, id, d.id),
+          deleteConfirm: deleteDocumentConfirmation(impactFor(deletionImpact, d.id)),
+        };
+      }),
+    ...outputSets.map(
+      (set): SourceRow => ({
+        documentId: `output-set:${set.id}`,
+        runId: id,
+        filename: set.name,
+        kind: "output",
+        kindLabel: sourceTypeLabel("output", null),
+        accent: "border-l-slate-400",
+        typeGroup: "quant",
+        isRawData: false,
+        dataSetup: null,
+        preview: null,
+        processingStatus: null,
+        purposeText: `${set.files.length} ${set.files.length === 1 ? "file" : "files"} of statistical output, checked and turned into findings from its Overview tab.`,
+        panels: [
+          { id: "overview", label: "Overview", node: <OutputSetCard key="panel" runId={id} set={set} /> },
+          ...(outputSets.length > 1 ? [{ id: "related", label: "Related sets", node: <RelatedOutputSets key="panel" runId={id} sets={outputSets} /> }] : []),
+        ],
+        initial: null,
+        suggestion: null,
+        hasCoding: false,
+      }),
+    ),
+  ];
+
+  // The section dashboards (Grant, 2026-10-23): the stored-record facts, with this page's fuller
+  // checks on top (a preview's identity and data quality flags from Import, the stored tables' read,
+  // and the Findings, Insights and Recommendations overviews' attention counts, by the same
+  // summaries those overviews show).
+  const sectionState = (() => {
+    if (!stageFactsResult.ok) return { ok: false as const, error: stageFactsResult.error };
+    const f = stageFactsResult.facts;
+    const rowOf = new Map(importRows.map((r) => [r.documentId, r]));
+    const findingsOverview = summarizeFindings(findings, statedInsightValidations.map((v) => ({ verdict_tier: v.verdict_tier })));
+    const insightSupport = summarizeInsights(synthesizedInsights).support;
+    const recAttention = summarizeRecommendations(synthesizedRecommendations, parkedInsights).attention;
+    const facts: ProjectStageFacts = {
+      ...f,
+      import: {
+        tablesReadFailed: documentTablesReadFailed,
+        files: f.import.files.map((file) => {
+          const row = rowOf.get(file.documentId);
+          return row ? { ...file, previewUnverified: row.previewUnverified ?? false, flaggedChecks: row.flaggedChecks ?? 0, linksToCheck: row.linksToCheck ?? file.linksToCheck } : file;
+        }),
+      },
+      crosstabs: { ...f.crosstabs, tablesReadFailed: documentTablesReadFailed },
+      findings: { ...f.findings, attention: findingsOverview.attention },
+      insights: { ...f.insights, support: { stale: insightSupport.stale, invalid: insightSupport.invalid, unknown: insightSupport.unknown } },
+      recommendations: { ...f.recommendations, attention: recAttention },
+    };
+    return { ok: true as const, sections: sectionStatuses(facts) };
+  })();
+  // The one-line status at the top of each module's page, from the same statuses as the overviews.
+  const moduleBar = (moduleId: string) => {
+    const section = SECTIONS.find((x) => x.modules.some((m) => m.id === moduleId))!;
+    const status = sectionState.ok ? (sectionState.sections.find((x) => x.id === section.id)?.modules.find((m) => m.id === moduleId)?.status ?? null) : null;
+    return <ModuleStatusBar moduleId={moduleId} status={status} overview={{ navId: section.navId, label: section.label }} />;
+  };
 
   timing.bodyBuilt();
   return (
     <FigureChecksProvider checks={figureChecks}>
     <RunSectionProvider
       defaultId={defaultSectionId}
-      validIds={navSections.map((s) => s.id)}
+      validIds={navSections.flatMap((s) => [s.id, ...(s.activeFor ?? [])])}
     >
       <main className="flex min-h-0 flex-1 flex-col">
-        <div className="mx-auto w-full max-w-[90rem] px-6 pt-3">
+        {/* Same left edge as every section below (px-6, no centring), so the project title lines up
+            with "Import data" and the other section headings (Grant, 2026-10-19). */}
+        <div className="w-full px-6 pt-3">
           <PipelineStatus runId={id} />
           <div className="mb-2 flex flex-col items-start gap-y-0.5 text-left">
           <h1 className="text-xl font-bold tracking-tight text-foreground">
@@ -4907,10 +5378,8 @@ export default async function RunPage({
                 <span className="text-border">&middot;</span>
               </>
             )}
-            <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
-              {run.status.replace(/_/g, " ")}
-            </span>
-            <span className="text-border">&middot;</span>
+            {/* No run status chip (Grant, 2026-10-22): runs.status is set to "draft" when a project is
+                created and nothing in the app moves it on, so the chip said "draft" on every page. */}
             <span>Starting point: {startingPointLabel}</span>
           </div>
           </div>
@@ -4989,32 +5458,65 @@ export default async function RunPage({
           })}
         </div>
 
-        <RunNav sections={navSections} />
+        <RunNav sections={navSections} projects={projectList} currentProjectId={id} />
 
         <div className="px-6 pb-6 pt-2">
+          <SectionPanel id="project-overview">
+            <ProjectOverview sections={sectionState.ok ? sectionState.sections : null} error={sectionState.ok ? null : sectionState.error} />
+          </SectionPanel>
+          {SECTIONS.map((s) => (
+            <SectionPanel key={s.navId} id={s.navId}>
+              <SectionDashboard
+                navId={s.navId}
+                section={sectionState.ok ? (sectionState.sections.find((x) => x.id === s.id) ?? null) : null}
+                error={sectionState.ok ? null : sectionState.error}
+              />
+            </SectionPanel>
+          ))}
+
           <SectionPanel id="upload">
-            <ImportDetailProvider>
-            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Import data</h2>
-            <p className="mb-2 max-w-3xl text-sm text-muted">
-              Add files on the left. Everything you have added is listed in the middle, and the right pane
-              shows what to do next.
-            </p>
-            <ThreePane
-              wideRight
-              left={
-                <Pane side="left" title="Add files">
-                  <CollapsibleSection
-              key={`upload-${uploadDone}`}
-              title="Upload documents"
-              bare
-              icon={<UploadIcon className="h-4 w-4 text-primary" />}
-              defaultOpen={!uploadDone}
-            >
-              <UploadForm runId={id} />
-            </CollapsibleSection>
+            {moduleBar("upload")}
+            <ImportDetailProvider rows={importRows}>
+            {/* Grant, 2026-10-20 (his Sources prototype): the heading with Add files, then the sources on
+                the left (search, filters, states) and the selected source on the right, in tabs. The
+                list can be collapsed, and the divider dragged; both are remembered for Import alone. */}
+            <AddFilesPanel runId={id} />
             <StorageCleanupNotice runId={id} />
-          
-                  
+            <BinNotice runId={id} />
+            {importRows.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border bg-white p-6 text-sm text-muted">
+                Nothing here yet. Use Add files to add a data file, a report, a brief or a transcript.
+              </p>
+            ) : (
+              <ThreePane
+                storageKey="import"
+                // The left list may take up to half the width, as Research quality's panes can (Grant, 2026-10-21).
+                leftMaxShare={0.5}
+                left={<SourcesPane count={importRows.length} />}
+                middle={
+                  <section className="overflow-hidden rounded-xl border-2 border-border bg-white lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto" aria-label="Selected source" data-stage-anchor="selected-source">
+                    <SelectedFileDetail />
+                  </section>
+                }
+              />
+            )}
+            {/* Project totals, kept to one line. */}
+            <p className="mt-3 text-[11px] text-muted" data-testid="project-totals">
+              {`Project so far: ${[
+                ["report", "report(s)"],
+                ["table", "data table(s)"],
+                ["transcript", "transcript(s)"],
+                ["instrument", "questionnaire(s) or guide(s)"],
+                ["evidence", "context file(s)"],
+                ["technical", "technical document(s)"],
+                ["indicator", "indicator data file(s)"],
+              ]
+                .map(([kind, label]) => `${documents.filter((d) => d.kind === kind).length} ${label}`)
+                .join(", ")}${outputSets.length > 0 ? `, ${outputSets.length} statistical output ${outputSets.length === 1 ? "set" : "sets"}` : ""}; ${findings.length} ${findings.length === 1 ? "finding" : "findings"}.`}
+            </p>
+            <details className="mt-4 rounded-xl border border-border bg-white p-4" data-testid="programme-and-wave">
+              <summary className="cursor-pointer select-none text-sm font-semibold text-foreground">Programme and wave (optional)</summary>
+              <div className="mt-3">
             <div className="rounded-lg border border-dashed border-border bg-slate-50 p-4">
               <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
                 <ChartIcon className="h-3.5 w-3.5 text-primary" />
@@ -5120,274 +5622,103 @@ export default async function RunPage({
                 </div>
               )}
             </div>
-          
-                </Pane>
-              }
-              middle={
-                <Pane
-                  side="middle"
-                  title="Documents"
-                  badge={
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                      {documents.filter((d) => d.kind !== "output").length}
-                    </span>
-                  }
-                >
-                  {outputSets.length > 0 && (
-              <div className="space-y-3">
-                <h2 className="text-xl font-semibold text-foreground">
-                  Statistical output ({outputSets.length} {outputSets.length === 1 ? "set" : "sets"})
-                </h2>
-                {outputSets.map((set) => (
-                  <OutputSetCard key={set.id} runId={id} set={set} />
-                ))}
-                {outputSets.length > 1 && <RelatedOutputSets runId={id} sets={outputSets} />}
               </div>
-            )}
-                  {documents.some((d) => d.kind !== "output") && (
-              <div className="">
-                <TranscriptSetupTable
-                  runId={id}
-                  rows={documents.filter((d) => !instrumentHome.has(d.id) && d.kind !== "output").map((d) => ({
-                    documentId: d.id,
-                    filename: d.source_filename,
-                    kind: d.kind,
-                    kindLabel: d.kind === "table" && d.ingestion_type === "raw" ? "Raw data" : (DOC_KIND_STYLE[d.kind]?.label ?? d.kind),
-                    kindBadge: DOC_KIND_STYLE[d.kind]?.badge ?? "",
-                    uploadedAt: d.uploaded_at,
-                    isRawData: d.kind === "table" && d.ingestion_type === "raw",
-                    dataSetup: dataSetups.get(d.id) ?? null,
-                    preview:
-                      d.kind === "instrument" || importPreviewIdentities.get(d.id)?.error
-                        ? null
-                        : d.kind === "table"
-                        ? {
-                            kind: "tables" as const,
-                            // row_count, not rows.length: getDocumentTablePreviews caps a raw
-                            // table's rows at a small sample (it can be huge in full), with
-                            // row_count holding the true count instead. Filtering or counting by
-                            // rows.length here used to always read a raw file's table as having
-                            // zero rows - it was filtered out of this list entirely regardless of
-                            // its real size, which in turn made TranscriptSetup's `unread` check
-                            // see "no tables yet" for every raw import and re-trigger a re-read on
-                            // every page load, not only on a genuinely unread file (IMP-010).
-                            tables: (documentTablesByDocument.get(d.id) ?? [])
-                              .filter((t) => t.table_index < 100 && t.headers.length > 0 && t.row_count > 0)
-                              .map((t) => ({
-                                label: t.label ?? `Table ${t.table_index + 1}`,
-                                headers: t.headers.slice(0, 12),
-                                totalColumns: t.headers.length,
-                                rows: t.rows.slice(0, 8),
-                                totalRows: t.row_count,
-                              })),
-                          }
-                        : documentExcerpts.has(d.id)
-                          ? {
-                              kind: "text" as const,
-                              excerpt: documentExcerpts.get(d.id)!.excerpt,
-                              length: documentExcerpts.get(d.id)!.length,
-                            }
-                          : null,
-                    attached: attachedFor(d),
-                    quality:
-                      importPreviewIdentities.get(d.id)?.error ? (
-                        <ImportPreviewRecovery error={importPreviewIdentities.get(d.id)!.error!} />
-                      ) : d.kind === "instrument" && instrumentSummaries.has(d.id) ? (
-                        <InstrumentCard
-                          key="instrument"
-                          runId={id}
-                          documentId={d.id}
-                          summary={instrumentSummaries.get(d.id)!}
-                          dataDocs={
-                            instrumentSummaries.get(d.id)!.type === "questionnaire" ||
-                            instrumentSummaries.get(d.id)!.type === null
-                              ? documents
-                                  .filter((x) => x.kind === "table" && x.ingestion_type === "raw")
-                                  .map((x) => ({ id: x.id, name: x.source_filename }))
-                              : []
-                          }
-                        />
-                      ) : d.kind === "transcript" && transcriptQuality.has(d.id) ? (
-                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
-                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                            Data quality
-                          </summary>
-                          <div className="mt-3">
-                            <TranscriptImportQualityPanel q={transcriptQuality.get(d.id)!} />
-                          </div>
-                        </details>
-                      ) : d.kind === "table" &&
-                        d.ingestion_type !== "raw" &&
-                        (documentTablesByDocument.get(d.id) ?? []).length > 0 ? (
-                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
-                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                            Data quality
-                          </summary>
-                          <div className="mt-3">
-                            <AggregatedQualityPanel
-                              q={computeAggregatedQuality(
-                                (documentTablesByDocument.get(d.id) ?? [])
-                                  .filter((t) => t.table_index < 100)
-                                  .map((t) => ({ label: t.label, headers: t.headers, rows: t.rows })),
-                              )}
-                            />
-                          </div>
-                        </details>
-                      ) : d.kind === "table" &&
-                        importQualityTables.some((t) => t.documentId === d.id) ? (
-                        <div key="data-quality" className="flex flex-col gap-3">
-                          <details className="rounded-lg border border-border bg-white p-3">
-                            <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                              Data quality
-                            </summary>
-                            <div className="mt-3">
-                              <ImportQualityPanel
-                                tables={importQualityTables.filter((t) => t.documentId === d.id)}
-                                hasReportOnly={false}
-                              />
-                              {d.ingestion_type === "raw" && <DataAuditPanel runId={id} documentId={d.id} />}
-                            </div>
-                          </details>
-                          <details className="rounded-lg border border-border bg-white p-3">
-                            <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                              Variables
-                            </summary>
-                            <div className="mt-3">
-                              <ImportVariablesPanel
-                                runId={id}
-                                tables={importQualityTables.filter((t) => t.documentId === d.id)}
-                              />
-                            </div>
-                          </details>
-                        </div>
-                      ) : null,
-                    detail:
-                      d.kind === "instrument"
-                        ? "Read for its questions, then linked to your data or transcripts. Nothing is applied until you confirm the links."
-                        : d.kind === "table"
-                        ? d.ingestion_type === "raw"
-                          ? "Case-level data. Tables are built in Analysis, Analytics once you accept it here."
-                          : "Already-aggregated table, read as it is."
-                        : d.kind === "report"
-                          ? "Report, read for the findings it states."
-                          : "Context for the project, not mined for findings.",
-                    initial: transcriptSetups.get(d.id) ?? null,
-                    suggestion: setupSuggestions.get(d.id) ?? null,
-                    hasCoding: codebooksByDocument.has(d.id),
-                    accent:
-                      DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length],
-                    deleteAction: deleteDocument.bind(null, id, d.id),
-                    deleteConfirm: deleteDocumentConfirmation(impactFor(deletionImpact, d.id)),
-                  }))}
-                />
-              </div>
-            )}
-                  {documents.length === 0 && outputSets.length === 0 && (
-                    <p className="text-sm text-muted">Nothing here yet. Drop a report, data table or transcript on the left.</p>
-                  )}
-                </Pane>
-              }
-              right={
-                <Pane side="right" title="Selected file">
-                  <SelectedFileDetail />
-                  <div className="h-px shrink-0 bg-border" />
-                  <div className="grid grid-cols-3 gap-2">
-                    {(
-                      [
-                        ["Reports", documents.filter((d) => d.kind === "report").length],
-                        ["Data tables", documents.filter((d) => d.kind === "table").length],
-                        ["Transcripts", documents.filter((d) => d.kind === "transcript").length],
-                      ] as const
-                    ).map(([label, n]) => (
-                      <div key={label} className="rounded-lg border border-border bg-slate-50 px-2.5 py-2">
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
-                        <div className="mt-0.5 text-lg font-semibold leading-none text-foreground">{n}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-foreground">
-                    <span className="font-semibold">{findings.length}</span>{" "}
-                    {findings.length === 1 ? "finding" : "findings"} so far
-                  </div>
-                  {documents.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white p-4">
-                <p className="max-w-2xl text-xs text-muted">
-                  Files are read and accepted as they arrive. Next, build tables in Analysis, Analytics, code
-                  transcripts under Coding, or run the full analysis from Findings.
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <GoToSection id="crosstabs">Open Analysis</GoToSection>
-                </div>
-              </div>
-            )}
-                </Pane>
-              }
-            />
+            </details>
             </ImportDetailProvider>
           </SectionPanel>
 
           <SectionPanel id="objective">
-            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Set up objectives</h2>
+            {moduleBar("objective")}
+            {/* One page for objectives (Grant, 2026-10-22, prototype for 3001): the context form as a
+                foldable band across the top; below it the objectives list (the stated objectives with
+                Setup's Edit and Delete, then suggestions waiting for review), the selected objective's
+                detail and review, and the evidence check. It replaces the Set and Review tabs; every
+                action and rule they had is the same component as before. */}
+            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Objectives</h2>
             <p className="mb-2 max-w-3xl text-sm text-muted">
-              Add the business problem and your own objectives, or import them from a brief or proposal.
-              They are scored and checked against the evidence on the Objectives page.
-            </p>
-            <ThreePane
-              left={
-                <Pane side="left" title="Objective and context">
-                  <RunContextForm
-                    runId={id}
-                    businessProblem={run.business_problem}
-                    objective={run.stated_objectives_text}
-                    audience={run.audience}
-                  />
-                </Pane>
-              }
-              middle={
-                <Pane side="middle" title="Your objectives">
-                  <StatedObjectivesList
-                    runId={id}
-                    lines={parseObjectiveLines(run.stated_objectives_text)}
-                  />
-                  <p className="text-xs text-muted">
-                    Quality scores, the evidence check and suggested objectives are on the{" "}
-                    <GoToSection id="objectives">Review page</GoToSection>.
-                  </p>
-                </Pane>
-              }
-            />
-          </SectionPanel>
-
-          <SectionPanel id="objectives">
-            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Review objectives</h2>
-            <p className="mb-2 max-w-3xl text-sm text-muted">
-              Pick an objective to see its quality score and what the evidence says about it. With none picked,
-              the middle shows every objective scored side by side.
+              Add the business problem and your own objectives, or fill them in from a brief or proposal added under Import data.
+              Pick an objective to see its quality score and what the evidence says about it; with none picked, the middle shows
+              every objective scored side by side.
             </p>
             <ObjectiveSelectionProvider>
+              <div data-stage-anchor="objective-context">
               <ThreePane
-                left={
-                  <Pane side="left" title="Objectives">
-                    <ObjectiveList
-                      rows={objectiveRows}
-                      verdicts={objectiveValidations.map((v) => ({
-                        item_text: v.item_text,
-                        status: v.status,
-                        inferred: v.inferred,
-                      }))}
+                storageKey="objectives-one-page"
+                leftMaxShare={0.5}
+                band={
+                  <Pane side="left" title="Objective and context">
+                    <RunContextForm
+                      layout="band"
+                      runId={id}
+                      businessProblem={run.business_problem}
+                      objective={run.stated_objectives_text}
+                      audience={run.audience}
+                      documents={documents
+                        // Briefs and proposals only: imported as context, or given that role by a review.
+                        .filter((d) => (d.kind === "evidence" || documentReviewRoles.has(d.id)) && /\.(pdf|docx|pptx|txt)$/i.test(d.source_filename))
+                        .map((d) => ({ id: d.id, filename: d.source_filename, role: documentReviewRoles.get(d.id) ?? null }))}
+                      lastFill={lastBriefFill}
+                      failedFill={failedBriefFill}
                     />
                   </Pane>
                 }
+                left={
+                  <Pane side="plain" title="Objectives">
+                    {(() => {
+                      const statedLines = statedObjectiveLines;
+                      const statedIds = statedObjectiveIds;
+                      const verdicts = objectiveValidations.map((v) => ({ item_text: v.item_text, status: v.status, inferred: v.inferred, candidateId: v.objective_candidate_id, stale: !coverageRowCurrent(v, objectiveCoverage.freshness) }));
+                      const statedIdSet = new Set(statedIds.filter((x): x is string => !!x));
+                      const others = objectiveRows.filter((r) => !statedIdSet.has(r.id));
+                      return (
+                        <>
+                          <StatedObjectivesList
+                            runId={id}
+                            lines={statedLines}
+                            candidateIds={statedIds}
+                            sources={objectiveSourceLabels(statedLines)}
+                            badges={statedIds.map((cid, i) => {
+                              const row = cid ? objectiveRows.find((r) => r.id === cid) : undefined;
+                              // Keyed: React checks keys on elements made in an array, even when each is rendered on its own.
+                              return row ? <ObjectiveBadges key={`${cid}:${i}`} row={row} verdicts={verdicts} /> : null;
+                            })}
+                          />
+                          {others.some((r) => r.status !== "rejected") && statedLines.length > 0 && (
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Suggested and waiting for review</p>
+                          )}
+                          <ObjectiveList
+                            rows={others}
+                            verdicts={verdicts}
+                            startAt={statedLines.length}
+                            empty={statedLines.length > 0 ? null : "No objectives yet. Add them under Objective and context above."}
+                          />
+                        </>
+                      );
+                    })()}
+                  </Pane>
+                }
                 middle={
-                  <Pane side="middle" title="Objective detail">
-                    <ObjectiveMiddle runId={id} rows={objectiveRows} overview={objectiveReviewList} />
+                  <Pane side="plain" title="Objective detail">
+                    <div data-stage-anchor="objective-detail" />
+                    <ObjectiveMiddle runId={id} rows={objectiveRows} overview={objectiveReviewList} positions={objectivePositions} />
+                    <SelectedObjectiveCoverage
+                      runId={id}
+                      hasObjectiveOrDecision={Boolean(
+                        (run.research_objective && run.research_objective.trim()) ||
+                          (run.decision_statement && run.decision_statement.trim()),
+                      )}
+                      validations={objectiveValidations}
+                      staleNote={objectiveCoverageNote}
+                      insights={synthesizedInsights.map((i) => ({ id: i.id, headline: i.headline, review_status: i.review_status }))}
+                    />
                   </Pane>
                 }
                 right={
-                  <Pane side="right" title="Objective review">
+                  <Pane side="plain" title="Objective review">
                     <ObjectiveCoverage
                       runId={id}
                       validations={objectiveValidations}
+                      staleNote={objectiveCoverageNote}
                       insights={synthesizedInsights.map((i) => ({
                         id: i.id,
                         headline: i.headline,
@@ -5416,170 +5747,156 @@ export default async function RunPage({
                   </Pane>
                 }
               />
+              </div>
             </ObjectiveSelectionProvider>
           </SectionPanel>
 
           <SectionPanel id="research-quality">
+            {moduleBar("research-quality")}
             <h2 className="mb-0.5 text-lg font-semibold text-foreground">Research quality review</h2>
             <p className="mb-2 max-w-3xl text-sm text-muted">
-              Check a brief, proposal, questionnaire, methodology or report for what it documents, whether the approach suits
-              its purpose, and what the evidence can support for each decision. Opening this section does not call the model.
+              Rate how well a brief or a proposal is written against good research practice, with a score for each part and what
+              to improve, or check a proposal against its brief. Opening this section does not call the model.
             </p>
             <ResearchQualityReview runId={id} />
           </SectionPanel>
 
           <SectionPanel id="crosstabs">
-            <DocumentPicker
-              title="Data files"
-              empty="No data files yet. Add a survey data file or a table under Import data."
-              rightTitle="Before you build tables"
-              items={documents
-                .filter((d) => d.kind === "table")
-                .map((d) => {
-                  const saved = (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length;
-                  return {
-                    id: d.id,
-                    name: d.source_filename,
-                    meta: d.ingestion_type === "raw" ? "Case-level data" : "Aggregated tables",
-                    badge: saved > 0 ? `${saved} table${saved === 1 ? "" : "s"}` : undefined,
-                    node: documentCards("table", true, d.id),
-                  };
-                })}
-              accents={documents
-                .filter((d) => d.kind === "table")
-                .map((d) => DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border)}
-              right={
+            {moduleBar("crosstabs")}
+            {/* Grant's review, 2026-10-20: straight into the crosstab workspace, the file chosen in its
+                header (CrosstabsSection says where each part of the old gateway page went). */}
+            <div data-stage-anchor="crosstab-workspace">
+              <CrosstabsSection
+                runId={id}
+                findings={findings.length}
+                datasets={dataFileOptions()}
+              />
+            </div>
+          </SectionPanel>
+
+          <SectionPanel id="analytics">
+            {moduleBar("analytics")}
+            {/* D6: the indicator dashboard reads every Indicator data file of the project (the file is a filter in it). */}
+            {documents.some((d) => d.kind === "indicator") && (
+              <IndicatorAnalyticsLauncher runId={id} fileCount={documents.filter((d) => d.kind === "indicator").length} />
+            )}
+            {/* Grant's review, 2026-10-20: one header with the data file chooser and a grid of the
+                analyses, each opening its own workspace with "All analytics" to come back. */}
+            <DataFileSection
+              runId={id}
+              title="Analytics"
+              intro="Choose an analysis to open it on this file. Nothing runs until you start it there, and opening this page calls no model."
+              howTitle="How Analytics works"
+              how={
                 <>
-                  <p className="text-sm text-muted">
-                    Survey and other numeric data. Build tables here, commit the ones worth keeping, and
-                    their comparisons flow into Findings.
-                  </p>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    Case-level data is not compared automatically. Every comparison is flagged as uncorrected
-                    for multiple comparisons and assumes simple random sampling. Complex survey designs are not
-                    applied yet.
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-border bg-white px-3 py-2">
-                      <div className="text-lg font-semibold text-foreground">
-                        {documents.filter((d) => d.kind === "table").length}
-                      </div>
-                      <div className="text-xs text-muted">Data files</div>
-                    </div>
-                    <div className="rounded-lg border border-border bg-white px-3 py-2">
-                      <div className="text-lg font-semibold text-foreground">{findings.length}</div>
-                      <div className="text-xs text-muted">Findings so far</div>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted">
-                    Open the crosstab workspace to see the full variable list beside the table you are
-                    building. Analyses (drivers, segments) are run from the same file.
-                  </p>
+                  <p>Each analysis opens in its own workspace on the chosen file, where you pick its variables and, where the file has one, a weight. Results you add there flow into Findings.</p>
+                  <p>NPS intervals take the file&apos;s survey design (PSU or strata) into account when one is set in Cross tabs; otherwise they assume a simple random sample. Driver analysis uses weights but not a full design-based variance, and its report says so.</p>
+                  <p>Tables themselves are built under Cross tabs, from the same file.</p>
                 </>
               }
+              emptyText="No data files yet. Add a survey data file (SPSS, Stata, CSV or Excel; SAS files are not supported yet) in Sources, then run analyses here."
+              aggregatedText="This file holds tables that are already aggregated, so the analyses, which work on each respondent's answers, cannot run on it. Generate findings from its tables below."
+              findings={findings.length}
+              datasets={dataFileOptions((d) => (
+                <AnalyticsBuilder
+                  layout="grid"
+                  part="analytics"
+                  runId={id}
+                  documentId={d.id}
+                  filename={d.source_filename}
+                  waveFiles={waveFiles}
+                  saved={(documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).map((t) => ({ id: t.id, label: t.label ?? "Crosstab" }))}
+                />
+              ))}
+              testIds={{ section: "analytics-section", select: "analytics-file-select", state: "analytics-file-state", findings: "analytics-findings-link" }}
             />
           </SectionPanel>
 
           <SectionPanel id="coding">
+            {moduleBar("coding")}
+            {/* Grant, 2026-10-20: the Sources workspace style, one transcript at a time. */}
             <DocumentPicker
-              title="Transcripts"
-              empty="No transcripts yet. Add one under Import data."
-              rightTitle="Quality and exports"
+              title="Coding"
+              chooserLabel="Transcript"
+              intro="Code the themes in each interview or group discussion; the coded themes flow into Findings."
+              howTitle="How Coding works"
+              how={
+                <>
+                  <p>A transcript is coded once its setup (who is speaking, the kind of interview, its wave) is accepted in Sources. Code themes reads it and groups what was said into themes.</p>
+                  <p>Quality control, beside the coding, checks the coding for this transcript, and the coded themes can be exported. With more than one transcript coded, themes are compared across them below.</p>
+                </>
+              }
+              findings={findings.length}
+              storageKey="coding"
+              testId="coding-section"
+              empty="No transcripts yet. Add an interview or focus group transcript in Sources, then code it here."
+              workLabel="Coding"
+              sideLabel="Quality and exports"
+              sideEmpty="Quality control and exports appear here once this transcript is coded."
+              summary={`${countOf(documents.filter((d) => d.kind === "transcript").length, "transcript")} · ${codebooksByDocument.size} coded`}
               items={documents
                 .filter((d) => d.kind === "transcript")
                 .map((d) => {
-                  const view = codingAnalysis.get(d.id);
                   const confirmed = transcriptSetups.get(d.id)?.confirmed ?? false;
+                  const coded = codebooksByDocument.has(d.id);
                   return {
                     id: d.id,
                     name: d.source_filename,
-                    meta: codebooksByDocument.has(d.id) ? "Coded" : confirmed ? "Ready to code" : "Needs set-up",
-                    badge: view ? "Analysed" : undefined,
+                    meta: coded ? "Coded" : confirmed ? "Ready to code" : "Not coded",
+                    flag: !coded && !confirmed ? "Needs set-up" : undefined,
                     node: documentCards("transcript", true, d.id, true),
                     side: transcriptSide(d),
                   };
                 })}
-              accents={documents
-                .filter((d) => d.kind === "transcript")
-                .map((d) => DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border)}
-              right={
-                <p className="text-xs text-muted">
-                  Interviews and group discussions. Code the themes in the middle, and the coded themes
-                  flow into Findings.
-                </p>
+              footer={
+                codingAnalysis.size > 1 ? (
+                  <AcrossTranscripts
+                    rows={crossTranscriptThemes(codingAnalysis)}
+                    documentNames={Object.fromEntries(documents.map((d) => [d.id, d.source_filename]))}
+                    runId={id}
+                  />
+                ) : null
               }
             />
-            {codingAnalysis.size > 1 && (
-              <div className="mt-4">
-                <AcrossTranscripts
-                  rows={crossTranscriptThemes(codingAnalysis)}
-                  documentNames={Object.fromEntries(
-                    documents.map((d) => [d.id, d.source_filename]),
-                  )}
-                  runId={id}
-                />
-              </div>
-            )}
           </SectionPanel>
 
           <SectionPanel id="reports">
-            <ThreePane
-              left={
-                <Pane side="left" title="About reports and decks">
-                  <p className="text-sm text-muted">
-                    Written reports and presentations. Extract the claims they make, which are then
-                    checked in Findings.
-                  </p>
-                  <p className="text-xs text-muted">
-                    Add more under Import. Each card has its own Extract findings and Run again
-                    buttons.
-                  </p>
-                </Pane>
+            {moduleBar("reports")}
+            {/* Grant, 2026-10-20: the Sources workspace style, one report at a time. */}
+            <DocumentPicker
+              title="Secondary analysis"
+              chooserLabel="Report or deck"
+              intro="Extract the claims a written report or presentation makes; they are then checked in Findings."
+              howTitle="How Secondary analysis works"
+              how={
+                <>
+                  <p>Extract findings reads the selected report and lists the claims it states. Each becomes a finding, checked against the data in Findings; nothing is read until you press it.</p>
+                  <p>Run again reads the report afresh. Findings from every report and table are reviewed together under Findings.</p>
+                </>
               }
-              middle={
-                <Pane
-                  side="middle"
-                  title="Reports and decks"
-                  badge={
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-muted">
-                      {documents.filter((d) => d.kind === "report").length}
-                    </span>
-                  }
-                >
-                  {!documents.some((d) => d.kind === "report") ? (
-                    <p className="text-sm text-muted">
-                      No reports yet. Add one under Import data.
-                    </p>
-                  ) : (
-                    documentCards("report", true)
-                  )}
-                </Pane>
-              }
-              right={
-                <Pane side="right" title="At a glance">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-border bg-white px-3 py-2">
-                      <div className="text-lg font-semibold text-foreground">
-                        {documents.filter((d) => d.kind === "report").length}
-                      </div>
-                      <div className="text-xs text-muted">Reports and decks</div>
-                    </div>
-                    <div className="rounded-lg border border-border bg-white px-3 py-2">
-                      <div className="text-lg font-semibold text-foreground">
-                        {findings.length}
-                      </div>
-                      <div className="text-xs text-muted">Findings so far</div>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted">
-                    Findings from every report and table are reviewed together under Findings.
-                  </p>
-                </Pane>
-              }
+              findings={findings.length}
+              storageKey="reports"
+              testId="reports-section"
+              empty="No reports yet. Add a report or deck (Word, PDF or PowerPoint) in Sources, then extract its findings here."
+              workLabel="Report"
+              summary={`${countOf(documents.filter((d) => d.kind === "report").length, "report or deck", "reports and decks")} · ${countOf(findings.length, "finding")} so far, from every report and table`}
+              items={documents
+                .filter((d) => d.kind === "report")
+                .map((d) => {
+                  const n = rawFindings.filter((f) => f.source_document_id === d.id).length;
+                  const read = reportReadStats.get(d.id)?.ranAt;
+                  return {
+                    id: d.id,
+                    name: d.source_filename,
+                    meta: n > 0 || read ? `Extracted, ${n} ${n === 1 ? "finding" : "findings"}` : "Not extracted yet",
+                    node: documentCards("report", true, d.id, true),
+                  };
+                })}
             />
           </SectionPanel>
 
           <SectionPanel id="findings">
+            {moduleBar("findings")}
             <h2 className="mb-0.5 text-lg font-semibold text-foreground">
               Findings
             </h2>
@@ -5588,36 +5905,39 @@ export default async function RunPage({
               claims extracted from reports.
             </p>
             {documentsToolbar && <div className="mb-4">{documentsToolbar}</div>}
-            <WorkingDataTabs
-              tabs={[
-                {
-                  id: "findings",
-                  label: `Findings (${findings.length})`,
-                  content: findingsSection,
-                },
-                {
-                  id: "report-claims",
-                  label: `Report claims${statedInsightValidations.length > 0 ? ` (${statedInsightValidations.length})` : ""}`,
-                  content: (
-                    <>
-                      {statedInsightValidationsSection}
-                      <ClaimTableChecks runId={id} />
-                    </>
-                  ),
-                },
-              ]}
+            {/* Grant, 2026-10-21: an overview first, the review and the report claims as tabs. */}
+            <FindingsWorkspace
+              runId={id}
+              findings={findings}
+              wordingEdits={wordingEdits}
+              claims={statedInsightValidations.map((v) => ({ verdict_tier: v.verdict_tier }))}
+              reviewToolbar={findingsToolbar}
+              claimsContent={
+                <Fragment key="findings-claims">
+                  {statedInsightValidationsSection}
+                  <ClaimTableChecks runId={id} />
+                </Fragment>
+              }
             />
           </SectionPanel>
 
 
           <SectionPanel id="synthesized">
+            {moduleBar("synthesized")}
             <h2 className="mb-2 text-lg font-semibold text-foreground">
               Synthesized insights
             </h2>
-            {synthesizedInsightsSection}
+            {/* Grant, 2026-10-21: an overview first, the review as a tab. */}
+            <InsightsWorkspace
+              key={`synthesized-insights-${synthesizedInsights.length}`}
+              runId={id}
+              insights={synthesizedInsights}
+              toolbar={synthesizedToolbar}
+            />
           </SectionPanel>
 
           <SectionPanel id="decisions">
+            {moduleBar("decisions")}
             <h2 className="mb-2 text-lg font-semibold text-foreground">
               Business decisions
             </h2>
@@ -5625,6 +5945,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="recommendations">
+            {moduleBar("recommendations")}
             <h2 className="mb-2 text-lg font-semibold text-foreground">
               Recommendations
             </h2>
@@ -5632,6 +5953,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="insights-report">
+            {moduleBar("insights-report")}
             <h2 className="mb-2 text-lg font-semibold text-foreground">
               Insights report
             </h2>
@@ -5714,17 +6036,15 @@ export default async function RunPage({
                                 {batch.calls.toLocaleString()}
                               </td>
                               <td className="py-1.5 pr-4 text-foreground">
-                                {batch.input_tokens.toLocaleString()}
+                                {(batch.input_tokens + batch.cache_write_tokens + batch.cache_read_tokens).toLocaleString()}
+                                {batch.cache_read_tokens > 0 && <span className="ml-1 text-xs text-muted">{`(${batch.cache_read_tokens.toLocaleString()} from cache)`}</span>}
                               </td>
                               <td className="py-1.5 pr-4 text-foreground">
                                 {batch.output_tokens.toLocaleString()}
                               </td>
                               <td className="py-1.5 pr-4 text-foreground">
                                 $
-                                {estimateCostUsd(
-                                  batch.input_tokens,
-                                  batch.output_tokens,
-                                ).toFixed(3)}
+                                {costOfUsage({ input: batch.input_tokens, output: batch.output_tokens, cacheWrite: batch.cache_write_tokens, cacheRead: batch.cache_read_tokens }).toFixed(3)}
                               </td>
                             </tr>
                           ))}
@@ -5761,17 +6081,15 @@ export default async function RunPage({
                             {row.calls.toLocaleString()}
                           </td>
                           <td className="py-1.5 pr-4 text-foreground">
-                            {row.input_tokens.toLocaleString()}
+                            {(row.input_tokens + row.cache_write_tokens + row.cache_read_tokens).toLocaleString()}
+                            {row.cache_read_tokens > 0 && <span className="ml-1 text-xs text-muted">{`(${row.cache_read_tokens.toLocaleString()} from cache)`}</span>}
                           </td>
                           <td className="py-1.5 pr-4 text-foreground">
                             {row.output_tokens.toLocaleString()}
                           </td>
                           <td className="py-1.5 pr-4 text-foreground">
                             $
-                            {estimateCostUsd(
-                              row.input_tokens,
-                              row.output_tokens,
-                            ).toFixed(3)}
+                            {costOfUsage({ input: row.input_tokens, output: row.output_tokens, cacheWrite: row.cache_write_tokens, cacheRead: row.cache_read_tokens }).toFixed(3)}
                           </td>
                         </tr>
                       ))}
@@ -5784,7 +6102,7 @@ export default async function RunPage({
                         </td>
                         <td className="py-1.5 pr-4">
                           {apiUsage
-                            .reduce((sum, row) => sum + row.input_tokens, 0)
+                            .reduce((sum, row) => sum + row.input_tokens + row.cache_write_tokens + row.cache_read_tokens, 0)
                             .toLocaleString()}
                         </td>
                         <td className="py-1.5 pr-4">
@@ -5794,16 +6112,7 @@ export default async function RunPage({
                         </td>
                         <td className="py-1.5 pr-4">
                           $
-                          {estimateCostUsd(
-                            apiUsage.reduce(
-                              (sum, row) => sum + row.input_tokens,
-                              0,
-                            ),
-                            apiUsage.reduce(
-                              (sum, row) => sum + row.output_tokens,
-                              0,
-                            ),
-                          ).toFixed(3)}
+                          {apiUsage.reduce((sum, row) => sum + costOfUsage({ input: row.input_tokens, output: row.output_tokens, cacheWrite: row.cache_write_tokens, cacheRead: row.cache_read_tokens }), 0).toFixed(3)}
                         </td>
                       </tr>
                     </tbody>
@@ -5841,6 +6150,7 @@ const findingHistoryReasonLabel: Record<string, string> = {
   full_reprocess: "Reprocess all documents",
   manual_reextract: "Manual re-extract",
   wave_recompare: "Wave comparison re-run",
+  source_removed: "Its file was removed",
 };
 
 const findingHistoryStatusLabel: Record<string, string> = {

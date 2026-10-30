@@ -50,7 +50,7 @@ vi.mock("../anthropic", () => ({
         let recommendations = Array.from({ length: count }, (_, i) => rec(i, `Act ${i}`));
         if (model.mode === "partial") recommendations = recommendations.filter((r) => r.index !== 3);
         if (model.mode === "repeat") recommendations = [...recommendations, rec(0, "Repeat of 0"), rec(count - 1, "Repeat of last")];
-        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", input: { recommendations } }] };
+        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "record_recommendations", input: { recommendations } }] };
       }),
     },
   },

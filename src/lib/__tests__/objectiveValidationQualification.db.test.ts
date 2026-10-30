@@ -6,10 +6,11 @@
 // controlled.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { insertSupportedInsight } from "./helpers/supportedInsight";
 import { createDisposableDb, TEST_DATABASE_URL, DISPOSABLE_DB_SKIP_REASON, type DisposableDb } from "./helpers/disposableDb";
 
 const state = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[], withEvidence: "First objective" }));
-vi.mock("../anthropic", () => ({ CLAUDE_MODEL: "synthetic", anthropic: { messages: { create: async () => ({ content: [{ type: "tool_use", input: { validations: state.rows } }], usage: {} }) } } }));
+vi.mock("../anthropic", () => ({ CLAUDE_MODEL: "synthetic", anthropic: { messages: { create: async (req: { tool_choice?: { name?: string } }) => ({ stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice?.name, input: { validations: state.rows } }], usage: {} }) } } }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../objectiveEvidence", async (importOriginal) => {
@@ -31,7 +32,8 @@ describe.skipIf(!TEST_DATABASE_URL)("objective conclusion multiplicity qualifica
     process.env.DATABASE_URL = db.url;
     await db.pool.query("insert into tenants(id,name) values($1,'Synthetic qualification')", [tenant]);
     run = (await db.pool.query("insert into runs(tenant_id,research_objective) values($1,$2) returning id", [tenant, "1. First objective\n2. Second objective"])).rows[0].id;
-    await db.pool.query("insert into synthesized_insights(tenant_id,run_id,headline,observation,tension,implication,review_status) values($1,$2,'Synthetic','Observed','Uncertain','Review','accepted')", [tenant, run]);
+    // B37-F01: an insight a check may cite rests on a finding (an unsupported one is never cited).
+    await insertSupportedInsight(db.pool, tenant, run);
   }, 120000);
   afterAll(async () => { const { pool } = await import("../db"); await pool.end(); await db.drop(); });
 

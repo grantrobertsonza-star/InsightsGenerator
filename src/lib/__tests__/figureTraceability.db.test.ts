@@ -27,6 +27,10 @@ const TENANT = "00000000-0000-4000-8000-0000000000c9";
 const model = vi.hoisted(() => ({ assistant: null as null | Record<string, unknown> }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/narrativeFreshness", async () => await import("../narrativeFreshness"));
+vi.mock("@/lib/evidenceTrail", async () => await import("../evidenceTrail"));
+vi.mock("@/lib/evidenceTrailSlides", async () => await import("../evidenceTrailSlides"));
+vi.mock("@/lib/objectiveCoverage", async () => await import("../objectiveCoverage"));
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/deckSlides", async () => await import("../deckSlides"));
 vi.mock("@/lib/sourceAttribution", async () => await import("../sourceAttribution"));
@@ -152,8 +156,11 @@ describe.skipIf(!TEST_DATABASE_URL)("numerical traceability on every AI-output p
     await q(`insert into tenants (id, name) values ($1, 'T')`, [TENANT]);
   }, 120000);
   afterAll(async () => {
-    const { pool } = await import("../db");
+    // The assistant now takes a capacity slot from the claim pool (RR-F08): both pools are closed
+    // before the database is dropped (Codex RR-M03).
+    const { pool, claimPool } = await import("../db");
     await pool?.end?.();
+    await claimPool?.end?.();
     await db?.drop();
   });
 

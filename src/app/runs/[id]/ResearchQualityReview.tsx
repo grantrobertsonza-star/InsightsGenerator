@@ -1,81 +1,107 @@
 "use client";
 
-// Research Quality Review v1 screen (brief section 2). Presentation and orchestration only: every
-// read and write goes through researchQualityActions, which resolve the tenant and researcher on
-// the server. Opening this section loads the view and makes no model call; only "Start review" and
-// "Retry failed steps" do. A response that arrives after the researcher switched review is
-// dropped (request sequence), so an older answer never overwrites a newer choice.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// Research Quality Review screen. Since 2026-10-20 in the layout of Grant's Research quality
+// prototype, then (the same day) with the document list folded into the top of the review pane, so
+// a third pane can show a criterion's detail:
+//   middle: the document and its review, chosen at the top (the review list is the document's
+//           history: its own reviews and the comparisons it is part of); the review's kind, state and
+//           date; the actions (review as a brief or a proposal, compare with a brief, download, more);
+//           its metadata folded; its failures and retry; then three tabs: Overview (the dashboard,
+//           with a "Show" filter by status), Improvements (in the dashboard's style) and Details;
+//   right:  the detail of the bar, criterion or improvement clicked: a dimension's criteria, or one
+//           criterion with what to improve. (The Criteria tab, a flat filtered list of the same
+//           criteria, was folded into the Overview on Grant's request, 2026-10-22.)
+// Presentation and orchestration only: every read and write goes through researchQualityActions,
+// which resolve the tenant and researcher on the server. Opening the section makes no model call;
+// only a confirmed start, "Retry failed steps" and "Continue review" do. A response that arrives
+// after the researcher switched review is dropped (request sequence), so an older answer never
+// overwrites a newer choice. Reviews made before review kinds stay readable, in their older format.
+import { precisionCheckText } from "@/lib/marginOfError";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   estimateResearchQualityReviewAction,
   loadResearchQualityViewAction,
   purgeResearchQualitySourceAction,
-  recordResearchQualityEntryAction,
   retryResearchQualityReviewAction,
-  saveResearchQualityRolesAction,
   startResearchQualityReviewAction,
 } from "@/lib/researchQualityActions";
 import { Pane, ThreePane } from "./ThreePane";
 import { RQ_PRESELECT_EVENT } from "./ReviewResearchQualityLink";
-import { ROLE_LABEL, SOURCE_ROLES, type ResearcherEntryKind, type SourceRole } from "@/lib/researchQualityTypes";
+import { REVIEW_KIND_LABEL, type ReviewKind } from "@/lib/researchQualityTypes";
 import {
-  FITNESS_LABEL,
-  METHOD_LABEL,
-  SUPPORT_LABEL,
-  alignmentRows,
-  documentationLabel,
-  improvementsByTiming,
-  overview,
-  shownImplication,
-  scorecard,
-  comparisonLabel,
-  CHECKLIST_STATUS_LABEL,
   checklistScoreText,
+  criterionRating,
+  criterionRows,
+  criterionShortLabel,
+  criterionStatus,
+  filterDimensionsByStatus,
+  improvementsByTiming,
+  statusChoices,
+  TIMING_LABEL,
+  reviewStepLabel,
+  scorecard,
+  shownFailedSteps,
+  unverifiedEvidenceNote,
+  retryableInPlace,
+  oneSidedComparisonNote,
 } from "@/lib/researchQualityPresentation";
+import InfoDot from "@/components/InfoDot";
+import type { DashboardView } from "@/lib/researchQualityDashboard";
 import type { ObservationView, ResearchQualityView } from "@/lib/researchQualityView";
 
-// The middle pane's tabs. Documents and History and export live in the right-hand pane, beside
-// the review, as on the other three-pane pages.
-type Tab = "overview" | "alignment" | "improvements" | "clarifications";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "alignment", label: "Alignment" },
-  { id: "improvements", label: "Improvements" },
-  { id: "clarifications", label: "Clarifications" },
-];
+const btn = "rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:bg-slate-50 disabled:opacity-50";
+const primary = "rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover disabled:opacity-50";
 const STATE_LABEL: Record<string, string> = { pending: "starting", running: "running", complete: "complete", partial: "partial", failed: "failed" };
+const STATE_TONE: Record<string, string> = {
+  complete: "bg-emerald-50 text-emerald-800",
+  partial: "bg-amber-50 text-amber-800",
+  failed: "bg-red-50 text-red-700",
+  running: "bg-sky-50 text-sky-800",
+  pending: "bg-sky-50 text-sky-800",
+};
+const REVIEWABLE = /\.(pdf|docx|txt)$/i;
 const key = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "");
-const defaultRoles = (kind: string): SourceRole[] => (kind === "report" ? ["report"] : kind === "instrument" ? ["questionnaire"] : kind === "transcript" ? ["fieldwork"] : ["brief"]);
-const btn = "rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-50";
-const primary = "rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50";
+const reviewLabel = (x: ResearchQualityView["reviews"][number]) => (x.kind ? REVIEW_KIND_LABEL[x.kind] : "Review (older format)");
+
+type Doc = ResearchQualityView["documents"][number];
+type Tab = "overview" | "improvements" | "details";
+
+// A pending start: the kind and documents, shown with its cost estimate until confirmed.
+type Pending = { kind: ReviewKind; documentIds: string[]; estimate: number | null };
+
+/** Only briefs and proposals (Grant 2026-10-19): context files, and any document given either role. */
+function reviewableDocs(view: ResearchQualityView): Doc[] {
+  return view.documents.filter(
+    (d) => REVIEWABLE.test(d.filename) && d.kind !== "instrument" && (d.kind === "evidence" || (d.source?.roles ?? []).some((r) => r === "brief" || r === "proposal")),
+  );
+}
+/** A document's reviews, newest first: its own, the comparisons it is part of, and older-format ones. */
+const reviewsOf = (view: ResearchQualityView, documentId: string) => view.reviews.filter((x) => x.sources.some((s) => s.documentId === documentId));
+const roleOf = (d: Doc) => {
+  const roles = (d.source?.roles ?? []).filter((x) => x === "brief" || x === "proposal");
+  return roles.length === 2 ? "Brief and proposal" : roles[0] === "brief" ? "Brief" : roles[0] === "proposal" ? "Proposal" : "Brief or proposal";
+};
 
 export default function ResearchQualityReview({ runId }: { runId: string }) {
   const [view, setView] = useState<ResearchQualityView | null>(null);
-  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<{ text: string; setup?: boolean } | null>(null);
+  const [reviewId, setReviewId] = useState<string | null>(null);
+  // The document chosen on the left; null until chosen, when the shown review's own document is used.
+  const [docId, setDocId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("overview");
+  // The bar chosen (its criteria on the right), the Overview's "Show" filter, and the criterion
+  // opened from a bar, an item or an improvement (null: the chosen bar's criteria, all of them).
+  const [dimension, setDimension] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [criterion, setCriterion] = useState<string | null>(null);
   // A document chosen through "Review research quality" elsewhere on the page.
-  const [preselectDocumentId, setPreselect] = useState<string | null>(() => {
+  const [highlight, setHighlight] = useState<string | null>(() => {
     try {
       return typeof window === "undefined" ? null : window.sessionStorage.getItem(RQ_PRESELECT_EVENT);
     } catch {
       return null; // storage blocked: no preselection
     }
   });
-  useEffect(() => {
-    try {
-      window.sessionStorage.removeItem(RQ_PRESELECT_EVENT);
-    } catch {
-      // storage blocked
-    }
-    const on = (e: Event) => {
-      setPreselect((e as CustomEvent<string>).detail);
-      setStarting(true);
-    };
-    window.addEventListener(RQ_PRESELECT_EVENT, on);
-    return () => window.removeEventListener(RQ_PRESELECT_EVENT, on);
-  }, []);
-  const [error, setError] = useState<{ text: string; setup?: boolean } | null>(null);
-  const [reviewId, setReviewId] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("overview");
   const seq = useRef(0);
 
   const load = useCallback(
@@ -92,101 +118,116 @@ export default function ResearchQualityReview({ runId }: { runId: string }) {
     [runId],
   );
   useEffect(() => {
+    try {
+      window.sessionStorage.removeItem(RQ_PRESELECT_EVENT);
+    } catch {
+      // storage blocked
+    }
+    const on = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      setHighlight(id);
+      setDocId(id);
+    };
+    window.addEventListener(RQ_PRESELECT_EVENT, on);
+    return () => window.removeEventListener(RQ_PRESELECT_EVENT, on);
+  }, []);
+  useEffect(() => {
     // Loading the view is the effect's purpose (an external read); its state update is async.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load(reviewId);
   }, [load, reviewId]);
   const running = view?.review && (view.review.state === "pending" || view.review.state === "running");
+  // A retry or continue starts the run in the background, after the action has answered, so the
+  // review can still read failed or partial when the page reloads straight after it. The page then
+  // keeps reading it (for up to two minutes) until the run shows as running, and from there follows
+  // it as any run; without this, a retry that succeeded left the failure on screen (found with
+  // Codex RQ-F01's recovery check).
+  const [following, setFollowing] = useState(false);
+  const live = running || following;
   useEffect(() => {
-    if (!running) return;
+    if (!live) return;
     const t = setInterval(() => void load(reviewId), 4000);
     return () => clearInterval(t);
-  }, [running, load, reviewId]);
+  }, [live, load, reviewId]);
+  useEffect(() => {
+    if (!following) return;
+    const t = setTimeout(() => setFollowing(false), 120_000);
+    return () => clearTimeout(t);
+  }, [following]);
+  useEffect(() => {
+    // Once the run is seen running, the ordinary polling above follows it to the end.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (running) setFollowing(false);
+  }, [running]);
 
   if (error?.setup) return <p role="alert" className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">{error.text}</p>;
   if (!view) return <p className="text-sm text-muted">{error ? error.text : "Loading..."}</p>;
-  const showStart = starting || !view.review;
-  const r = view.review;
+  const docs = reviewableDocs(view);
+  // The document shown: the one chosen, else one highlighted from Import, else the shown review's own,
+  // else the first. A chosen document that has gone (deleted) falls back the same way.
+  const fallback = (highlight && docs.find((d) => d.id === highlight)?.id) ?? view.review?.sources.find((s) => docs.some((d) => d.id === s.documentId))?.documentId ?? docs[0]?.id ?? null;
+  const doc = docs.find((d) => d.id === docId) ?? docs.find((d) => d.id === fallback) ?? null;
+  // The loaded review belongs on the right only while its document is the one shown.
+  const review = doc && view.review && view.review.sources.some((s) => s.documentId === doc.id) ? view.review : null;
+  const openReview = (id: string) => {
+    setCriterion(null);
+    setDimension("all");
+    setStatus("all");
+    setReviewId(id);
+  };
+  const chooseDoc = (d: Doc) => {
+    setDocId(d.id);
+    const latest = reviewsOf(view, d.id)[0];
+    // Compared with the review last requested, not the one still on screen (Codex IR-11,
+    // 2026-10-20): switching A, B, A before B's read returned left A unrequested, and B's late
+    // answer then showed "No review yet" for A. Requesting it again makes it the newest load, so the
+    // older one is dropped by the request counter in load().
+    const requested = reviewId ?? view.review?.id ?? null;
+    if (latest && latest.id !== requested) openReview(latest.id);
+  };
   return (
     <div data-testid="research-quality">
       <ThreePane
-        storageKey="research-quality"
-        left={
-          <Pane side="left" title="Reviews" badge={view.reviews.length > 0 ? <span className="rounded-full bg-white px-2 text-xs text-muted">{view.reviews.length}</span> : undefined}>
-            <p className="text-xs text-muted">
-              AI judgements about the documents you select, checked by code and reviewed by you. Not a score or a certification. The text of reviewed documents is kept with the review history,
-              even if the project document is later deleted, until you purge it under Documents.
-            </p>
-            <button className={`${primary} w-fit`} disabled={showStart} onClick={() => setStarting(true)}>
-              {view.reviews.length === 0 ? "Start a review" : "New review version"}
-            </button>
-            {view.reviews.length > 0 && (
-              <ul aria-label="Review versions" className="flex flex-col gap-1">
-                {view.reviews.map((x) => {
-                  const active = !showStart && r?.id === x.id;
-                  return (
-                    <li key={x.id}>
-                      <button
-                        aria-current={active ? "true" : undefined}
-                        onClick={() => { setStarting(false); setReviewId(x.id); }}
-                        className={`w-full rounded-md border px-2 py-1.5 text-left text-xs ${active ? "border-primary bg-white font-medium text-foreground" : "border-transparent hover:border-border hover:bg-white"}`}
-                      >
-                        {`Review ${x.sequence}`}
-                        <span className="ml-1 text-muted">{`${STATE_LABEL[x.state] ?? x.state}, ${x.createdAt.slice(0, 10)}`}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Pane>
-        }
+        storageKey="research-quality-v4"
+        wideRight
         middle={
-          <Pane side="middle" title={showStart ? (view.reviews.length === 0 ? "Start a review" : "New review version") : `Review ${r!.sequence}`}>
-            {error && <p role="alert" className="rounded-md bg-red-50 p-2 text-sm text-red-800">{error.text}</p>}
-            {showStart ? (
-              <StartPanel
-                key={preselectDocumentId ?? "none"}
+          <section className="overflow-hidden rounded-xl border-2 border-border bg-white lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto" aria-label="Selected review">
+            {error && <p role="alert" className="m-5 mb-0 rounded-md bg-red-50 p-2 text-sm text-red-800">{error.text}</p>}
+            {doc ? (
+              <ReviewDetail
                 runId={runId}
                 view={view}
-                preselect={preselectDocumentId}
-                onCancel={view.review ? () => setStarting(false) : null}
+                docs={docs}
+                doc={doc}
+                review={review}
+                picker={<DocumentPicker view={view} docs={docs} doc={doc} highlight={highlight} activeReviewId={review?.id ?? null} onChoose={chooseDoc} onOpen={openReview} />}
+                tab={tab}
+                setTab={setTab}
+                dimension={dimension}
+                setDimension={setDimension}
+                status={status}
+                setStatus={setStatus}
+                criterion={criterion}
+                setCriterion={setCriterion}
                 onStarted={(id) => {
-                  setStarting(false);
-                  setReviewId(id);
+                  setHighlight(null);
                   setTab("overview");
-                  void load(id);
+                  openReview(id);
                 }}
+                reload={() => load(reviewId)}
+                follow={() => setFollowing(true)}
               />
             ) : (
-              <>
-                <div role="tablist" className="flex flex-wrap gap-1 border-b border-border">
-                  {TABS.map((t) => (
-                    <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={`px-2.5 py-1.5 text-xs font-medium ${tab === t.id ? "border-b-2 border-primary text-foreground" : "text-muted"}`}>
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-                <ReviewBody runId={runId} view={view} tab={tab} reload={() => load(reviewId)} />
-              </>
+              <p className="p-5 text-sm text-muted">No briefs or proposals yet. Add one under Import data as a Brief or a Proposal; Word, PDF and text files can be reviewed.</p>
             )}
-          </Pane>
+          </section>
         }
         right={
-          <Pane side="right" title={r && !showStart ? "Documents and export" : "Documents"}>
-            {r && !showStart ? (
-              <>
-                <h4 className="text-xs font-semibold text-foreground">Documents in this project</h4>
-                <DocumentsTab runId={runId} view={view} reload={() => load(reviewId)} />
-                <h4 className="mt-2 text-xs font-semibold text-foreground">History and export</h4>
-                <HistoryTab runId={runId} view={view} />
-              </>
+          <Pane side="plain" title="Criterion details">
+            {review ? (
+              <CriterionPanel view={view} dimension={dimension} criterion={criterion} improvementFirst={tab === "improvements"} />
             ) : (
-              <p className="text-xs text-muted">
-                {view.documents.length === 0
-                  ? "No documents yet. Add a brief, proposal, questionnaire or report under Import data; PDF, Word and text files can be reviewed."
-                  : "Select documents and their roles in the middle. After a review, each document's versions, roles and purge control appear here, with the review history and the Word export."}
-              </p>
+              <p className="text-xs text-muted">Choose a bar or a criterion of a review to see its question, the reasons for its rating, the document&apos;s own words and what to improve.</p>
             )}
           </Pane>
         }
@@ -195,638 +236,857 @@ export default function ResearchQualityReview({ runId }: { runId: string }) {
   );
 }
 
-// ---------------------------------------------------------------- start
+// ---------------------------------------------------------------- the document and review pickers
 
-function StartPanel({ runId, view, preselect, onCancel, onStarted }: { runId: string; view: ResearchQualityView; preselect: string | null; onCancel: (() => void) | null; onStarted: (id: string) => void }) {
-  const reviewable = view.documents.filter((d) => /\.(pdf|docx|txt)$/i.test(d.filename));
-  const [picked, setPicked] = useState<Record<string, SourceRole[]>>(() => {
-    const init: Record<string, SourceRole[]> = {};
-    for (const d of reviewable) if (d.id === preselect || (!preselect && d.source)) init[d.id] = d.source?.roles ?? defaultRoles(d.kind);
-    return init;
-  });
-  const [mode, setMode] = useState<"improve_planned" | "review_documented">("review_documented");
-  const [studyType, setStudyType] = useState("unclear");
-  const [purpose, setPurpose] = useState("");
-  const [decisionIds, setDecisionIds] = useState<string[]>(view.candidates.decisions.map((d) => d.id));
-  const [objectiveIds, setObjectiveIds] = useState<string[]>(view.candidates.objectives.map((o) => o.id));
-  const [extraDecisions, setExtraDecisions] = useState("");
-  const [confirm, setConfirm] = useState<{ estimate: number | null } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const requestKey = useRef(key());
-  const chosen = Object.entries(picked);
-  const chars = chosen.reduce((n, [id]) => n + (view.documents.find((d) => d.id === id)?.source?.currentVersion?.charCount ?? 20_000), 0);
-
-  const decisions = [
-    ...view.candidates.decisions.filter((d) => decisionIds.includes(d.id)).map((d) => ({ decisionId: d.id, text: d.text })),
-    ...extraDecisions.split("\n").map((t) => t.trim()).filter(Boolean).map((text) => ({ decisionId: null, text })),
-  ];
-  const objectives = view.candidates.objectives.filter((o) => objectiveIds.includes(o.id)).map((o) => ({ objectiveId: o.id, text: o.text }));
-
-  async function review() {
-    setErr(null);
-    if (chosen.length === 0) return setErr("Select at least one document. A brief on its own is enough to start.");
-    if (chosen.some(([, roles]) => roles.length === 0)) return setErr("Give every selected document at least one role.");
-    const e = await estimateResearchQualityReviewAction(chars, chosen.length).catch(() => null);
-    setConfirm({ estimate: e && e.ok ? e.estimateUsd : null });
-  }
-  async function start() {
-    setBusy(true);
-    setErr(null);
-    const r = await startResearchQualityReviewAction(runId, {
-      requestKey: requestKey.current,
-      mode,
-      studyType,
-      purpose,
-      sources: chosen.map(([documentId, roles]) => ({ documentId, roles })),
-      decisions,
-      objectives,
-    }).catch(() => ({ ok: false as const, error: "The connection to the server was interrupted, so the review may not have started. Check History before trying again." }));
-    setBusy(false);
-    if (!r.ok) return setErr(r.error);
-    requestKey.current = key();
-    onStarted(r.reviewId);
-  }
-
+/**
+ * The document and its review, chosen at the top of the review pane (Grant, 2026-10-20: the left
+ * pane folded into the top of the second, so the third can show a criterion's detail). The review
+ * list is the document's history, newest first: its own reviews and the comparisons it is part of.
+ */
+function DocumentPicker({
+  view,
+  docs,
+  doc,
+  highlight,
+  activeReviewId,
+  onChoose,
+  onOpen,
+}: {
+  view: ResearchQualityView;
+  docs: Doc[];
+  doc: Doc;
+  highlight: string | null;
+  activeReviewId: string | null;
+  onChoose: (d: Doc) => void;
+  onOpen: (reviewId: string) => void;
+}) {
+  const mine = reviewsOf(view, doc.id);
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-3" aria-label="Start a research quality review">
-      <h3 className="text-sm font-semibold">{view.review ? "New review version" : "Start a research quality review"}</h3>
-      {reviewable.length === 0 ? (
-        <p className="text-sm text-muted">Add a brief, proposal, questionnaire, methodology or report under Import data first (PDF, Word or plain text). A brief on its own is enough.</p>
-      ) : (
-        <fieldset className="flex flex-col gap-2">
-          <legend className="text-xs font-medium">Documents and their roles</legend>
-          {reviewable.map((d) => {
-            const on = d.id in picked;
-            return (
-              <div key={d.id} className="rounded border border-border p-2 text-xs" data-document-id={d.id}>
-                <label className="flex items-center gap-2 font-medium">
-                  <input type="checkbox" checked={on} onChange={(e) => setPicked((p) => { const n = { ...p }; if (e.target.checked) n[d.id] = d.source?.roles ?? defaultRoles(d.kind); else delete n[d.id]; return n; })} />
-                  {d.filename}
-                </label>
-                {on && (
-                  <div className="mt-1 flex flex-wrap gap-2 pl-6">
-                    {SOURCE_ROLES.map((role) => (
-                      <label key={role} className="flex items-center gap-1">
-                        <input type="checkbox" checked={picked[d.id].includes(role)} onChange={(e) => setPicked((p) => ({ ...p, [d.id]: e.target.checked ? [...p[d.id], role] : p[d.id].filter((x) => x !== role) }))} />
-                        {ROLE_LABEL[role]}
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </fieldset>
-      )}
-      {view.documents.length > reviewable.length && <p className="text-xs text-muted">Data tables, spreadsheets and slide decks cannot be reviewed for research quality in this version.</p>}
-      <div className="flex flex-wrap gap-4 text-xs">
-        <fieldset>
-          <legend className="font-medium">Review mode</legend>
-          <label className="mr-3"><input type="radio" name="rq-mode" checked={mode === "improve_planned"} onChange={() => setMode("improve_planned")} /> Improve a planned study</label>
-          <label><input type="radio" name="rq-mode" checked={mode === "review_documented"} onChange={() => setMode("review_documented")} /> Review a documented study</label>
-        </fieldset>
-        <label className="flex flex-col">
-          <span className="font-medium">Study type</span>
-          <select aria-label="Study type" value={studyType} onChange={(e) => setStudyType(e.target.value)} className="rounded border border-border px-1 py-0.5">
-            <option value="unclear">Not sure</option>
-            <option value="quantitative">Quantitative</option>
-            <option value="qualitative">Qualitative</option>
-            <option value="mixed">Mixed methods</option>
+    <div className="flex flex-col gap-2 border-b border-border bg-slate-50 px-5 py-3" data-testid="rq-picker" data-document-id={doc.id} data-highlight={highlight === doc.id ? "true" : "false"}>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted">
+          {`Document (${docs.length})`}
+          <select
+            aria-label="Document"
+            value={doc.id}
+            onChange={(e) => {
+              const d = docs.find((x) => x.id === e.target.value);
+              if (d) onChoose(d);
+            }}
+            className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm text-foreground"
+          >
+            {docs.map((d) => (
+              <option key={d.id} value={d.id}>
+                {`${d.filename} · ${roleOf(d)}`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted">
+          {`Review (${mine.length} of this document)`}
+          <select
+            aria-label="Review"
+            value={activeReviewId ?? ""}
+            disabled={mine.length === 0}
+            onChange={(e) => e.target.value && onOpen(e.target.value)}
+            className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm text-foreground disabled:text-muted"
+          >
+            {mine.length === 0 && <option value="">No review yet</option>}
+            {mine.map((x) => (
+              <option key={x.id} value={x.id}>
+                {`${x.kind === "proposal_vs_brief" ? "Proposal against brief" : reviewLabel(x)} · No. ${x.sequence} · ${x.createdAt.slice(0, 10)} · ${STATE_LABEL[x.state] ?? x.state}`}
+              </option>
+            ))}
           </select>
         </label>
       </div>
-      <label className="flex flex-col text-xs">
-        <span className="font-medium">Purpose of the research (what it is for)</span>
-        <textarea aria-label="Purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={2} className="rounded border border-border p-1.5" />
-      </label>
-      <fieldset className="text-xs">
-        <legend className="font-medium">Decisions it should inform</legend>
-        {view.candidates.decisions.map((d) => (
-          <label key={d.id} className="block"><input type="checkbox" checked={decisionIds.includes(d.id)} onChange={(e) => setDecisionIds((x) => (e.target.checked ? [...x, d.id] : x.filter((y) => y !== d.id)))} /> {d.text}</label>
-        ))}
-        <textarea aria-label="Other decisions, one per line" placeholder="Other decisions, one per line" value={extraDecisions} onChange={(e) => setExtraDecisions(e.target.value)} rows={2} className="mt-1 w-full rounded border border-border p-1.5" />
-      </fieldset>
-      {view.candidates.objectives.length > 0 && (
-        <fieldset className="text-xs">
-          <legend className="font-medium">Accepted objectives to check against</legend>
-          {view.candidates.objectives.map((o) => (
-            <label key={o.id} className="block"><input type="checkbox" checked={objectiveIds.includes(o.id)} onChange={(e) => setObjectiveIds((x) => (e.target.checked ? [...x, o.id] : x.filter((y) => y !== o.id)))} /> {o.text}</label>
-          ))}
-        </fieldset>
-      )}
-      {err && <p role="alert" className="rounded bg-red-50 p-2 text-xs text-red-800">{err}</p>}
-      {confirm ? (
-        <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs" aria-label="Review scope">
-          <p>
-            {chosen.length} document(s). Each is read up to 40,000 characters (120,000 in total); anything longer is a labelled partial review. About {Math.max(1, Math.ceil(chars / 20_000)) + 4} model calls,
-            each tried at most twice. Estimated cost {confirm.estimate === null ? "unknown" : `about US$${confirm.estimate.toFixed(2)}`} (an estimate, not a limit; actual cost is recorded).
-          </p>
-          <div className="mt-2 flex gap-2">
-            <button className={primary} disabled={busy} onClick={start}>{busy ? "Starting..." : "Start review"}</button>
-            <button className={btn} onClick={() => setConfirm(null)}>Back</button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex gap-2">
-          <button className={primary} onClick={review} disabled={reviewable.length === 0}>Review selected material</button>
-          {onCancel && <button className={btn} onClick={onCancel}>Cancel</button>}
-        </div>
-      )}
+      <p className="text-[11px] text-muted">
+        <span data-testid="rq-doc-role">{roleOf(doc)}</span>
+        {doc.source?.currentVersion ? (doc.source.currentVersion.purged ? " · kept text removed" : " · text kept for its reviews") : " · not reviewed yet"}
+        {" · AI ratings of how well the document is written against good research practice, checked by code against its own words; a guide to what to improve, not a certification."}
+        {/* Deleted documents in the same paragraph, to keep the block short (Grant, 2026-10-20). */}
+        {view.detachedSources.map((s) => ` ${s.filename ?? "A document"} was deleted from the project; its reviews stay readable${s.purged ? " (text removed)" : ""}.`).join("")}
+      </p>
     </div>
   );
 }
 
-// ---------------------------------------------------------------- review body
+// ---------------------------------------------------------------- right: the selected review
 
-function ReviewBody({ runId, view, tab, reload }: { runId: string; view: ResearchQualityView; tab: Tab; reload: () => Promise<void> }) {
-  const r = view.review!;
-  const ov = useMemo(() => overview(r.observations), [r.observations]);
-  const [retryMsg, setRetryMsg] = useState<string | null>(null);
-  const failedSteps = (r.coverage.tasks ?? []).filter((t) => t.status === "failed");
+const readOf = (s: { assessedRanges: { start: number; end: number }[] }) => s.assessedRanges.reduce((n, x) => n + (x.end - x.start), 0);
+
+function ReviewDetail({
+  runId,
+  view,
+  docs,
+  doc,
+  review,
+  picker,
+  tab,
+  setTab,
+  dimension,
+  setDimension,
+  status,
+  setStatus,
+  criterion,
+  setCriterion,
+  onStarted,
+  reload,
+  follow,
+}: {
+  runId: string;
+  view: ResearchQualityView;
+  docs: Doc[];
+  doc: Doc;
+  review: ResearchQualityView["review"];
+  picker: React.ReactNode;
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  dimension: string;
+  setDimension: (d: string) => void;
+  status: string;
+  setStatus: (s: string) => void;
+  criterion: string | null;
+  setCriterion: (c: string | null) => void;
+  onStarted: (id: string) => void;
+  reload: () => Promise<void>;
+  follow: () => void;
+}) {
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [briefId, setBriefId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
+  const charsOf = (id: string) => view.documents.find((d) => d.id === id)?.source?.currentVersion?.charCount ?? null;
+  const nameOf = (id: string | null) => view.documents.find((d) => d.id === id)?.filename ?? "a removed document";
+  // The brief to compare this document with: any other brief or proposal, a recorded brief first.
+  const briefs = docs.filter((d) => d.id !== doc.id).sort((a, b) => Number((b.source?.roles ?? []).includes("brief")) - Number((a.source?.roles ?? []).includes("brief")));
+  const chosenBrief = briefs.some((b) => b.id === briefId) ? briefId : (briefs[0]?.id ?? "");
+
+  async function ask(kind: ReviewKind, documentIds: string[]) {
+    setMsg(null);
+    const chars = documentIds.map(charsOf);
+    // The length is known once a document has been read for a review; otherwise no figure is shown.
+    const known = chars.every((c) => c !== null);
+    const est = known ? await estimateResearchQualityReviewAction(chars.reduce<number>((n, c) => n + (c ?? 0), 0), documentIds.length).catch(() => null) : null;
+    setPending({ kind, documentIds, estimate: est && est.ok ? est.estimateUsd : null });
+  }
+  async function start() {
+    if (!pending) return;
+    setBusy(true);
+    const res = await startResearchQualityReviewAction(runId, { requestKey: key(), kind: pending.kind, sources: pending.documentIds.map((documentId) => ({ documentId })) }).catch(() => ({
+      ok: false as const,
+      error: "The connection to the server was interrupted, so the review may not have started. Reload to see.",
+    }));
+    setBusy(false);
+    if (!res.ok) return setMsg({ text: res.error, error: true });
+    setPending(null);
+    onStarted(res.reviewId);
+  }
+  const isBrief = (doc.source?.roles ?? []).includes("brief") && !(doc.source?.roles ?? []).includes("proposal");
+  // The highlighted action is the one in play (Grant, 2026-10-22: choosing Review brief left Review
+  // proposal blue): the choice waiting for confirmation, else the shown review's kind, else what the
+  // document's recorded role suggests.
+  const chosen: ReviewKind = pending?.kind ?? review?.kind ?? (isBrief ? "brief" : "proposal");
   return (
-    <div className="flex flex-col gap-3">
-      <div data-testid="rq-review-state" data-state={r.state} className={`rounded-md p-2 text-xs ${r.state === "complete" ? "bg-emerald-50 text-emerald-900" : r.state === "failed" ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900"}`}>
-        {(r.state === "pending" || r.state === "running") && !r.progress.interrupted
-          ? `Reviewing the selected material: ${r.progress.done} of ${r.progress.total} steps done${r.progress.failed ? `, ${r.progress.failed} failed` : ""}. Each step can take a minute or two; this page updates by itself.`
-          : null}
-        {r.progress.interrupted && (
-          <div data-testid="rq-review-interrupted">
-            {`Review ${r.sequence} stopped before it finished (${r.progress.done} of ${r.progress.total} steps done), most likely because the server restarted. Nothing done so far is lost.`}
-            <button className={`${btn} ml-2`} onClick={async () => { const x = await retryResearchQualityReviewAction(runId, r.id); setRetryMsg(x.ok ? "Continuing the review from where it stopped." : x.error); await reload(); }}>
-              Continue review
-            </button>
-          </div>
-        )}
-        {r.state === "complete" ? `Review ${r.sequence} is complete.` : null}
-        {r.state === "partial" ? `Review ${r.sequence} is partial: ${failedSteps.length} step(s) failed. What is shown was assessed; the rest is listed as not assessed.` : null}
-        {r.state === "failed" ? `Review ${r.sequence} failed: nothing could be assessed.` : null}
-        {r.syntheticReferences && <span className="ml-2 font-semibold">Synthetic test references in use, not methodological standards.</span>}
-        {failedSteps.length > 0 && (
-          <div className="mt-1">
-            {failedSteps.map((t) => (
-              <div key={t.key}>{`${t.key}: ${t.error ?? "failed"} (attempt ${t.attempts} of ${t.maxAttempts})`}</div>
-            ))}
-            {failedSteps.some((t) => t.attempts < t.maxAttempts) && (
-              <button className={`${btn} mt-1`} onClick={async () => { const x = await retryResearchQualityReviewAction(runId, r.id); setRetryMsg(x.ok ? "Retrying the failed steps only." : x.error); await reload(); }}>
-                Retry failed steps
-              </button>
+    <div className="flex flex-col">
+      {picker}
+      <div className="flex flex-col gap-3 px-5 pb-4 pt-5" data-testid="rq-selected">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Selected review</p>
+          <h3 className="text-xl font-semibold text-foreground">{review ? (review.kind === "proposal_vs_brief" ? "Proposal against brief" : reviewLabel(review)) : "No review yet"}</h3>
+          {/* The file name, the review's state and its number on one line (Grant, 2026-10-22). */}
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="break-words text-sm text-foreground">{review ? review.manifest.sources.map((s) => s.filename).join(" against ") : doc.filename}</span>
+            {review && (
+              <>
+                <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATE_TONE[review.state] ?? "bg-slate-100 text-slate-600"}`} data-testid="rq-state-chip">
+                  {review.progress.interrupted ? "interrupted" : (STATE_LABEL[review.state] ?? review.state)}
+                </span>
+                <span className="text-xs text-muted">{`No. ${review.sequence} · ${review.createdAt.slice(0, 10)}${review.createdBy ? ` · ${review.createdBy}` : ""}`}</span>
+              </>
             )}
-            {retryMsg && <div>{retryMsg}</div>}
+          </p>
+          {!review && <p className="mt-1 text-xs text-muted">Review it as a brief or a proposal: a score for each part of good practice, an overall score and, for each part, what to improve.</p>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Review actions">
+          <button className={chosen === "brief" ? primary : btn} aria-pressed={chosen === "brief"} disabled={busy} onClick={() => void ask("brief", [doc.id])}>
+            Review brief
+          </button>
+          <button className={chosen === "proposal" ? primary : btn} aria-pressed={chosen === "proposal"} disabled={busy} onClick={() => void ask("proposal", [doc.id])}>
+            Review proposal
+          </button>
+          <button className={chosen === "proposal_vs_brief" ? primary : btn} aria-pressed={chosen === "proposal_vs_brief"} disabled={busy || briefs.length === 0} title={briefs.length === 0 ? "Add a brief to compare this proposal with" : undefined} onClick={() => void ask("proposal_vs_brief", [doc.id, chosenBrief])}>
+            Compare with brief
+          </button>
+          {review && (
+            <a className={btn} href={`/api/runs/${runId}/research-quality/export?review=${review.id}`} download>
+              Download review (Word)
+            </a>
+          )}
+          <details className="relative">
+            <summary className={`${btn} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>More actions</summary>
+            <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-border bg-white p-2 text-xs shadow-lg">
+              {doc.source?.currentVersion && !doc.source.currentVersion.purged ? (
+                <button
+                  type="button"
+                  className="w-full rounded-md px-2 py-1 text-left text-danger hover:bg-slate-50"
+                  onClick={async () => {
+                    if (!window.confirm(`Permanently remove the copy of ${doc.filename}'s text kept with its reviews? Quotes from it are removed and cannot be recovered. The project document itself is not affected.`)) return;
+                    const x = await purgeResearchQualitySourceAction(runId, doc.source!.sourceId);
+                    setMsg(x.ok ? { text: `Removed ${x.versions} kept version(s) of ${doc.filename}.`, error: false } : { text: x.error, error: true });
+                    await reload();
+                  }}
+                >
+                  Remove kept text
+                </button>
+              ) : (
+                <p className="px-2 py-1 text-muted">No kept text to remove for this document.</p>
+              )}
+            </div>
+          </details>
+        </div>
+        {pending && (
+          <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-white p-3 text-xs" data-testid="rq-confirm">
+            {pending.kind === "proposal_vs_brief" && (
+              <label className="flex flex-wrap items-center gap-2">
+                <span className="text-muted">Brief to compare with</span>
+                <select
+                  aria-label="Brief to compare"
+                  value={pending.documentIds[1]}
+                  onChange={(e) => {
+                    setBriefId(e.target.value);
+                    void ask("proposal_vs_brief", [doc.id, e.target.value]);
+                  }}
+                  className="rounded-md border border-border px-2 py-1"
+                >
+                  {briefs.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.filename}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <p>
+              {`${REVIEW_KIND_LABEL[pending.kind]} of ${pending.documentIds.map(nameOf).join(" against ")}. ${
+                pending.estimate === null ? "Cost depends on length; a typical brief or proposal costs well under US$1." : `Estimated cost US$${pending.estimate.toFixed(2)}.`
+              } The whole document is read.`}
+            </p>
+            <div className="flex gap-2">
+              <button className={primary} disabled={busy} onClick={() => void start()}>
+                {busy ? "Starting..." : "Start review"}
+              </button>
+              <button className={btn} disabled={busy} onClick={() => setPending(null)}>
+                Cancel
+              </button>
+            </div>
           </div>
         )}
-        {r.newClarifications > 0 && <div className="mt-1">{r.newClarifications} clarification(s) were added after this review; start a new review version to include them.</div>}
+        {msg && (
+          <p role={msg.error ? "alert" : "status"} className={`text-xs ${msg.error ? "text-red-800" : "text-emerald-800"}`}>
+            {msg.text}
+          </p>
+        )}
+        {review && <PartlyReadNotes review={review} />}
+        {/* Keyed by state, so a retry's "Retrying..." note goes once the review has moved on. */}
+        {review && <ReviewState key={`${review.id}:${review.state}`} runId={runId} review={review} reload={reload} follow={follow} />}
       </div>
-      {tab === "overview" && (
+      {review && (
         <>
-          <ChecklistGrid view={view} />
-          <h4 className="mt-2 text-xs font-semibold text-foreground">Assessment by criterion</h4>
-          <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
-            <Stat label="Documented strengths" n={ov.strengths.length} />
-            <Stat label="Concerns" n={ov.concerns.length} />
-            <Stat label="Documentation gaps" n={ov.gaps.length} />
-            <Stat label="Decision implications" n={ov.decisionImplications.length} />
+          <div role="tablist" aria-label="Parts of the review" className="flex gap-6 border-b border-border px-5">
+            {(
+              [
+                ["overview", "Overview"],
+                ["improvements", "Improvements"],
+                ["details", "Details"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                id={`rq-tab-${id}`}
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+                className={`-mb-px border-b-2 py-2.5 text-sm font-medium ${tab === id ? "border-primary text-primary" : "border-transparent text-muted hover:text-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          <p className="text-xs text-muted">{`${ov.awaitingReview} awaiting your review. ${ov.requiresReview} need review because a source changed or could not be checked.`}</p>
-          <SourceFreshness view={view} />
-          <Scorecard view={view} />
-          {r.manifest.criteria.filter((c) => c.status !== "selected").length > 0 && (
-            <details className="text-xs">
-              <summary>Criteria not assessed in this review</summary>
-              <ul className="list-disc pl-5">{r.manifest.criteria.filter((c) => c.status !== "selected").map((c) => <li key={c.criterionId}>{`${c.criterionId} (${c.status}): ${c.reason}`}</li>)}</ul>
-            </details>
-          )}
-          {r.observations.length === 0 && r.state !== "running" && r.state !== "pending" && <p className="text-sm text-muted">No observations were published.</p>}
-          {r.observations.map((o) => <ObservationCard key={o.versionId} runId={runId} o={o} view={view} reload={reload} />)}
+          <div className="p-5">
+            <div role="tabpanel" aria-labelledby="rq-tab-overview" className={tab === "overview" ? "flex flex-col gap-3" : "hidden"}>
+              <StatusFilter
+                view={view}
+                status={status}
+                onChange={(s) => {
+                  setStatus(s);
+                  setDimension("all");
+                  setCriterion(null);
+                }}
+              />
+              {review.kind ? (
+                <>
+                  {review.dashboards.map((d) => (
+                    <Dashboard
+                      key={d.dashboardId}
+                      d={d}
+                      status={status}
+                      selected={dimension === "all" ? null : dimension}
+                      selectedCriterion={criterion}
+                      onSelect={(id) => {
+                        setDimension(id);
+                        setCriterion(null);
+                      }}
+                      onSelectCriterion={(dimensionId, criterionId) => {
+                        setDimension(dimensionId);
+                        setCriterion(criterionId);
+                      }}
+                    />
+                  ))}
+                  {review.dashboards.length === 0 && review.state !== "running" && review.state !== "pending" && <p className="text-xs text-muted">Nothing could be rated.</p>}
+                </>
+              ) : (
+                <LegacyReview
+                  view={view}
+                  status={status}
+                  selected={criterion}
+                  onSelect={(id) => setCriterion(id)}
+                />
+              )}
+            </div>
+            <div role="tabpanel" aria-labelledby="rq-tab-improvements" className={tab === "improvements" ? "" : "hidden"}>
+              <Improvements
+                view={view}
+                selected={criterion}
+                onSelect={(criterionId) => {
+                  setDimension("all");
+                  setCriterion(criterionId);
+                }}
+              />
+            </div>
+            <div role="tabpanel" aria-labelledby="rq-tab-details" className={tab === "details" ? "" : "hidden"}>
+              <ReviewMetadata review={review} />
+            </div>
+          </div>
         </>
       )}
-      {tab === "alignment" && <AlignmentTab view={view} />}
-      {tab === "improvements" && <ImprovementsTab view={view} />}
-      {tab === "clarifications" && <ClarificationsTab runId={runId} view={view} reload={reload} />}
     </div>
   );
 }
 
-const STATUS_CHIP: Record<string, string> = {
-  present: "bg-emerald-100 text-emerald-900",
-  partial: "bg-amber-100 text-amber-900",
-  absent: "bg-red-100 text-red-900",
-  not_assessed: "bg-slate-100 text-slate-700",
-};
-const BAND_CHIP: Record<string, string> = { strong: "bg-emerald-100 text-emerald-900", workable: "bg-amber-100 text-amber-900", weak: "bg-red-100 text-red-900" };
+/** Sources the reviewer read only in part: shown above the tabs, as they limit what was rated. */
+function PartlyReadNotes({ review }: { review: NonNullable<ResearchQualityView["review"]> }) {
+  return (
+    <>
+      {review.manifest.sources
+        .filter((s) => readOf(s) < s.charCount)
+        .map((s) => (
+          <p key={s.sourceId} className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">{`${s.filename}: only the first ${readOf(s).toLocaleString("en-GB")} of ${s.charCount.toLocaleString("en-GB")} characters were read, so later sections are not rated.`}</p>
+        ))}
+    </>
+  );
+}
+
+/** Who ran the review, on what, under which releases: its own tab (Grant, 2026-10-20), as it is for checking rather than reading. */
+function ReviewMetadata({ review }: { review: NonNullable<ResearchQualityView["review"]> }) {
+  return (
+    <div className="text-xs" data-testid="rq-metadata">
+      <h3 className="text-sm font-medium text-foreground">Reviewer, source versions and review metadata</h3>
+      <dl className="mt-2 grid grid-cols-[10rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-muted">
+        <dt>Started</dt>
+        <dd className="text-foreground">{`${review.createdAt.slice(0, 16).replace("T", " ")}${review.createdBy ? `, by ${review.createdBy}` : ""}`}</dd>
+        {review.completedAt && (
+          <>
+            <dt>Finished</dt>
+            <dd className="text-foreground">{review.completedAt.slice(0, 16).replace("T", " ")}</dd>
+          </>
+        )}
+        {review.manifest.sources.map((s) => (
+          <MetaRow key={s.sourceVersionId} label={s.filename} value={`${s.roles.join(" and ") || "no role"}; ${s.charCount.toLocaleString("en-GB")} characters, ${readOf(s).toLocaleString("en-GB")} read`} />
+        ))}
+        <dt>Criteria release</dt>
+        <dd className="text-foreground">{review.criteriaRelease}</dd>
+        <dt>Model and prompt</dt>
+        <dd className="text-foreground">{`${review.model}, prompt ${review.promptVersion}`}</dd>
+        <dt>Cost</dt>
+        <dd className="text-foreground">{`US$${review.actualCostUsd.toFixed(2)}${review.estimatedCostUsd !== null ? ` (estimated US$${review.estimatedCostUsd.toFixed(2)})` : ""}`}</dd>
+      </dl>
+      {review.syntheticReferences && <p className="mt-1 font-semibold text-amber-800">Synthetic test references in use.</p>}
+    </div>
+  );
+}
+const MetaRow = ({ label, value }: { label: string; value: string }) => (
+  <>
+    <dt className="truncate" title={label}>{label}</dt>
+    <dd className="text-foreground">{value}</dd>
+  </>
+);
+
+/** Running, interrupted, partial or failed: what happened, which steps failed, and the retry. */
+function ReviewState({ runId, review, reload, follow }: { runId: string; review: NonNullable<ResearchQualityView["review"]>; reload: () => Promise<void>; follow: () => void }) {
+  const [retryMsg, setRetryMsg] = useState<string | null>(null);
+  const running = (review.state === "pending" || review.state === "running") && !review.progress.interrupted;
+  const failedSteps = shownFailedSteps(review);
+  const retry = async (note: string) => {
+    const x = await retryResearchQualityReviewAction(runId, review.id);
+    setRetryMsg(x.ok ? note : x.error);
+    if (x.ok) follow();
+    await reload();
+  };
+  const unverified = review.unverifiedEvidence ?? [];
+  const oneSided = oneSidedComparisonNote(review.oneSidedComparisons ?? []);
+  const quiet = review.state === "complete" && !review.progress.interrupted && !retryMsg && unverified.length === 0 && !oneSided;
+  return (
+    <div
+      data-testid="rq-review-state"
+      data-state={review.state}
+      className={quiet ? "hidden" : `rounded-lg p-3 text-xs ${review.state === "failed" ? "bg-red-50 text-red-800" : review.state === "complete" && unverified.length === 0 && !oneSided ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}
+    >
+      {running && (
+        <p>{`Reviewing: ${review.progress.done} of ${review.progress.total} steps done${review.progress.failed ? `, ${review.progress.failed} failed` : ""}. Each step can take a minute or two; this page updates by itself.`}</p>
+      )}
+      {review.progress.interrupted && (
+        <p data-testid="rq-review-interrupted">
+          {`The review stopped before it finished (${review.progress.done} of ${review.progress.total} steps), most likely because the server restarted. Nothing done so far is lost. `}
+          <button className={btn} onClick={() => void retry("Continuing the review from where it stopped.")}>
+            Continue review
+          </button>
+        </p>
+      )}
+      {review.state === "partial" && <p>{`Partly complete: ${failedSteps.length} step(s) failed. What is shown was rated; the rest is shown as not rated.`}</p>}
+      {review.state === "failed" && <p>The review failed: nothing could be rated.</p>}
+      {oneSided && <p className="mt-1" data-testid="rq-one-sided-comparison">{oneSided}</p>}
+      {unverified.map((u) => (
+        <p key={u.filename} className="mt-1" data-testid="rq-unverified-evidence" data-kept={u.kept} data-rejected={u.rejected}>
+          {unverifiedEvidenceNote(u)}
+        </p>
+      ))}
+      {failedSteps.map((t) => (
+        <p key={t.key} className="mt-1" data-testid="rq-failed-step" data-step={t.key}>{`${reviewStepLabel(t.key, review.manifest)}: ${t.error ?? "failed"}. Attempts ${t.attempts} of ${t.maxAttempts}.`}</p>
+      ))}
+      {failedSteps.some((t) => retryableInPlace(t, review.coverage.tasks ?? [])) ? (
+        <button className={`${btn} mt-2`} onClick={() => void retry("Retrying the failed steps only.")}>
+          Retry failed steps
+        </button>
+      ) : (
+        failedSteps.length > 0 && <p className="mt-1">These steps cannot be retried in this review. Start a new review if it is still needed; this one stays as it is.</p>
+      )}
+      {failedSteps.some((t) => retryableInPlace(t, review.coverage.tasks ?? [])) && failedSteps.some((t) => t.stage === "extract" && !retryableInPlace(t, review.coverage.tasks ?? [])) && (
+        <p className="mt-1" data-testid="rq-reading-needs-new-review">A document that could not be read is not retried in this review, because its assessments are already published. Start a new review version to include it.</p>
+      )}
+      {retryMsg && <p className="mt-1">{retryMsg}</p>}
+    </div>
+  );
+}
 
 /**
- * The scored checklist: for each document, its overall percentage and band, a percentage per section,
- * and every element with its status, the code's reason when a status was not accepted, and the quotes
- * it rests on. All numbers come from the server's scoring (researchQualityChecklist.ts).
+ * The Overview's "Show" filter (Grant, 2026-10-22, replacing the Criteria tab's status filter): All
+ * or one status the review actually has, as the dashboard shows it (criterionStatus). The choices
+ * come from the dashboards, or for an older-format review from its scorecard, which the Overview
+ * filters the same way.
  */
-function ChecklistGrid({ view }: { view: ResearchQualityView }) {
+function StatusFilter({ view, status, onChange }: { view: ResearchQualityView; status: string; onChange: (s: string) => void }) {
   const r = view.review!;
-  if (r.checklists.length === 0) return r.checklistNote ? <p className="rounded-md bg-slate-50 p-2 text-xs text-muted" data-testid="rq-checklist-note">{r.checklistNote}</p> : null;
+  const present = r.kind ? criterionRows(r.dashboards).map((x) => x.status) : [...criterionRows(r.dashboards).map((x) => x.status), ...scorecard(r.observations).flatMap((g) => g.rows.map((row) => row.label))];
+  const choices = statusChoices(present);
+  if (choices.length === 0) return null; // nothing rated or listed yet
   return (
-    <section className="flex flex-col gap-3" aria-label="Scored checklist" data-testid="rq-checklist">
-      <p className="text-xs text-muted">
-        Each document is checked against the elements good practice expects in that kind of document. Present scores 2, partial 1, absent 0; percentages count assessed elements only. Strong is 80% or
-        more, Workable 60% or more. A guide to where to look, not a certification.
-      </p>
-      {r.checklists.map((c) => (
-        <div key={c.taskKey} className="rounded-md border border-border bg-white p-2 text-xs" data-checklist={c.checklistId} data-state={c.state}>
-          <div className="flex flex-wrap items-baseline gap-2">
-            <span className="font-semibold text-foreground">{c.filename}</span>
-            <span className="text-muted">{c.label}</span>
-            <span className={`ml-auto rounded px-2 py-0.5 font-semibold ${c.score?.band ? BAND_CHIP[c.score.band] : "bg-slate-100 text-slate-700"}`} data-testid="rq-checklist-overall">
-              {checklistScoreText(c.score, c.state)}
-            </span>
-          </div>
-          {c.state === "failed" && <p className="mt-1 text-red-800">{c.error}</p>}
-          {c.score && (
-            <>
-              <p className="mt-1 text-muted">{`${c.score.assessed} of ${c.score.total} elements assessed. Basis: ${c.basis}`}</p>
-              <table className="mt-2 w-full border-collapse">
-                <thead>
-                  <tr className="text-left text-muted">
-                    <th className="py-1 pr-2 font-medium">Section</th>
-                    <th className="py-1 pr-2 font-medium">Score</th>
-                    <th className="py-1 font-medium">Assessed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {c.score.sections.map((s) => (
-                    <tr key={s.sectionId} className="border-t border-border" data-section={s.sectionId}>
-                      <td className="py-1 pr-2">{s.label}</td>
-                      <td className="py-1 pr-2">
-                        {s.pct === null ? <span className="text-muted">Not assessed</span> : <span className={`rounded px-1.5 py-0.5 ${BAND_CHIP[s.band ?? ""] ?? ""}`}>{`${s.pct}%`}</span>}
-                      </td>
-                      <td className="py-1 text-muted">{`${s.assessed} of ${s.total}`}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <details className="mt-2">
-                <summary className="cursor-pointer font-medium">Elements</summary>
-                {c.sections.map((s) => (
-                  <div key={s.sectionId} className="mt-2">
-                    <div className="font-semibold">{s.label}</div>
-                    <ul className="flex flex-col gap-1">
-                      {s.elements.map((e) => (
-                        <li key={e.elementId} className="rounded border border-border p-1.5" data-element={e.elementId} data-status={e.status ?? "none"}>
-                          <span className={`mr-2 rounded px-1.5 py-0.5 ${STATUS_CHIP[e.status ?? "not_assessed"]}`}>{CHECKLIST_STATUS_LABEL[e.status ?? "not_assessed"]}</span>
-                          <span className="font-medium">{e.label}</span>
-                          {e.essential && <span className="ml-1 text-muted">(essential)</span>}
-                          {e.reason && <div className="mt-0.5 text-muted">{e.reason}</div>}
-                          {e.notAssessedBecause && <div className="mt-0.5 text-amber-800">{`Not scored: ${e.notAssessedBecause}.`}</div>}
-                          {e.quotes.map((q) => (
-                            <blockquote key={q.factId} className="mt-0.5 border-l-2 border-slate-300 pl-2 text-slate-700">{`${q.fromBrief ? "Brief: " : ""}\u201c${q.quote}\u201d`}</blockquote>
-                          ))}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </details>
-            </>
-          )}
-        </div>
+    <div role="group" aria-label="Show criteria" className="flex flex-wrap items-center gap-1 text-xs" data-testid="rq-status-filter">
+      <span className="mr-1 text-muted">Show</span>
+      {["all", ...choices].map((s) => (
+        <button
+          key={s}
+          type="button"
+          aria-pressed={status === s}
+          onClick={() => onChange(s)}
+          className={`rounded-full border px-2.5 py-0.5 ${status === s ? "border-primary bg-primary-light font-medium text-primary" : "border-border bg-white text-muted hover:text-foreground"}`}
+        >
+          {s === "all" ? "All" : s}
+        </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * The right-hand pane: the chosen criterion's detail; with a dimension chosen and no single criterion,
+ * all of that dimension's criteria (a category's with its weight and average); otherwise a prompt.
+ */
+function CriterionPanel({ view, dimension, criterion, improvementFirst = false }: { view: ResearchQualityView; dimension: string; criterion: string | null; improvementFirst?: boolean }) {
+  const r = view.review!;
+  const dim = r.dashboards.flatMap((d) => d.dimensions).find((x) => x.dimensionId === dimension);
+  const shown = criterion ? [criterion] : dim ? dim.criteria.map((c) => c.criterionId) : [];
+  if (shown.length === 0) {
+    return improvementFirst ? (
+      <p className="text-xs text-muted">Choose an improvement to see it here, with its criterion&apos;s question, the reasons for its rating and the document&apos;s own words.</p>
+    ) : (
+      <p className="text-xs text-muted">Click a bar or a criterion to see its question, the reasons for its rating, the document&apos;s own words and what to improve.</p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3" data-testid="rq-details" data-dimension={criterion ?? dimension}>
+      {!criterion && dim?.categoryLabel && (
+        <div>
+          <h4 className="text-sm font-semibold text-foreground">{dim.categoryLabel}</h4>
+          <p className="text-xs text-muted">{`Weight ${dim.weight}%. The average of its rated criteria: ${dim.score === null ? "not rated" : `${dim.score.toFixed(1)} of 5`}.`}</p>
+        </div>
+      )}
+      {shown.map((cid) => (
+        <CriterionDetail key={cid} view={view} criterionId={cid} improvementFirst={improvementFirst} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The Improvements tab in the dashboard's style (Grant, 2026-10-22): by when each can be made, one
+ * row per improvement with its criterion's bar, score and band, as on the Overview. Choosing a row
+ * shows the improvement in the right-hand pane, first, with its criterion's question, reasons and the
+ * document's own words.
+ */
+function Improvements({ view, selected, onSelect }: { view: ResearchQualityView; selected: string | null; onSelect: (criterionId: string) => void }) {
+  const r = view.review!;
+  const groups = improvementsByTiming(r.observations).filter((g) => g.items.length > 0);
+  if (groups.length === 0) return <p className="text-xs text-muted">No improvements were suggested in this review.</p>;
+  return (
+    <div className="@container flex flex-col gap-3" data-testid="rq-improvements">
+      {groups.map((g) => (
+        <section key={g.timing} className="rounded-xl border border-border bg-white p-3">
+          <h4 className="mb-1.5 text-sm font-semibold text-foreground">{g.label}</h4>
+          <ul className="flex flex-col gap-1" aria-label={g.label}>
+            {g.items.map((o) => {
+              const { score, label } = criterionRating(r.dashboards, r.observations, o.criterionId);
+              const shown = score === null ? null : score.toFixed(1);
+              const name = criterionShortLabel(o.criterionId);
+              return (
+                <li key={o.versionId} data-improvement={o.criterionId}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(o.criterionId)}
+                    aria-pressed={selected === o.criterionId}
+                    className={`flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs ${selected === o.criterionId ? "bg-primary-light ring-1 ring-primary/30" : "hover:bg-slate-50"}`}
+                  >
+                    <span className="min-w-[9rem] flex-1 truncate font-medium text-foreground">{name}</span>
+                    <span className="flex w-[58cqw] min-w-[8rem] shrink-0 items-center gap-2">
+                      <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`${name}: ${shown === null ? label : `${shown} of 5, ${label}`}`}>
+                        {score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(score)}`} style={{ width: `${Math.max(score, 0.15) * 20}%` }} />}
+                      </span>
+                      <ScoreAndBand shown={shown} label={label} empty={label} cls={score === null ? "text-muted" : scoreText(score)} weight="font-bold" />
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+      <p className="text-[11px] text-muted">Click an improvement for what to do and why, with its criterion&apos;s reasons, on the right.</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- the dashboard
+
+// A category's average falls between ratings, so colours follow the bands: 4 or more (80%) Strong,
+// 3 or more (60%) Workable, 1 or more Weak, below 1 towards Absent.
+const scoreBar = (score: number) => (score >= 4 ? "bg-indigo-500" : score >= 3 ? "bg-amber-400" : score >= 1 ? "bg-slate-400" : "bg-rose-400");
+const scoreText = (score: number) => (score >= 4 ? "text-indigo-700" : score >= 3 ? "text-amber-700" : score >= 1 ? "text-slate-600" : "text-rose-700");
+const BAND_RING: Record<string, string> = { strong: "#6366f1", workable: "#f59e0b", weak: "#e11d48" };
+const BAND_LABEL: Record<string, string> = { strong: "Strong", workable: "Workable", weak: "Weak" };
+
+/**
+ * The bird's-eye view: the weighted overall percentage as a ring and one bar per dimension. A bar is
+ * a button: choosing it shows that dimension's criteria on the right. Every figure is computed on the
+ * server (researchQualityDashboard.ts); this only draws them.
+ */
+function Dashboard({
+  d,
+  status = "all",
+  selected,
+  onSelect,
+  selectedCriterion = null,
+  onSelectCriterion,
+}: {
+  d: DashboardView;
+  /** The Overview's "Show" filter: only criteria of this status, under their dimension ("all": every one). */
+  status?: string;
+  selected: string | null;
+  onSelect: (id: string) => void;
+  selectedCriterion?: string | null;
+  /** A category's own item: its detail alone on the right (without it, the item opens its category). */
+  onSelectCriterion?: (dimensionId: string, criterionId: string) => void;
+}) {
+  const current = selected;
+  // The header (ring, overall score, dimension count) always describes the whole dashboard; the
+  // filter only narrows the rows below it.
+  const shownDims = filterDimensionsByStatus(d, status);
+  return (
+    <section className="rounded-xl border border-border bg-white p-3" aria-label={`${d.label} dashboard`} data-testid="rq-dashboard" data-dashboard={d.dashboardId} data-pct={d.pct ?? "none"}>
+      <div className="flex flex-wrap items-center gap-3">
+        <ScoreRing pct={d.pct} band={d.band} />
+        <div className="min-w-0 flex-1">
+          <h4 className="text-sm font-semibold text-foreground">{d.label}</h4>
+          <p className="text-xs text-muted">
+            {d.pct === null
+              ? `Too little rated yet for an overall score (${d.ratedWeight} of ${d.totalWeight} weight).`
+              : `${BAND_LABEL[d.band!]}: weighted across ${d.dimensions.filter((x) => x.state === "rated").length} of ${d.dimensions.length} dimensions.`}
+            <InfoDot
+              text={`Each criterion is rated Strong 5, Workable 3, Weak 1 or Absent 0. Overall = weighted points / weighted maximum, over rated dimensions; a category scores the average of its rated criteria. Strong 80% or more, Workable 60% or more. ${d.basis}`}
+            />
+          </p>
+        </div>
+      </div>
+      {/* @container: every bar section is the same share of this list's width (58cqw), whether it is
+          a category's bar or one of its indented criteria, so tracks on one 5 point scale have one
+          length and equal scores line up (Grant, 2026-10-22). */}
+      <ul className="@container mt-3 flex flex-col gap-1">
+        {shownDims.length === 0 && <li className="px-1.5 py-1 text-xs text-muted">{`No criterion here is ${status}.`}</li>}
+        {shownDims.map(({ dimension: x, criteria: matching }) => {
+          const name = x.categoryLabel ?? criterionShortLabel(x.dimensionId);
+          // One decimal for every score, so the decimal points line up down the column.
+          const shown = x.score === null ? null : x.score.toFixed(1);
+          const active = current === x.dimensionId;
+          return (
+            <li key={x.dimensionId} data-criterion={x.dimensionId} data-state={x.state} data-score={x.score ?? "none"} data-weight={x.weight} data-status={x.criteria.length === 1 ? criterionStatus(x.criteria[0]) : undefined}>
+              <button
+                type="button"
+                onClick={() => onSelect(x.dimensionId)}
+                aria-pressed={active}
+                className={`flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md px-1.5 py-1 text-left text-xs ${active ? "bg-primary-light ring-1 ring-primary/30" : "hover:bg-slate-50"}`}
+              >
+                <span className="min-w-[9rem] flex-1 truncate font-medium text-foreground" data-testid="rq-dimension-name">
+                  {name}
+                  {x.categoryLabel ? (
+                    <span className="ml-1 text-[10px] font-normal text-muted">{`${x.weight}%`}</span>
+                  ) : (
+                    x.weight > 1 && (
+                      <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] font-semibold text-slate-600" title="Counts double in the overall score">{`x${x.weight}`}</span>
+                    )
+                  )}
+                </span>
+                <span className="flex w-[58cqw] min-w-[8rem] shrink-0 items-center gap-2">
+                  <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`${name}: ${shown === null ? x.label : `${shown} of 5, ${x.label}`}`}>
+                    {x.score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(x.score)}`} style={{ width: `${Math.max(x.score, 0.15) * 20}%` }} />}
+                  </span>
+                  <ScoreAndBand shown={shown} label={x.label} failed={x.state === "failed"} cls={x.score === null ? "text-muted" : scoreText(x.score)} weight="font-bold" />
+                </span>
+              </button>
+              {x.categoryLabel && x.criteria.length > 1 && (
+                // A category's own items and scores under its bar (Grant, 2026-10-19: the
+                // methodology items on the dashboard, the reasons staying in the detail pane).
+                // The bar above is the category's total: the average of these rated items.
+                <ul className="mb-1 ml-3 flex flex-col border-l border-slate-200 pl-2" aria-label={`${name} items`}>
+                  {matching.map((c) => {
+                    const cShown = c.score === null ? null : c.score.toFixed(1);
+                    return (
+                      <li key={c.criterionId} data-sub-criterion={c.criterionId} data-score={c.score ?? "none"} data-status={criterionStatus(c)}>
+                        <button
+                          type="button"
+                          onClick={() => (onSelectCriterion ? onSelectCriterion(x.dimensionId, c.criterionId) : onSelect(x.dimensionId))}
+                          aria-pressed={selectedCriterion === c.criterionId}
+                          className={`flex w-full items-center gap-2 rounded px-1.5 py-0.5 text-left text-[11px] ${selectedCriterion === c.criterionId ? "bg-primary-light ring-1 ring-primary/30" : "hover:bg-slate-50"}`}
+                        >
+                          <span className="min-w-[8rem] flex-1 truncate text-slate-700">{criterionShortLabel(c.criterionId)}</span>
+                          <span className="flex w-[58cqw] min-w-[8rem] shrink-0 items-center gap-2">
+                            <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`${criterionShortLabel(c.criterionId)}: ${cShown === null ? c.label : `${cShown} of 5, ${c.label}`}`}>
+                              {c.score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(c.score)}`} style={{ width: `${Math.max(c.score, 0.15) * 20}%` }} />}
+                            </span>
+                            <ScoreAndBand shown={cShown} label={c.label} failed={c.state === "failed"} cls={c.score === null ? "text-muted" : scoreText(c.score)} weight="font-semibold" />
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-[11px] text-muted">
+        {d.dimensions.some((x) => x.categoryLabel && x.criteria.length > 1)
+          ? "A category's bar is its total, the average of its rated items listed under it. Click a bar for all its items, or an item for that one, with the reasons on the right."
+          : "Click a bar for its criterion, with the reasons on the right."}
+      </p>
     </section>
   );
 }
 
-function Scorecard({ view }: { view: ResearchQualityView }) {
-  const groups = scorecard(view.review!.observations);
-  if (groups.length === 0) return null;
+/**
+ * The score and its band in two fixed columns (Grant, 2026-10-22: "put the score separate from the
+ * status so aligned"): the number right-aligned in tabular figures, the band left-aligned after it,
+ * so numbers line up under each other and so do the words, for categories and their criteria.
+ */
+function ScoreAndBand({ shown, label, failed = false, empty, cls, weight }: { shown: string | null; label: string; failed?: boolean; empty?: string; cls: string; weight: string }) {
   return (
-    <div className="overflow-x-auto" aria-label="Scorecard">
-      <p className="text-xs text-muted">Each criterion is scored on its own: Strong 5, Workable 3, Weak 1, Absent 0. Scores are not added up.</p>
-      <table className="w-full border-collapse text-xs">
-        <thead><tr><th className="border-b p-1 text-left">Criterion</th><th className="border-b p-1 text-left">Score</th><th className="border-b p-1 text-left">Suggested improvement</th></tr></thead>
-        <tbody>
-          {groups.map((g) => [
-            <tr key={g.group}><td colSpan={3} className="bg-slate-50 p-1 font-semibold">{g.label}</td></tr>,
-            ...g.rows.map((r) => (
-              <tr key={r.observation.versionId} className="align-top" data-score={r.score ?? "none"} data-criterion={r.observation.criterionId}>
-                <td className="border-b p-1">{r.observation.criterionId}<div className="text-muted">{r.observation.question}</div>{comparisonLabel(r.comparison) && <div className="text-muted">{comparisonLabel(r.comparison)}</div>}</td>
-                <td className="border-b p-1 whitespace-nowrap">{`${r.label}${r.score !== null ? ` (${r.score}/5)` : ""}`}{r.observation.freshness !== "current" && <div className="text-amber-800">requires review</div>}</td>
-                <td className="border-b p-1">{r.suggestion ?? (r.score === 5 ? "None needed." : "No suggestion given.")}</td>
-              </tr>
-            )),
-          ])}
-        </tbody>
-      </table>
+    // Fixed widths in em (Grant, 2026-10-22: bars on one 5 point scale ended at different points):
+    // the columns must not grow with their text ("Workable" is wider than "Weak", and wider still
+    // with a larger font or zoom), or each bar's track, which takes the space left, gets a
+    // different length and equal scores no longer line up. 9.5em fits "Not rated" in caps.
+    <span className={`flex w-[9.5em] shrink-0 items-baseline gap-2 text-[10px] uppercase tracking-wide ${weight} ${cls}`}>
+      <span className="w-[2.2em] shrink-0 text-right tabular-nums">{shown === null ? "" : shown}</span>
+      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left">{shown === null ? (empty ?? (failed ? "failed" : "-")) : label}</span>
+    </span>
+  );
+}
+
+function ScoreRing({ pct, band }: { pct: number | null; band: string | null }) {
+  const radius = 26;
+  const circumference = 2 * Math.PI * radius;
+  return (
+    <svg viewBox="0 0 64 64" width="64" height="64" role="img" aria-label={pct === null ? "No overall score" : `Overall ${pct}%`} className="shrink-0" data-testid="rq-dashboard-ring">
+      <circle cx="32" cy="32" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="7" />
+      {pct !== null && (
+        <circle cx="32" cy="32" r={radius} fill="none" stroke={BAND_RING[band ?? "weak"]} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${(pct / 100) * circumference} ${circumference}`} transform="rotate(-90 32 32)" />
+      )}
+      <text x="32" y="36" textAnchor="middle" fontSize="14" fontWeight="700" fill="#0f172a">
+        {pct === null ? "-" : `${pct}%`}
+      </text>
+    </svg>
+  );
+}
+
+/** A review made before review kinds: its dashboard if it had one, its checklist scores and criteria, read-only. */
+function LegacyReview({ view, status = "all", selected, onSelect }: { view: ResearchQualityView; status?: string; selected: string | null; onSelect: (id: string) => void }) {
+  const r = view.review!;
+  // The Overview's "Show" filter applies here too: a row of the scorecard by its own label.
+  const groups = scorecard(r.observations)
+    .map((g) => ({ ...g, rows: g.rows.filter((row) => status === "all" || row.label === status) }))
+    .filter((g) => g.rows.length > 0);
+  return (
+    <div className="flex flex-col gap-3" data-testid="rq-legacy">
+      <p className="rounded-md bg-slate-50 p-2 text-xs text-muted">An earlier review in the older format, shown as it was and read-only. Review a document as a brief or a proposal for the dashboard.</p>
+      {r.dashboards.map((d) => (
+        <Dashboard key={d.dashboardId} d={d} status={status} selected={selected} onSelect={onSelect} />
+      ))}
+      {r.checklists.length > 0 && (
+        <ul className="flex flex-col gap-1 text-xs" aria-label="Element checklists">
+          {r.checklists.map((c) => (
+            <li key={c.taskKey}>{`${c.filename}, ${c.label}: ${checklistScoreText(c.score, c.state)}`}</li>
+          ))}
+        </ul>
+      )}
+      {groups.map((g) => (
+        <div key={g.group} className="rounded-xl border border-border bg-white text-xs">
+          <div className="bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-700">{g.label}</div>
+          <ul className="divide-y divide-border">
+            {g.rows.map((row) => (
+              <li key={row.observation.versionId} data-criterion={row.observation.criterionId}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(row.observation.criterionId)}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left ${selected === row.observation.criterionId ? "bg-primary-light" : "hover:bg-slate-50"}`}
+                >
+                  <span className="font-medium text-foreground">{criterionShortLabel(row.observation.criterionId)}</span>
+                  <ScoreAndBand shown={row.score === null ? null : row.score.toFixed(1)} label={row.label} empty={row.label} cls={row.score === null ? "text-muted" : scoreText(row.score)} weight="font-bold" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }
 
-const Stat = ({ label, n }: { label: string; n: number }) => (
-  <div className="rounded border border-border bg-white p-2"><div className="text-lg font-semibold">{n}</div><div className="text-muted">{label}</div></div>
-);
-
-function SourceFreshness({ view }: { view: ResearchQualityView }) {
-  const r = view.review!;
+/**
+ * RQC-6: the calculated margin-of-error check beside "Sample size and precision" (marginOfError.ts),
+ * made by code when the review was prepared, not by the model, and labelled as such.
+ */
+function PrecisionChecks({ checks }: { checks: NonNullable<ResearchQualityView["review"]>["manifest"]["precisionChecks"] }) {
+  if (!checks) return null;
+  const all = checks.flatMap((c) => c.checks.map((k) => ({ ...k, filename: c.filename })));
   return (
-    <ul className="text-xs" aria-label="Sources in this review">
-      {r.sourceFreshness.map((f) => {
-        const m = r.manifest.sources.find((s) => s.sourceId === f.sourceId)!;
-        const read = m.assessedRanges.reduce((n, x) => n + (x.end - x.start), 0);
-        return (
-          <li key={f.sourceId} data-source-status={f.status}>
-            <span className="font-medium">{f.filename}</span>{` (${m.roles.map((x) => ROLE_LABEL[x]).join(", ")}): ${read < m.charCount ? `partly read (${read.toLocaleString("en-GB")} of ${m.charCount.toLocaleString("en-GB")} characters)` : "read in full"}. ${f.detail}`}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function ObservationCard({ runId, o, view, reload }: { runId: string; o: ObservationView; view: ResearchQualityView; reload: () => Promise<void> }) {
-  const r = view.review!;
-  const [wording, setWording] = useState(o.wording?.text ?? "");
-  const [editing, setEditing] = useState(false);
-  const [comment, setComment] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
-  const a = o.payload.assessment;
-  const sourceName = (v: string) => r.manifest.sources.find((s) => s.sourceVersionId === v)?.filename ?? "source";
-  async function act(kind: ResearcherEntryKind, body: string | null) {
-    setBusy(true);
-    setMsg(null);
-    const res = await recordResearchQualityEntryAction(runId, { kind, observationId: o.observationId, observationVersionId: o.versionId, body, expectedRevision: o.revision, idempotencyKey: key() }).catch(() => ({ ok: false as const, error: "The connection to the server was interrupted, so this may not have been saved. Your text is still here; reload to see what was saved." }));
-    setBusy(false);
-    if (!res.ok) return setMsg({ text: res.error, error: true });
-    if (kind === "wording") setEditing(false);
-    if (kind === "comment") setComment("");
-    setMsg({ text: "Saved.", error: false });
-    await reload();
-  }
-  return (
-    <article className="rounded-lg border border-border bg-white p-3 text-xs" data-testid="rq-observation" data-criterion={o.criterionId} data-status={o.status} data-freshness={o.freshness} data-observation-id={o.observationId}>
-      <div className="flex flex-wrap items-baseline gap-2">
-        <span className="font-semibold">{o.criterionId}</span>
-        <span className="text-muted">{o.question}</span>
-      </div>
-      {o.freshness !== "current" && <p className="mt-1 rounded bg-amber-50 p-1.5 text-amber-900" role="status">{o.freshness === "requires_review" ? `Requires review: ${o.freshnessReason}` : "Could not check whether its sources changed."}</p>}
-      {o.previous && o.status === "awaiting_review" && (
-        <p className="mt-1 rounded bg-sky-50 p-1.5 text-sky-900" role="status">
-          {`Update awaiting review. In review ${o.previous.reviewSequence} you ${o.previous.status === "awaiting_review" ? "edited" : o.previous.status} an earlier version${o.previous.wording ? `, worded: "${o.previous.wording}"` : ""}. That decision does not carry over to this new judgement.`}
-        </p>
-      )}
-      <div className="mt-1 flex flex-wrap gap-1.5">
-        <Badge>{`Score: ${o.payload.rating?.label ?? "Not rated"}${o.payload.rating?.score != null ? ` (${o.payload.rating.score}/5)` : ""}`}</Badge>
-        {comparisonLabel(o.payload.comparison) && <Badge>{comparisonLabel(o.payload.comparison)}</Badge>}
-        <Badge>{`Documentation: ${documentationLabel(o.payload)}`}</Badge>
-        <Badge>{`Methodology: ${METHOD_LABEL[a.methodology]}`}</Badge>
-        {a.decisionFitness.map((d, i) => <Badge key={i}>{`${d.decisionRef !== null ? `${r.manifest.decisions[d.decisionRef]?.text.slice(0, 40)}: ` : ""}${FITNESS_LABEL[d.state]}`}</Badge>)}
-        <Badge>{`Status: ${o.status.replace("_", " ")}`}</Badge>
-      </div>
-      <p className="mt-2"><span className="font-medium">{o.wording ? "Implication (your wording): " : "Implication: "}</span>{shownImplication(o)}</p>
-      {o.wording && <p className="text-muted">{`Generated: ${o.payload.implication}`}</p>}
-      {o.payload.rating?.reason && <p className="mt-1 text-muted">{`Why this score: ${o.payload.rating.reason}`}</p>}
-      {a.reasoning && <p className="mt-1 text-muted">{`AI reasoning: ${a.reasoning}`}</p>}
-      {o.payload.statements.length > 0 && (
-        <ul className="mt-1 list-disc pl-5">
-          {o.payload.statements.map((s) => (
-            <li key={s.factId}>
-              <span className="text-muted">{s.phase === "planned" ? "Planned: " : s.phase === "reported_executed" ? "Reported as done: " : ""}</span>
-              {`"${s.exactQuote ?? "(text purged)"}"`}
-              <span className="text-muted">{` ${sourceName(s.sourceVersionId)}, ${s.locator.page ? `p. ${s.locator.page}` : `para. ${s.locator.segmentId.replace(/^s/, "")}`}`}</span>
+    <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2" data-testid="rq-precision-checks">
+      <p className="font-medium">Margin of error, calculated (not the model&apos;s rating)</p>
+      {all.length === 0 ? (
+        <p className="mt-0.5 text-muted">No margin of error is stated in the text reviewed, so there is nothing to check.</p>
+      ) : (
+        <ul className="mt-1 flex flex-col gap-1.5">
+          {all.map((k, i) => (
+            <li key={i} data-verdict={k.kind === "checked" ? k.verdict : "not_checked"}>
+              <p className={k.kind === "checked" && k.verdict === "understated" ? "font-medium text-amber-800" : "text-foreground"}>{precisionCheckText(k)}</p>
+              <p className="text-muted">{`“${k.quote}” ${k.filename}`}</p>
             </li>
           ))}
         </ul>
       )}
-      {o.payload.basis === "absence_in_assessed_scope" && <p className="mt-1 text-muted">{o.payload.absenceScope === "complete" ? "Not found in any of the documents, read in full." : "Not found in the assessed passages; not every relevant document was read in full."}</p>}
-      {o.payload.uncertainty.length > 0 && <p className="mt-1 text-muted">{`Uncertain: ${o.payload.uncertainty.join("; ")}`}</p>}
-      {o.payload.improvement && (
-        <div className="mt-1 rounded bg-slate-50 p-1.5">
-          {o.payload.improvement.currentAction && <div>{`Now: ${o.payload.improvement.currentAction}`}</div>}
-          {o.payload.improvement.futureAction && <div>{`Next study: ${o.payload.improvement.futureAction}`}</div>}
-          {SUPPORT_LABEL[o.payload.referenceSupportStatus] && <div className="text-muted">{SUPPORT_LABEL[o.payload.referenceSupportStatus]}</div>}
-          {o.payload.methodologicalReferenceRefs.map((ref) => {
-            const rp = r.referencePassages.find((x) => x.referenceId === ref.referenceId && x.passageId === ref.passageId);
-            return <div key={`${ref.referenceId}:${ref.passageId}`} className="text-muted">{`${ref.referenceId}:${ref.passageId}${rp?.synthetic ? " (synthetic test reference)" : ""}: ${rp?.text ?? ""}`}</div>;
-          })}
-        </div>
-      )}
-      {o.payload.validationNotes.length > 0 && <p className="mt-1 text-muted">{`Checked by code: ${o.payload.validationNotes.join(" ")}`}</p>}
-      {o.comments.map((c, i) => <p key={i} className="mt-1 border-l-2 border-border pl-2">{`${c.by}, ${c.at.slice(0, 16)}: ${c.text}`}</p>)}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {o.status !== "accepted" && <button className={btn} disabled={busy} onClick={() => act("accept", null)}>Accept</button>}
-        {o.status !== "dismissed" && <button className={btn} disabled={busy} onClick={() => act("dismiss", null)}>Dismiss</button>}
-        {o.status !== "awaiting_review" && <button className={btn} disabled={busy} onClick={() => act("reopen", null)}>Reopen</button>}
-        <button className={btn} disabled={busy} onClick={() => setEditing((x) => !x)}>Edit wording</button>
-        {o.decidedBy && <span className="text-muted">{`${o.status.replace("_", " ")} by ${o.decidedBy}`}</span>}
-      </div>
-      {editing && (
-        <div className="mt-1 flex flex-col gap-1">
-          <textarea aria-label="Your wording" value={wording} onChange={(e) => setWording(e.target.value)} rows={3} className="rounded border border-border p-1.5" />
-          <div><button className={btn} disabled={busy || !wording.trim()} onClick={() => act("wording", wording)}>Save wording</button></div>
-        </div>
-      )}
-      <div className="mt-1 flex gap-1">
-        <input aria-label="Comment" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment" className="min-w-0 flex-1 rounded border border-border px-1.5 py-0.5" />
-        <button className={btn} disabled={busy || !comment.trim()} onClick={() => act("comment", comment)}>Comment</button>
-      </div>
-      {msg && <p role={msg.error ? "alert" : "status"} className={msg.error ? "mt-1 text-red-800" : "mt-1 text-emerald-800"}>{msg.text}</p>}
-    </article>
+      <p className="mt-1 text-[10px] text-muted">For a proportion of 50% (the widest margin), without a finite-population correction.</p>
+    </div>
   );
 }
 
-const Badge = ({ children }: { children: React.ReactNode }) => <span className="rounded bg-slate-100 px-1.5 py-0.5">{children}</span>;
-
-function DocumentsTab({ runId, view, reload }: { runId: string; view: ResearchQualityView; reload: () => Promise<void> }) {
+/**
+ * One criterion in the right-hand pane. Opened from the Improvements tab (improvementFirst), what to
+ * improve comes first, with its timing and reason, then the rating; otherwise it closes the card.
+ */
+function CriterionDetail({ view, criterionId, improvementFirst = false }: { view: ResearchQualityView; criterionId: string; improvementFirst?: boolean }) {
   const r = view.review!;
-  const [msg, setMsg] = useState<string | null>(null);
+  const obs: ObservationView[] = r.observations.filter((o) => o.criterionId === criterionId && o.status !== "dismissed");
+  const rating = r.dashboards.flatMap((d) => d.dimensions.flatMap((x) => x.criteria)).find((c) => c.criterionId === criterionId);
+  const first = obs[0];
+  const sourceName = (v: string) => r.manifest.sources.find((s) => s.sourceVersionId === v)?.filename ?? "document";
+  const { score, label } = criterionRating(r.dashboards, r.observations, criterionId);
+  const improvement = first?.payload.improvement;
+  const toImprove =
+    improvement && (improvement.currentAction || improvement.futureAction) ? (
+      <div className={`${improvementFirst ? "mt-1.5 border border-primary/30" : "mt-2"} rounded-md bg-slate-50 p-2`} data-testid="rq-improvement-detail">
+        <p className="font-medium">
+          To improve
+          {improvement.timing && <span className="ml-1.5 font-normal text-muted">{TIMING_LABEL[improvement.timing] ?? ""}</span>}
+        </p>
+        <p>{[improvement.currentAction, improvement.futureAction].filter(Boolean).join(" ")}</p>
+        {improvement.rationale && <p className="mt-1 text-muted">{improvement.rationale}</p>}
+      </div>
+    ) : null;
+  const statementCount = obs.reduce((n, o) => n + o.payload.statements.length, 0);
   return (
-    <div className="flex flex-col gap-2 text-xs">
-      {view.documents.filter((d) => d.source).map((d) => {
-        const s = d.source!;
-        const cited = r.observations.filter((o) => o.payload.statements.some((st) => r.manifest.sources.find((m) => m.sourceVersionId === st.sourceVersionId)?.sourceId === s.sourceId));
-        return (
-          <div key={d.id} className="rounded border border-border bg-white p-2" data-source-id={s.sourceId}>
-            <div className="font-medium">{d.filename}</div>
-            <div className="text-muted">{s.currentVersion ? `Version ${s.currentVersion.ordinal} (${s.currentVersion.extractor.replace("_", " ")}, ${s.currentVersion.charCount.toLocaleString("en-GB")} characters)${s.currentVersion.purged ? ", text purged" : ""}; ${s.versions} version(s) kept.` : "Not read yet."}</div>
-            <RoleEditor runId={runId} documentId={d.id} roles={s.roles} revision={s.revision} onSaved={reload} />
-            {cited.length > 0 && <div className="mt-1">{`Cited by: ${cited.map((o) => o.criterionId).join(", ")}`}</div>}
-            <button
-              className={`${btn} mt-1`}
-              onClick={async () => {
-                if (!window.confirm(`Permanently purge the retained text of ${d.filename} from every review? Quotes from it are removed and cannot be recovered. The project document itself is not affected.`)) return;
-                const x = await purgeResearchQualitySourceAction(runId, s.sourceId);
-                setMsg(x.ok ? `Purged ${x.versions} version(s) of ${d.filename}.` : x.error);
-                await reload();
-              }}
-            >
-              Purge retained text
-            </button>
-          </div>
-        );
-      })}
-      {view.detachedSources.map((s) => <div key={s.sourceId} className="rounded border border-dashed border-border p-2 text-muted">{`${s.filename ?? "A source"}: its project document was deleted. Its snapshot stays in review history${s.purged ? " (text purged)" : " until purged"}.`}</div>)}
-      {msg && <p role="status">{msg}</p>}
-    </div>
-  );
-}
-
-function RoleEditor({ runId, documentId, roles, revision, onSaved }: { runId: string; documentId: string; roles: SourceRole[]; revision: number; onSaved: () => Promise<void> }) {
-  const [value, setValue] = useState<SourceRole[]>(roles);
-  const [msg, setMsg] = useState<string | null>(null);
-  return (
-    <div className="mt-1 flex flex-wrap items-center gap-2">
-      {SOURCE_ROLES.map((role) => (
-        <label key={role} className="flex items-center gap-1">
-          <input type="checkbox" checked={value.includes(role)} onChange={(e) => setValue((v) => (e.target.checked ? [...v, role] : v.filter((x) => x !== role)))} />
-          {ROLE_LABEL[role]}
-        </label>
-      ))}
-      <button className={btn} onClick={async () => { const x = await saveResearchQualityRolesAction(runId, documentId, value, revision); setMsg(x.ok ? "Roles saved. Reviews that used the old roles now need review." : x.error); if (x.ok) await onSaved(); }}>Save roles</button>
-      {msg && <span role="status">{msg}</span>}
-    </div>
-  );
-}
-
-function AlignmentTab({ view }: { view: ResearchQualityView }) {
-  const r = view.review!;
-  const rows = alignmentRows(r.facts, r.manifest);
-  const conflicts = r.observations.filter((o) => o.criterionId === "RQ-ALIGN-CONSISTENCY" || o.criterionId === "RQ-PLAN-EXECUTION" || o.payload.assessment.documentation === "conflicting");
-  return (
-    <div className="flex flex-col gap-2 text-xs">
-      {conflicts.length > 0 && <div className="rounded bg-amber-50 p-2">{conflicts.map((o) => <p key={o.versionId}>{`${o.criterionId}: ${shownImplication(o)}`}</p>)}</div>}
-      {rows.length === 0 && <p className="text-muted">No documented statements to compare.</p>}
-      {rows.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead><tr><th className="border-b p-1 text-left">Topic</th>{r.manifest.sources.map((s) => <th key={s.sourceId} className="border-b p-1 text-left">{s.filename}</th>)}</tr></thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.topic} className="align-top">
-                  <td className="border-b p-1 font-medium">{row.topic.replace("_", " ")}</td>
-                  {row.bySource.map((b) => (
-                    <td key={b.sourceId} className="border-b p-1">
-                      {b.facts.map((f) => <div key={f.factId} className="mb-1"><span className="text-muted">{f.phase === "planned" ? "Planned: " : f.phase === "reported_executed" ? "Reported: " : ""}</span>{`"${f.exactQuote ?? "(purged)"}"`}</div>)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+    <article className="rounded-lg border border-border bg-white p-3 text-xs" data-testid="rq-criterion-detail" data-criterion={criterionId}>
+      <div className="flex items-start justify-between gap-2">
+        <h5 className="text-sm font-semibold text-foreground">{criterionShortLabel(criterionId)}</h5>
+        <span className={`shrink-0 whitespace-nowrap rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${score === null ? "text-muted" : scoreText(score)}`}>
+          {score === null ? label : `${score.toFixed(1)} ${label}`}
+        </span>
+      </div>
+      {improvementFirst && toImprove}
+      {first && <p className="mt-0.5 text-muted">{first.question}</p>}
+      {!first && (
+        <p className="mt-1 text-muted">
+          {rating?.state === "pending" ? "Not rated yet: the review is still running." : rating?.state === "failed" ? "Could not be rated: its step failed. Retry the failed steps above the tabs." : "Not rated."}
+        </p>
       )}
-    </div>
-  );
-}
-
-function ImprovementsTab({ view }: { view: ResearchQualityView }) {
-  const groups = improvementsByTiming(view.review!.observations);
-  const gaps = view.review!.checklists.filter((c) => c.gaps.length > 0);
-  return (
-    <div className="flex flex-col gap-3 text-xs">
-      <section data-testid="rq-gap-recommendations">
-        <h4 className="font-semibold">Missing or partial elements</h4>
-        <p className="text-muted">From the scored checklist: what to add to each document, essential elements first.</p>
-        {gaps.length === 0 ? (
-          <p className="text-muted">{view.review!.checklists.some((c) => c.state === "scored") ? "None: every assessed element is present." : "No scored checklist in this review."}</p>
-        ) : (
-          gaps.map((c) => (
-            <div key={c.taskKey} className="mt-1">
-              <div className="font-medium">{`${c.filename} (${c.label})`}</div>
-              <ul className="list-disc pl-5">
-                {c.gaps.map((g) => (
-                  <li key={g.elementId} data-element={g.elementId}>
-                    {g.essential && <span className="mr-1 font-semibold text-red-800">Essential.</span>}
-                    {`${g.label} (${g.status}): ${g.recommendation}`}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))
-        )}
-      </section>
-      <h4 className="font-semibold">Improvements from the assessment</h4>
-      <p className="text-muted">Priorities by when they matter, not calculated severity. Dismissed observations are left out.</p>
-      {groups.map((g) => (
-        <section key={g.timing}>
-          <h4 className="font-semibold">{g.label}</h4>
-          {g.items.length === 0 ? <p className="text-muted">None.</p> : (
-            <ul className="list-disc pl-5">
-              {g.items.map((o) => (
-                <li key={o.versionId} data-freshness={o.freshness}>
-                  {`${o.criterionId}: ${[o.payload.improvement!.currentAction && `Now: ${o.payload.improvement!.currentAction}`, o.payload.improvement!.futureAction && `Next study: ${o.payload.improvement!.futureAction}`].filter(Boolean).join(" ")}`}
-                  {o.payload.improvement!.rationale && <span className="text-muted">{` Why: ${o.payload.improvement!.rationale}`}</span>}
-                  {SUPPORT_LABEL[o.payload.referenceSupportStatus] && <span className="text-muted">{` (${SUPPORT_LABEL[o.payload.referenceSupportStatus]})`}</span>}
-                  {o.freshness !== "current" && <span className="text-amber-800">{" Requires review."}</span>}
+      {first?.payload.rating?.reason && (
+        <p className="mt-2">
+          <span className="font-medium">Why: </span>
+          {first.payload.rating.reason}
+        </p>
+      )}
+      {criterionId === "RQ-PROP-SAMPLE-SIZE" && <PrecisionChecks checks={r.manifest.precisionChecks} />}
+      {statementCount > 0 && (
+        // Closed when a criterion is opened (Grant, 2026-10-20): the quotes can run to a page, and the
+        // rating and its reason come first. Keyed by criterion so switching criteria closes it again.
+        <details key={criterionId} className="group mt-2" data-testid="rq-document-words">
+          <summary className="cursor-pointer select-none font-medium marker:text-muted">
+            {`Evidence (${statementCount})`}
+          </summary>
+          <ul className="mt-1 flex flex-col gap-1">
+            {obs
+              .flatMap((o) => o.payload.statements)
+              .map((s) => (
+                <li key={s.factId} className="border-l-2 border-slate-300 pl-2 text-slate-700">
+                  {`“${s.exactQuote ?? "(text removed)"}”`}
+                  <span className="text-muted">{` ${sourceName(s.sourceVersionId)}, ${s.locator.page ? `p. ${s.locator.page}` : `para. ${s.locator.segmentId.replace(/^s/, "")}`}`}</span>
                 </li>
               ))}
-            </ul>
-          )}
-        </section>
-      ))}
-    </div>
-  );
-}
-
-function ClarificationsTab({ runId, view, reload }: { runId: string; view: ResearchQualityView; reload: () => Promise<void> }) {
-  const r = view.review!;
-  const [text, setText] = useState("");
-  const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const questions = r.observations.filter((o) => o.status !== "dismissed").flatMap((o) => o.payload.clarificationQuestions.map((q) => ({ q, c: o.criterionId })));
-  return (
-    <div className="flex flex-col gap-2 text-xs">
-      <h4 className="font-semibold">Questions from this review</h4>
-      {questions.length === 0 ? <p className="text-muted">None.</p> : <ul className="list-disc pl-5">{questions.map((x, i) => <li key={i}>{`${x.c}: ${x.q}`}</li>)}</ul>}
-      <h4 className="font-semibold">Your clarifications</h4>
-      <p className="text-muted">Saved as information you supplied, with your name and the time. A later review version can use it; it never becomes a quote from a document.</p>
-      {view.clarifications.map((c) => <p key={c.entryId} className="border-l-2 border-border pl-2">{`${c.by}, ${c.at.slice(0, 16)}${r.manifest.clarificationIds.includes(c.entryId) ? "" : " (after this review)"}: ${c.text}`}</p>)}
-      <textarea aria-label="Clarification" value={text} onChange={(e) => setText(e.target.value)} rows={3} className="rounded border border-border p-1.5" />
-      <div>
-        <button className={btn} disabled={busy || !text.trim()} onClick={async () => {
-          setBusy(true);
-          const x = await recordResearchQualityEntryAction(runId, { kind: "clarification", observationId: null, observationVersionId: null, body: text, expectedRevision: null, idempotencyKey: key() }).catch(() => ({ ok: false as const, error: "The connection to the server was interrupted, so this may not have been saved. Your text is still here; reload to see what was saved." }));
-          setBusy(false);
-          if (!x.ok) return setMsg({ text: x.error, error: true });
-          setText("");
-          setMsg({ text: "Clarification saved. Start a new review version to take it into account.", error: false });
-          await reload();
-        }}>Save clarification</button>
-      </div>
-      {msg && <p role={msg.error ? "alert" : "status"}>{msg.text}</p>}
-    </div>
-  );
-}
-
-function HistoryTab({ runId, view }: { runId: string; view: ResearchQualityView }) {
-  const r = view.review!;
-  const [other, setOther] = useState<string>("");
-  const [diff, setDiff] = useState<{ added: string[]; removed: string[]; changed: string[] } | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  async function compare(id: string) {
-    setOther(id);
-    setDiff(null);
-    if (!id) return;
-    const x = await loadResearchQualityViewAction(runId, id);
-    if (!x.ok || !x.view.review) return setErr(x.ok ? "That review could not be loaded." : x.error);
-    const mine = new Map(r.observations.map((o) => [o.observationId, o]));
-    const theirs = new Map(x.view.review.observations.map((o) => [o.observationId, o]));
-    setDiff({
-      added: r.observations.filter((o) => !theirs.has(o.observationId)).map((o) => o.criterionId),
-      removed: x.view.review.observations.filter((o) => !mine.has(o.observationId)).map((o) => o.criterionId),
-      changed: r.observations.filter((o) => theirs.has(o.observationId) && JSON.stringify(theirs.get(o.observationId)!.payload.assessment) !== JSON.stringify(o.payload.assessment)).map((o) => o.criterionId),
-    });
-  }
-  return (
-    <div className="flex flex-col gap-2 text-xs">
-      <ul>
-        {view.reviews.map((x) => <li key={x.id}>{`Review ${x.sequence}: ${x.state}, ${x.createdAt.slice(0, 16)} by ${x.createdBy ?? "single user"}; criteria ${x.criteriaRelease}, references ${x.referencesRelease}; cost US$${x.actualCostUsd.toFixed(4)} (estimate ${x.estimatedCostUsd === null ? "unknown" : `US$${x.estimatedCostUsd.toFixed(2)}`})`}</li>)}
-      </ul>
-      <label>
-        {`Compare review ${r.sequence} with `}
-        <select aria-label="Compare with" value={other} onChange={(e) => void compare(e.target.value)} className="rounded border border-border px-1 py-0.5">
-          <option value="">choose a review</option>
-          {view.reviews.filter((x) => x.id !== r.id).map((x) => <option key={x.id} value={x.id}>{`Review ${x.sequence}`}</option>)}
-        </select>
-      </label>
-      {err && <p role="alert">{err}</p>}
-      {diff && <p>{`New: ${diff.added.join(", ") || "none"}. No longer present: ${diff.removed.join(", ") || "none"}. Judgement changed: ${diff.changed.join(", ") || "none"}.`}</p>}
-      <a className={`${primary} w-fit`} href={`/api/runs/${runId}/research-quality/export?review=${r.id}`} download>Download review (Word)</a>
-    </div>
+          </ul>
+        </details>
+      )}
+      {first?.payload.basis === "absence_in_assessed_scope" && (
+        <p className="mt-1 text-muted">{first.payload.absenceScope === "complete" ? "Not found anywhere in the document, read in full." : "Not found in the parts that were read."}</p>
+      )}
+      {!improvementFirst && toImprove}
+      {first && first.payload.uncertainty.length > 0 && <p className="mt-1 text-muted">{`Uncertain: ${first.payload.uncertainty.join("; ")}`}</p>}
+    </article>
   );
 }

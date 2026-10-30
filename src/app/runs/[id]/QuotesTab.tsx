@@ -1,10 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CodingAnalysisView } from "@/lib/codingAnalysis";
+import { SET_ASIDE_REASON } from "@/lib/setAsideNotes";
 import {
   addResearcherCodeAction,
+  attachOrphanTurnNoteAction,
   changeTurnCodeAction,
+  clearOrphanTurnNoteAction,
   saveTurnNoteAction,
   type ActionResult,
 } from "@/lib/codingAnalysisActions";
@@ -128,6 +132,8 @@ export default function QuotesTab({
           {rows.length} turn{rows.length === 1 ? "" : "s"}
         </span>
       </div>
+      {view.turnNotesError && <NotesUnreadAlert message={view.turnNotesError} />}
+      <OrphanTurnNotes runId={runId} view={view} run={run} busy={busy} />
       <ul className="max-h-[32rem] space-y-2 overflow-y-auto">
         {rows.slice(0, 200).map((v) => {
           const open = editing === v.segmentId;
@@ -199,6 +205,11 @@ export default function QuotesTab({
               )}
               {open && (
                 <div className="mt-2 space-y-2 rounded-md bg-slate-50 p-2">
+                  {view.turnNotesError ? (
+                    <p className="text-[11px] text-muted">
+                      Notes cannot be edited until they can be read again, so a note you cannot see is never replaced.
+                    </p>
+                  ) : (
                   <div className="space-y-1">
                     <p className="text-[11px] font-medium text-foreground">
                       Your note on this turn
@@ -228,6 +239,8 @@ export default function QuotesTab({
                             view.documentId,
                             v.index,
                             noteDrafts[v.segmentId] ?? "",
+                            // Saved only while the turn still says what is shown here (COD5K-F02).
+                            v.text,
                           ),
                         )
                       }
@@ -236,6 +249,7 @@ export default function QuotesTab({
                       Save note
                     </button>
                   </div>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <select
                       className={select}
@@ -313,6 +327,138 @@ export default function QuotesTab({
           </li>
         )}
       </ul>
+    </div>
+  );
+}
+
+
+/**
+ * COD5K-F02: notes whose turn is gone or changed since they were written (the transcript was read
+ * again). The wording is shown verbatim and is never attached to the turn now at the old number by
+ * itself; the researcher attaches it to a turn they choose, or removes it.
+ */
+export function OrphanTurnNotes({
+  runId,
+  view,
+  run,
+  busy,
+}: {
+  runId: string;
+  view: CodingAnalysisView;
+  run: (fn: () => Promise<ActionResult>) => void;
+  busy: boolean;
+}) {
+  const [targets, setTargets] = useState<Record<string, string>>({});
+  const [confirming, setConfirming] = useState<string | null>(null);
+  if (view.orphanNotes === null)
+    return <NotesUnreadAlert message="Notes set aside from changed turns could not be read. None has been removed; try again." />;
+  if (view.orphanNotes.length === 0) return null;
+  return (
+    <section aria-label="Notes from changed turns" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-2">
+      <p className="text-[11px] text-amber-900">
+        {view.orphanNotes.length} of your notes no longer match their turn, because the transcript was
+        read again. They are kept word for word and are not shown on any turn until you attach them.
+      </p>
+      <ul className="space-y-2">
+        {view.orphanNotes.map((o) => {
+          const typed = targets[o.ref] ?? String(o.formerIndex + 1);
+          const number = Number(typed);
+          const target = Number.isInteger(number)
+            ? view.verbatims.find((v) => v.index === number - 1)
+            : undefined;
+          return (
+            <li key={o.ref} className="rounded-md border border-border bg-white p-2 text-[11px]">
+              <p className="italic text-foreground">&ldquo;{o.note}&rdquo;</p>
+              <p className="mt-1 text-muted">
+                Written on turn {o.formerIndex + 1}; {SET_ASIDE_REASON[o.reason]}.
+              </p>
+              <p className="mt-1 text-muted">
+                {o.turnText !== null
+                  ? <>That turn said: &ldquo;{o.turnText.trim()}&rdquo;</>
+                  : "The words of that turn were not kept."}
+              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1">
+                  Attach to turn
+                  <input
+                    className={`${select} w-16`}
+                    inputMode="numeric"
+                    value={typed}
+                    onChange={(e) => setTargets((t) => ({ ...t, [o.ref]: e.target.value }))}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={busy || !target}
+                  onClick={() =>
+                    target &&
+                    run(() =>
+                      attachOrphanTurnNoteAction(runId, view.documentId, o.ref, target.index, target.text),
+                    )
+                  }
+                  className="rounded-lg border border-border bg-white px-2 py-0.5 font-medium text-foreground disabled:opacity-50"
+                >
+                  Attach
+                </button>
+                {confirming === o.ref ? (
+                  <>
+                    <span className="text-foreground">Remove this note for good?</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setConfirming(null);
+                        run(() => clearOrphanTurnNoteAction(runId, view.documentId, o.ref));
+                      }}
+                      className="font-medium text-danger"
+                    >
+                      Remove
+                    </button>
+                    <button type="button" onClick={() => setConfirming(null)} className="text-muted">
+                      Keep
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setConfirming(o.ref)}
+                    className="text-danger"
+                  >
+                    Remove...
+                  </button>
+                )}
+              </div>
+              {target ? (
+                <p className="mt-1 text-muted">
+                  Turn {target.index + 1} now says: &ldquo;{target.text.trim().slice(0, 160)}
+                  {target.text.trim().length > 160 ? "..." : ""}&rdquo;
+                </p>
+              ) : (
+                <p className="mt-1 text-muted">There is no participant turn {typed} to attach it to.</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** A failed read of the researcher's notes, said plainly with a way to read them again (a refresh of
+ * the server view), so it is never mistaken for a transcript without notes. */
+function NotesUnreadAlert({ message }: { message: string }) {
+  const router = useRouter();
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
+      <span>{message}</span>
+      <button
+        type="button"
+        onClick={() => router.refresh()}
+        className="rounded-lg border border-amber-400 bg-white px-2 py-0.5 font-medium"
+      >
+        Try again
+      </button>
     </div>
   );
 }

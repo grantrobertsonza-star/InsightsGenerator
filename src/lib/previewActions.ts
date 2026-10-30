@@ -1,17 +1,21 @@
 "use server";
 
 import { loadImportPreviewIdentities } from "./importPreviewIdentity";
+import type { TableCell } from "./rowCells";
 import { withTenant } from "./db";
 import { supabaseAdmin } from "./supabaseAdmin";
-import { parseTableDocument, type ParsedTable } from "./parseTable";
+import { isPlainTableFileName, parseTableDocument, type ParsedTable, type PreviewTable } from "./parseTable";
 import { resolveAuthoritativeSheet } from "./crosstabs";
+import { readProvenanceAvailable } from "./documentTables";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
+import { loadDataSetupWithStatus } from "./dataSetup";
 
 const BUCKET = "documents";
 
 export type PreviewResult =
   | { kind: "pdf"; url: string }
-  | { kind: "table"; table: ParsedTable }
+  | { kind: "table"; table: PreviewTable }
   | { error: string };
 
 /**
@@ -39,10 +43,14 @@ export async function getDocumentPreviewUrl(
   source: { sourceDocumentId: string | null; sourceTableId: string | null }
 ): Promise<PreviewResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { error: RUN_NOT_AVAILABLE };
   if (source.sourceTableId) {
     const tableRow = await withTenant(TENANT_ID, async (client) => {
-      const result = await client.query<{ headers: string[]; rows: Record<string, string | number | null>[]; document_id: string; table_index: number; row_count: number }>(
-        "select headers, rows, document_id, table_index, jsonb_array_length(rows)::int as row_count from document_tables where id = $1 and run_id = $2",
+      const result = await client.query<{ headers: string[]; rows: Record<string, TableCell>[]; document_id: string; table_index: number; row_count: number; read_provenance: unknown }>(
+        // read_provenance is migration 0116's; before it, null (the table is then checked by a fresh read).
+        `select headers, rows, document_id, table_index, jsonb_array_length(rows)::int as row_count,
+                ${(await readProvenanceAvailable(client)) ? "read_provenance" : "null::jsonb as read_provenance"}
+           from document_tables where id = $1 and run_id = $2`,
         [source.sourceTableId, runId]
       );
       return result.rows[0];
@@ -60,7 +68,7 @@ export async function getDocumentPreviewUrl(
       kind: "table",
       table: {
         headers: tableRow.headers as string[],
-        rows: tableRow.rows as Record<string, string | number | null>[],
+        rows: tableRow.rows as Record<string, TableCell>[],
         // document_tables has no sheet concept of its own (it's the already-extracted
         // table a Word/PDF/CSV/Excel document produced, not a live re-read of the
         // workbook), so there's no sheet name to report here.
@@ -81,8 +89,9 @@ export async function getDocumentPreviewUrl(
       storage_path: string;
       kind: string;
       selected_sheet: string | null;
+      ingestion_type: string | null;
     }>(
-      "select preview_storage_path, source_filename, storage_path, kind, selected_sheet from documents where id = $1 and run_id = $2",
+      "select preview_storage_path, source_filename, storage_path, kind, selected_sheet, ingestion_type from documents where id = $1 and run_id = $2",
       [source.sourceDocumentId, runId]
     );
     return result.rows[0];
@@ -119,9 +128,22 @@ export async function getDocumentPreviewUrl(
         err instanceof Error ? err.message : "unknown error"
       }`,
     });
+    // The file itself, as written (rows as cases): the engine's one reader, the same read calculations use.
+    if (!isPlainTableFileName(document.source_filename)) {
+      return { error: `"${document.source_filename}" is not a CSV or Excel file, so it has no table preview here. Open it from Import data.` };
+    }
+    // The header row choice (decision 9) is applied, unlike the layout: which row names the variables is part of
+    // reading the file as written, and without it a file whose title rows detection misses could not be shown at
+    // all. A choice that cannot be read shows no table rather than one read another way.
+    let headerRowsSkipped: number | null = null;
+    if (document.ingestion_type === "raw") {
+      const setup = await loadDataSetupWithStatus(TENANT_ID, sourceDocumentId);
+      if (!setup.ok) return { error: `Could not read the header row setting of "${document.source_filename}", so no preview is shown. Try again. (${setup.error})` };
+      headerRowsSkipped = setup.setup.headerRowsSkipped;
+    }
     let table: ParsedTable;
     try {
-      table = await parseTableDocument(document.storage_path, document.selected_sheet);
+      table = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: document.selected_sheet, headerRowsSkipped });
     } catch (err) {
       return readFailure(err);
     }
@@ -143,7 +165,7 @@ export async function getDocumentPreviewUrl(
     }
     if (authoritative !== table.sheetName) {
       try {
-        table = await parseTableDocument(document.storage_path, authoritative);
+        table = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: authoritative, headerRowsSkipped });
       } catch (err) {
         return readFailure(err);
       }

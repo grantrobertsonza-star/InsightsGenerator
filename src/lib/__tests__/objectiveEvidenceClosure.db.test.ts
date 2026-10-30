@@ -37,10 +37,10 @@ vi.mock("../anthropic", () => ({
       create: vi.fn(async (req: { tool_choice: { name: string } }) => {
         if (req.tool_choice.name === "choose_answer") {
           state.selectorCalls += 1;
-          return { usage: {}, content: [{ type: "tool_use", input: { choice: state.modelChoice } }] };
+          return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", name: "choose_answer", input: { choice: state.modelChoice } }] };
         }
         // A judged reading would mean the computed path was skipped; make it obvious if it happens.
-        return { usage: {}, content: [{ type: "tool_use", input: { stance: "supports", summary: "JUDGED-NOT-EXPECTED" } }] };
+        return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { stance: "supports", summary: "JUDGED-NOT-EXPECTED" } }] };
       }),
     },
   },

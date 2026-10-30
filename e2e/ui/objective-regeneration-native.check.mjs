@@ -12,6 +12,7 @@
 //   4. The researcher deletes their own objective; a third regeneration does not bring it (or the
 //      original brief text) back, and the original brief is unchanged.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -35,7 +36,7 @@ test("native regeneration keeps a rejection, edited wording and a deletion", asy
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
     const run = await ui.createRun({ name: `objective-regeneration-${Date.now()}` });
-    const section = (name) => page.getByRole("button", { name, exact: true }).first().click();
+    const section = (name) => openSection(page, name);
     const rows = async () => (await db.query("select candidate_text, status, source from objective_candidates where run_id=$1 order by candidate_text", [run.id])).rows;
     const openReview = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });
@@ -64,11 +65,11 @@ test("native regeneration keeps a rejection, edited wording and a deletion", asy
 
     // 2. Reject one; edit the own objective in Review.
     await openReview();
-    await page.locator("tr", { hasText: "Suggestion to reject" }).first().getByRole("button", { name: "Reject", exact: true }).click();
+    await page.locator("tbody[data-objective-row]", { hasText: "Suggestion to reject" }).first().getByRole("button", { name: "Reject", exact: true }).click();
     await expect.poll(async () => (await rows()).find((r) => r.candidate_text === "Suggestion to reject")?.status, { timeout: 30_000 }).toBe("rejected");
-    const own = page.locator("tr", { hasText: "Own regeneration objective" }).first();
+    const own = page.locator("tbody[data-objective-row]", { hasText: "Own regeneration objective" }).first();
     await own.getByRole("button", { name: "Edit", exact: true }).click();
-    const editingRow = page.locator("tr", { has: page.locator("textarea") }).first();
+    const editingRow = page.locator("tbody[data-objective-row]", { has: page.locator("textarea") }).first();
     await editingRow.locator("textarea").fill("Own regeneration objective, edited");
     await editingRow.getByRole("button", { name: "Save", exact: true }).click();
     await expect.poll(async () => (await rows()).some((r) => r.candidate_text === "Own regeneration objective, edited"), { timeout: 30_000 }).toBe(true);
@@ -84,12 +85,12 @@ test("native regeneration keeps a rejection, edited wording and a deletion", asy
       { candidate_text: "Suggestion to reject", status: "rejected", source: "ai_suggested" },
     ]);
     await openReview();
-    await expect(page.locator("tr", { hasText: "Own regeneration objective, edited" }).first()).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator("tr", { hasText: "Fresh suggestion" }).first()).toBeVisible();
-    await expect(page.locator("tr", { hasText: "Suggestion left undecided" })).toHaveCount(0);
+    await expect(page.locator("tbody[data-objective-row]", { hasText: "Own regeneration objective, edited" }).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator("tbody[data-objective-row]", { hasText: "Fresh suggestion" }).first()).toBeVisible();
+    await expect(page.locator("tbody[data-objective-row]", { hasText: "Suggestion left undecided" })).toHaveCount(0);
 
     // 4. Delete the own objective, regenerate again: nothing resurrected.
-    await page.locator("tr", { hasText: "Own regeneration objective, edited" }).first().getByRole("button", { name: "Delete objective" }).click();
+    await page.locator("tbody[data-objective-row]", { hasText: "Own regeneration objective, edited" }).first().getByRole("button", { name: "Delete objective" }).click();
     await expect.poll(async () => (await rows()).some((r) => r.source === "researcher_authored"), { timeout: 30_000 }).toBe(false);
     answer(["Another suggestion"]);
     await openReview();

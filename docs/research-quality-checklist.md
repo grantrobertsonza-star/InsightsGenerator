@@ -2,18 +2,22 @@
 
 Added 2026-10-18 at Grant's request: the review is now quantitative first, recommendations second.
 
+**2026-10-19 (redesign):** element checklists run only for reviews in the older format; brief and proposal reviews are rated on their dashboards (see `research-quality-brief-dashboard.md`).
+
+**2026-10-19 (RQK-2):** the brief checklist is retired; a brief is rated on the ten RQC-3 dimensions and their dashboard instead (see `research-quality-brief-dashboard.md`). Reviews scored under RQK-1 still show it. The catalogue file is now `RQK-2.json`.
+
 ## What it does
 
 Each document in a review is scored against the checklist for its confirmed role:
 
 | Checklist | Roles | Elements | Basis |
 |---|---|---|---|
-| Research brief | brief | 15 in 4 sections | Founder's brief rubric (2026-10-18); ISO 20252:2019 |
+| Research brief (retired in RQK-2) | brief | 15 in 4 sections | Founder's brief rubric (2026-10-18); ISO 20252:2019 |
 | Research proposal | proposal | 22 in 5 sections | Founder's proposal rubric (2026-10-18); ISO 20252:2019 |
 | Questionnaire | questionnaire | 14 in 4 sections | Krosnick and Presser (2010), Question and questionnaire design |
 | Methodology or report | methodology, report, fieldwork | 17 in 3 sections | AAPOR Code (2021) disclosure standards; ISO 20252:2019 |
 
-A discussion guide has no checklist yet; the screen says so rather than scoring it against the wrong list. The catalogue is `src/research-quality/checklists/RQK-1.json`: each element has what counts as present, what counts as partial, whether it is essential, and the recommendation to give when it is missing or partial.
+A discussion guide has no checklist yet; the screen says so rather than scoring it against the wrong list. The catalogue is `src/research-quality/checklists/RQK-2.json`: each element has what counts as present, what counts as partial, whether it is essential, and the recommendation to give when it is missing or partial.
 
 ## Who decides what
 

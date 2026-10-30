@@ -20,6 +20,7 @@ import JSZip from "jszip";
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/methodologyStatus", async () => await import("../methodologyStatus"));
 
 const state = vi.hoisted(() => ({
   statements: [] as string[],
@@ -32,6 +33,13 @@ vi.mock("../db", async () => (await import("./helpers/fakeStoryDb")).dbModule(st
 vi.mock("@/lib/db", async () => (await import("./helpers/fakeStoryDb")).dbModule(state));
 vi.mock("@/lib/docxReport", async () => await import("../docxReport"));
 vi.mock("@/lib/deckSlides", async () => await import("../deckSlides"));
+// What the narrative was written for (CE-3, B37-F03) is not what these tests are about, and the fake
+// database cannot model it (it has no inputs column, which now reads as "not known to be current"). It
+// has its own real-database tests (narrativeWrongGroup.db.test.ts), so here the narrative is current.
+vi.mock("@/lib/narrativeFreshness", async () => ({ ...(await import("../narrativeFreshness")), narrativeFreshnessNote: async () => null }));
+vi.mock("@/lib/evidenceTrail", async () => await import("../evidenceTrail"));
+vi.mock("@/lib/evidenceTrailSlides", async () => await import("../evidenceTrailSlides"));
+vi.mock("@/lib/objectiveCoverage", async () => await import("../objectiveCoverage"));
 vi.mock("@/lib/caveatLabels", async () => await import("../caveatLabels"));
 vi.mock("@/lib/supportStatus", async () => await import("../supportStatus"));
 vi.mock("@/lib/supportStatusShared", async () => await import("../supportStatusShared"));
@@ -91,7 +99,8 @@ async function slides(response: Response): Promise<string[]> {
   return Promise.all(names.map(async (n) => decode((await zip.file(n)!.async("string")).replace(/<\/a:p>/g, "\n"))));
 }
 
-const params = { params: Promise.resolve({ id: "run-1" }) };
+// A real project id: the routes refuse an id that cannot name a project before reading anything (SEC1).
+const params = { params: Promise.resolve({ id: "00000000-0000-4000-8000-0000000000e1" }) };
 const FRAMING_ALL =
   "Support no longer valid: this framing was written before a change to the evidence it rests on and is shown as it was generated. " +
   "Of the 4 insights it uses, 2 are no longer valid, 1 has changed since it was drafted and 1 is current. Regenerate the report to update it.";

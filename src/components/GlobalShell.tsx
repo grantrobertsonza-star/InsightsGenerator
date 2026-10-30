@@ -1,6 +1,7 @@
 import CollapsibleRail from "./CollapsibleRail";
-import GlobalNav from "./GlobalNav";
+import GlobalNav, { GlobalNavRail } from "./GlobalNav";
 import AccountPanel from "./AccountPanel";
+import AssistantDrawer from "./AssistantDrawer";
 
 /**
  * The app's persistent left rail: brand identity plus the three top-level
@@ -23,7 +24,15 @@ export default function GlobalShell({
 }) {
   return (
     <div className="flex min-h-screen w-full">
-      <CollapsibleRail>
+      <CollapsibleRail
+        rail={
+          <>
+            <GlobalNavRail />
+            {/* A run's sections as icons (RunNav portals them here), shown while the rail is hidden. */}
+            <div id="run-nav-rail" className="flex w-full flex-col items-center" />
+          </>
+        }
+      >
         <GlobalNav />
         {/* A run's own section nav (RunNav, in RunShell.tsx) portals its
             list into this slot so there's one sidebar column, not two --
@@ -33,6 +42,8 @@ export default function GlobalShell({
         <AccountPanel />
       </CollapsibleRail>
       <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+      {/* The floating Research assistant, on every signed-in page (AssistantDrawer.tsx). */}
+      <AssistantDrawer />
     </div>
   );
 }

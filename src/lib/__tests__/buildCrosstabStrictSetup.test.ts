@@ -10,6 +10,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("../db", () => ({ withTenant: vi.fn(), withTenantRead: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: vi.fn() } } }));
+// GT100-F01: the confirmed-questionnaire lookup is a boundary here (these checks are about the
+// set-up and sheet lookups). With the database mocked it used to fail silently; it now refuses.
+vi.mock("../instruments", () => ({ getLabelOverlay: vi.fn(async () => null) }));
 vi.mock("../findingArchive", () => ({ archiveAndReplaceFindings: vi.fn() }));
 vi.mock("../dataSetup", () => ({ loadDataSetupWithStatus: vi.fn() }));
 vi.mock("../variableOverrides", () => ({
@@ -37,18 +40,18 @@ vi.setConfig({ testTimeout: 20000 });
 describe("buildCrosstab enforces a strict setup lookup itself (ANA-NPS-003, Brief 38 repair)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) =>
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) =>
       cb({
         query: async () => ({
           rows: [{ storage_path: "s3://x", source_filename: "data.sav", selected_sheet: null }],
         }),
-      }),
+      } as never),
     );
     vi.mocked(loadVariableOverrides).mockResolvedValue({});
   });
 
   it("fails before constructing any engine request when the setup lookup fails, even though the request itself is otherwise well-formed", async () => {
-    vi.mocked(loadDataSetupWithStatus).mockResolvedValue({ ok: false, error: "permission denied for table documents" } as any);
+    vi.mocked(loadDataSetupWithStatus).mockResolvedValue({ ok: false, error: "permission denied for table documents" } as never);
 
     await expect(
       buildCrosstab("tenant-1", "run-1", "doc-1", {
@@ -68,7 +71,7 @@ describe("buildCrosstab enforces a strict setup lookup itself (ANA-NPS-003, Brie
     vi.mocked(loadDataSetupWithStatus).mockResolvedValue({
       ok: true,
       setup: { unit: "respondents", layout: "rows_are_cases", method: "survey", accepted: false, wave: null, design: null },
-    } as any);
+    } as never);
     vi.mocked(runStatsTool).mockResolvedValue({
       questions: [{ label: "Q1", kind: "single", rows: [] }],
       columns: [],
@@ -79,7 +82,7 @@ describe("buildCrosstab enforces a strict setup lookup itself (ANA-NPS-003, Brie
       overall: true,
       engine: "test",
       notes: {},
-    } as any);
+    } as never);
 
     // Whatever happens next (this fixture is deliberately minimal, not a full engine result)
     // is unrelated to this test's point, which is only that buildCrosstab got PAST its own

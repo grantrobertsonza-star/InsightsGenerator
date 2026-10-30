@@ -22,6 +22,8 @@
 // Supabase client construction and Next's revalidatePath.
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
@@ -30,7 +32,7 @@ const TENANT = vi.hoisted(() => {
   process.env.DEFAULT_TENANT_ID = id;
   return id;
 });
-const RUN = "run-1";
+const RUN = "00000000-0000-4000-8000-0000000000cc";
 
 type Row = Record<string, unknown>;
 type World = {
@@ -64,6 +66,8 @@ function fakeClient() {
       if (s.startsWith("select id, item_kind, item_order, objective_candidate_id")) return { rows: world.evidence };
       if (s.includes("from objective_evidence_results")) return { rows: world.results };
       if (s.includes("from objective_evidence_generations")) return { rows: [] };
+      // CE-6 (migration 0123) is not part of this fixture: its catalogue check finds no plan columns.
+      if (s.includes("from information_schema.columns")) return { rows: [{ n: 0 }] };
       throw new Error(`unhandled read-only fake query: ${sql}`);
     },
   };

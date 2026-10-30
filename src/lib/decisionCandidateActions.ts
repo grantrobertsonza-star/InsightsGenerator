@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { generateDecisionCandidates } from "./decisionFramer";
 import { markDecisionRefreshPending, refreshDecisionDependants } from "./decisionRefresh";
-import { syncDecisionStatement } from "./runSync";
+import { lockRunForContextChange, syncDecisionStatement } from "./runSync";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, assertRunAccessible, runAccessible } from "./runOwnership";
 
 /**
  * What a decision change reports back. The change itself either committed (this result) or
@@ -13,6 +14,18 @@ import { requireTenantId } from "./requestContext";
  * could not be updated to match it; they stay marked as owed a refresh (see decisionRefresh.ts).
  */
 export type DecisionChangeResult = { ok: true; refreshError: string | null };
+
+/**
+ * Codex DEC500-F01: an accept or edit refused because its target changed. `currentText` is the
+ * decision's wording as stored now, read under the same lock as the refusal (null when it was
+ * deleted), so the editor can show it and keep the researcher's draft. Nothing was written.
+ */
+export type DecisionConflict = { ok: false; conflict: true; error: string; currentText: string | null };
+
+const DECISION_EDIT_CONFLICT =
+  "This decision was changed after you opened it, so your edit was not saved. Your wording is still in the box: use the current wording, or replace it with yours.";
+const DECISION_GONE =
+  "This decision is no longer in the project; it may have been deleted, so nothing was saved. Your wording is still in the box; reload to see the current list.";
 
 // Runs only after the change committed, so nothing here may throw: a throw would reach the panel
 // as "Not saved" about a change that was saved. Any failure (the marker lookup, the refreshes,
@@ -37,7 +50,8 @@ async function afterDecisionChange(runId: string): Promise<DecisionChangeResult>
 /** Retries the insight and recommendation refresh owed after an earlier decision change. */
 export async function retryDecisionRefresh(runId: string): Promise<DecisionChangeResult> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   return afterDecisionChange(runId);
 }
 
@@ -49,15 +63,29 @@ export async function retryDecisionRefresh(runId: string): Promise<DecisionChang
  * match and flagged accordingly, the same way a finding's origin is tagged, so
  * a later reader can see this wasn't accepted exactly as suggested.
  */
-export async function acceptDecisionCandidate(runId: string, candidateId: string, editedText?: string) {
+export async function acceptDecisionCandidate(
+  runId: string,
+  candidateId: string,
+  editedText?: string,
+  expectedText?: string,
+): Promise<DecisionChangeResult | DecisionConflict> {
   const TENANT_ID = await requireTenantId();
-  await withTenant(TENANT_ID, async (client) => {
+  // DEC500-F01: `expectedText` is the wording the editor opened with. The run row is locked first
+  // (as every decision change does), then the candidate row, and the save is refused when the
+  // candidate is gone or now says something else, instead of overwriting another editor's change
+  // or reporting a save that wrote nothing. A deleted and recreated decision has a new id, so an
+  // editor opened on the old one is refused even when the wording matches.
+  const refused = await withTenant(TENANT_ID, async (client): Promise<DecisionConflict | null> => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     const result = await client.query<{ candidate_text: string; edited: boolean }>(
-      "select candidate_text, edited from decision_candidates where id = $1 and run_id = $2",
+      "select candidate_text, edited from decision_candidates where id = $1 and run_id = $2 for update",
       [candidateId, runId]
     );
     const candidate = result.rows[0];
-    if (!candidate) return;
+    if (!candidate) return { ok: false, conflict: true, error: DECISION_GONE, currentText: null };
+    if (expectedText !== undefined && candidate.candidate_text.trim() !== expectedText.trim()) {
+      return { ok: false, conflict: true, error: DECISION_EDIT_CONFLICT, currentText: candidate.candidate_text };
+    }
 
     const trimmedEdit = editedText?.trim();
     const finalText = trimmedEdit || candidate.candidate_text;
@@ -75,12 +103,14 @@ export async function acceptDecisionCandidate(runId: string, candidateId: string
     const wasEdited = candidate.edited || editedThisCall;
 
     await client.query(
-      "update decision_candidates set status = 'accepted', candidate_text = $1, edited = $2 where id = $3",
-      [finalText, wasEdited, candidateId]
+      "update decision_candidates set status = 'accepted', candidate_text = $1, edited = $2 where id = $3 and run_id = $4",
+      [finalText, wasEdited, candidateId, runId]
     );
     await syncDecisionStatement(client, runId);
     await markDecisionRefreshPending(client, TENANT_ID, runId);
+    return null;
   });
+  if (refused) return refused;
   // For a "validate" run this is the moment insight generation stops being a no-op (it reads the
   // decision statement that just changed); for a "generate" run it usually is one. Recommendations
   // are judged against the confirmed decisions in both modes, and a decision can be re-accepted
@@ -96,6 +126,7 @@ export async function acceptDecisionCandidate(runId: string, candidateId: string
 export async function acceptAllDecisionCandidates(runId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("update decision_candidates set status = 'accepted' where run_id = $1 and status = 'pending'", [
       runId,
     ]);
@@ -113,6 +144,7 @@ export async function acceptAllDecisionCandidates(runId: string) {
 export async function deleteAllDecisionCandidates(runId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("delete from decision_candidates where run_id = $1 and status = 'pending'", [runId]);
   });
   revalidatePath(`/runs/${runId}`);
@@ -121,6 +153,7 @@ export async function deleteAllDecisionCandidates(runId: string) {
 export async function rejectDecisionCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("update decision_candidates set status = 'rejected' where id = $1 and run_id = $2", [
       candidateId,
       runId,
@@ -140,6 +173,7 @@ export async function rejectDecisionCandidate(runId: string, candidateId: string
 export async function restoreDecisionCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("update decision_candidates set status = 'accepted' where id = $1 and run_id = $2", [
       candidateId,
       runId,
@@ -158,6 +192,7 @@ export async function restoreDecisionCandidate(runId: string, candidateId: strin
 export async function unacceptDecisionCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("update decision_candidates set status = 'pending' where id = $1 and run_id = $2", [
       candidateId,
       runId,
@@ -178,6 +213,7 @@ export async function unacceptDecisionCandidate(runId: string, candidateId: stri
  */
 export async function addOwnDecisionCandidate(runId: string, candidateText: string) {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   const text = candidateText.trim();
   if (!text) return;
 
@@ -213,6 +249,7 @@ export async function addOwnDecisionCandidate(runId: string, candidateText: stri
 export async function deleteDecisionCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("delete from decision_candidates where id = $1 and run_id = $2", [candidateId, runId]);
     await syncDecisionStatement(client, runId);
     await markDecisionRefreshPending(client, TENANT_ID, runId);
@@ -238,6 +275,7 @@ export async function regenerateDecisionCandidates(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await generateDecisionCandidates(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
@@ -250,7 +288,7 @@ export async function regenerateDecisionCandidates(
     // banner, by whoever happened to click the button.
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'decision_framer_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'decision_framer_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, message]
       );
     }).catch(() => {});

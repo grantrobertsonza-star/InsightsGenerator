@@ -8,6 +8,7 @@
 //   2. Updates allowed again: Save stores B; after reload Setup shows B and not A.
 //   3. Delete while updates are refused: "Not deleted: ..."; B is still listed and stored.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -30,7 +31,7 @@ test("a refused Setup edit or delete is reported and keeps the draft; a later sa
     const ui = await bind({ page, target, testInfo });
     const run = await ui.createRun({ name: `setup-save-failure-${Date.now()}` });
     const stated = async () => (await db.query("select stated_objectives_text from runs where id=$1", [run.id])).rows[0].stated_objectives_text;
-    const setObjectives = () => page.getByRole("button", { name: "Set Objectives", exact: true }).first().click();
+    const setObjectives = () => openSection(page, "Set Objectives");
 
     await setObjectives();
     const form = page.locator("form", { has: page.locator('textarea[name="researchObjective"]') });

@@ -20,6 +20,7 @@ import {
   type CsmFindingSection,
 } from "@/lib/csmActions";
 import { defaultMetricForScale, metricLabel, csmFindingKey } from "@/lib/csmMetrics";
+import { recordForRow } from "@/lib/driverPresentation";
 
 const METRICS: CsmMetric[] = ["mean", "top1", "top2", "top3"];
 
@@ -43,12 +44,15 @@ export default function CsmAnalyticsPanel({
   filename,
   waveFiles,
   onClose,
+  closeLabel = "Close",
 }: {
   runId: string;
   documentId: string;
   filename: string;
   waveFiles?: WaveFile[];
   onClose: () => void;
+  /** "All analytics" when opened from the Analytics tool grid, which it returns to. */
+  closeLabel?: string;
 }) {
   const [variables, setVariables] = useState<VariableInfo[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -160,7 +164,7 @@ export default function CsmAnalyticsPanel({
           <p className="text-[11px] text-muted">{filename}</p>
         </div>
         <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-slate-50">
-          Close
+          {closeLabel === "Close" ? "Close" : `← ${closeLabel}`}
         </button>
       </div>
 
@@ -591,7 +595,12 @@ function TrendLine({ title, points, suffix }: { title: string; points: { label: 
 function CsmDriverWaveTable({ dashboards }: { dashboards: CsmDashboard[] }) {
   const withDriver = dashboards.filter((d) => d.driver);
   if (withDriver.length === 0) return null;
-  const names = Array.from(new Set(withDriver.flatMap((d) => d.driver!.result.rows.map((r) => r.name))));
+  // One row per predictor, keyed by its code where the report records one (Codex AN500-F01) so two
+  // questions that share a label stay two rows; older reports without codes fall back to the name.
+  const keyOf = (r: { name: string; variable?: string }) => (r.variable ? `v:${r.variable}` : `n:${r.name}`);
+  const predictors = Array.from(
+    new Map(withDriver.flatMap((d) => d.driver!.result.rows.map((r) => [keyOf(r), r] as const))).values(),
+  );
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
       <table className="w-full border-collapse text-xs">
@@ -606,15 +615,16 @@ function CsmDriverWaveTable({ dashboards }: { dashboards: CsmDashboard[] }) {
           </tr>
         </thead>
         <tbody>
-          {names.map((name, i) => {
+          {predictors.map((predictor, i) => {
+            const name = predictor.name;
             const shares = dashboards.map((d) => {
-              const row = d.driver?.result.rows.find((r) => r.name === name);
+              const row = d.driver?.result.rows.find((r) => keyOf(r) === keyOf(predictor));
               return row ? Math.round(row.share * 100) : null;
             });
             const present = shares.filter((v): v is number => v !== null);
             const rowMax = Math.max(1, ...present);
             return (
-              <tr key={name} className={i % 2 === 1 ? "bg-slate-50/60" : undefined}>
+              <tr key={keyOf(predictor)} className={i % 2 === 1 ? "bg-slate-50/60" : undefined}>
                 <td className="max-w-[18rem] truncate px-2.5 py-1.5 font-medium text-foreground" title={name}>
                   {name}
                 </td>
@@ -674,7 +684,8 @@ function MiniQuadrant({
   size?: "sm" | "lg";
 }) {
   const rows = driver.result.rows.map((r) => {
-    const p = driver.performance.find((x) => x.name === r.name);
+    // By the predictor's code (Codex AN500-F01), as the Analytics quadrant joins.
+    const p = recordForRow(r, driver.performance, driver.result.rows);
     return { name: r.name, importance: r.share, perf: p?.topTwo ?? null, mean: p?.mean ?? null };
   });
   const useTop = rows.filter((r) => r.perf !== null).length >= Math.ceil(rows.length / 2);

@@ -13,12 +13,14 @@ const SOFFICE_PATH = process.env.LIBREOFFICE_PATH || "C:\\Program Files\\LibreOf
 
 // LibreOffice cannot run two headless conversions on the same profile at once:
 // the second one fails outright. Processing several Word files together used
-// to hit that, so conversions go through one queue. They also use their own
-// profile folder (kept between runs, so only the first conversion is slow),
-// which stops a LibreOffice window the user has open from blocking them.
+// to hit that, so conversions in one process go through one queue. They also
+// use their own profile folder (kept between runs, so only the first conversion
+// is slow), which stops a LibreOffice window the user has open from blocking
+// them. The queue holds only within one process, so the folder is per process
+// (V-B36-02): two server or worker processes never share a profile.
 let queue: Promise<unknown> = Promise.resolve();
 const PROFILE_URL = pathToFileURL(
-  path.join(tmpdir(), "insights-elevator-libreoffice-profile"),
+  path.join(tmpdir(), `insights-elevator-libreoffice-profile-${process.pid}`),
 ).href;
 
 export function convertOfficeDocToPdf(buffer: Buffer, originalFilename: string): Promise<Buffer> {

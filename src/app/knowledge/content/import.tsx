@@ -6,7 +6,7 @@ const toc = [
   { id: "kinds", title: "What you can bring, and what each kind gets" },
   { id: "accept", title: "Reading and accepting data files" },
   { id: "quality", title: "What the quality panels check" },
-  { id: "instruments", title: "Questionnaires and guides" },
+  { id: "instruments", title: "Questionnaires, codebooks and guides" },
   { id: "output", title: "Statistical output sets" },
   { id: "checks", title: "The checks on an output set" },
   { id: "findings", title: "From output to findings" },
@@ -88,10 +88,12 @@ export default function ImportGuide() {
         rows={[
           ["Kind", "What it is", "What Import does with it"],
           ["Report", "A narrative document, deck or PDF that makes claims", "Reads it and extracts atomic claims for verification (see the findings guide)."],
-          ["Data file", "Case-level data (.sav, .dta, .csv, .xlsx; SAS excluded pending verification) or an already summarised table", "Case-level files are read, checked and held for the cross tab tool. Summarised tables get their own table checks and can generate findings."],
+          ["Data file", "Case-level data (.sav, .dta, SAS .sas7bdat or .xpt, R .rds or .RData, Parquet, .csv, tab-delimited .txt, .xlsx) or an already summarised table", "Case-level files are read, checked and held for the cross tab tool. Summarised tables get their own table checks and can generate findings."],
           ["Transcript", "An interview or group discussion", "Checks it before coding: who speaks, how much, how the moderator behaves, and whether it is long enough to code."],
           ["Questionnaire or guide", "The instrument behind the data or the discussion", "Attached to a data file or to transcripts, read automatically, and matched. See below."],
+          ["Codebook", "The data file's variables with their labels and answer codes (Excel, CSV, text, JSON, Word or PDF)", "Read automatically and matched to the data file by variable name. See below."],
           ["Statistical output", "A zip or several files of model results, cluster profiles, diagnostics and logs", "Sorted into a set, classified, checked as a set, and turned into findings. See below."],
+          ["Technical document", "How the study was done: methodology, fieldwork, sampling, weighting or analysis documentation (a survey's technical report, for example)", "Reads its text, shows it in the preview, and gives it to the Research assistant to search and quote. It is not mined for findings, and what it describes is not checked against the data."],
         ]}
       />
       <P>
@@ -121,6 +123,52 @@ export default function ImportGuide() {
         longer mean what they did. Wide files, with thousands of columns, keep only the usable variables, and the panel
         says how many were kept; the cross tab tool still reads every variable it needs.
       </P>
+      <H3>What each file&apos;s status says</H3>
+      <P>
+        Each file shows whether it was read, and, where it has one, whether its setup is accepted; the two are kept
+        apart because a file can be read and still need review. Read, Reading, Not read yet and Read failed mean what
+        they say. Partly read means part of a report or questionnaire could not be read. For a transcript the partial
+        state is about its coding, not its text, and is called Coding incomplete: some passages came back without a
+        code, so findings from it may be missing them. The file says to open Coding and run Code themes again, and the
+        Prepare overview links there. Needs attention in the state filter gathers failed and partial reads and
+        previews that could not be verified.
+      </P>
+      <H3>Technical documents</H3>
+      <P>
+        A technical document (methodology, fieldwork, sampling, weighting or analysis documentation, such as a
+        survey&apos;s technical report) is read when it is added and previewed like a brief. It is not mined for findings
+        and has no acceptance step. The Research assistant reads and quotes it when you ask how the study was done;
+        what it describes is not checked against your data. It needs database update 0112.
+      </P>
+      <H3>Indicator data</H3>
+      <P>
+        Indicator data is published statistics by country or region and year, such as a World Bank Data360, WDI or
+        Findex download: one row per area, indicator, breakdown and year, not one row per respondent. It is read
+        when it is added into series (an indicator with its breakdowns) and values, and suggested from a CSV&apos;s
+        first lines. Six layouts are read: Data360 long and wide, WDI wide, the IMF data portal download, OECD Data
+        Explorer data and a two-column label and value table; anything else is refused with the reason. An OECD
+        reference information file is read as notes: its English notes are shown under the chart of matching series
+        of the same dataflow, and in the CSV, and never change a value. A file may hold up to 500,000 values. A blank cell is a missing value, never zero,
+        a value the publisher withholds as confidential is marked as withheld, and the values are kept as the file
+        writes them. Values the file marks as estimated, provisional or a break in series have their own point shape
+        on the chart, named in its legend. On the file&apos;s Indicator data tab, choose an indicator, its breakdowns and up
+        to twelve areas to see a line chart over time with the unit and source, a table and a CSV of what is shown.
+        Indicator data is not mined for findings yet. It needs database update 0126.
+      </P>
+      <H3>The file list and the selected file</H3>
+      <P>
+        The list of sources rolls up with its own button, which only hides it: the search, filters and sort keep
+        their state. Each file names its links on its type and date line (&quot;Linked: questionnaire.docx&quot;, and
+        &quot;and N more&quot;), so you can see what is linked without opening it. The selected file shows its name on
+        one line and its type, upload date, wave and purpose on the next. Raw data offers Open Crosstabs and Open
+        Analytics; a summarised table offers Open Crosstabs only, because Analytics needs case-level data.
+      </P>
+      <P>
+        <em>View original</em> downloads the file exactly as it was uploaded, under its own name, without opening a
+        window. Viewing opens a readable copy in a browser tab where there is one (a PDF). Both use a short-lived link,
+        checked on the server to belong to this project; it stops working after ten minutes. If a download fails, the
+        reason shows under the button and pressing it again tries again. The original file is never changed.
+      </P>
       <WhyBox>
         Accepting by default saves a step nearly everyone would take anyway. Asking again after a change keeps the one
         safeguard that matters: a table should never silently rest on a different structure than the one you
@@ -128,7 +176,11 @@ export default function ImportGuide() {
       </WhyBox>
 
       <H2 id="quality">What the quality panels check</H2>
-      <P>Each card has a rolled-up quality panel. It reports figures, not scores, so you can see why it says what it says.</P>
+      <P>
+        Each card has a rolled-up quality panel. It reports figures, not scores, so you can see why it says what it
+        says. The table of checks is rolled up by default; its summary line gives the number of checks, how many
+        passed, how many to check and how many have a problem, with the worst status beside it.
+      </P>
       <H3>Case-level data</H3>
       <UL>
         <li>
@@ -139,7 +191,18 @@ export default function ImportGuide() {
         </li>
         <li>
           <strong>Weights.</strong> Whether a weight variable is present, how many cases lack a weight, and how
-          variable the weights are. Very unequal weights reduce the effective sample size.
+          variable the weights are. Very unequal weights reduce the effective sample size. This has its own Weights
+          tab.
+        </li>
+        <li>
+          <strong>Missing-value codes.</strong> Codes for don&apos;t know, refused and not applicable, in a fold under
+          Variables. The fold reads the file when you open it. The detection rules are the same as before; only the
+          place changed.
+        </li>
+        <li>
+          <strong>Value labels.</strong> A row in the checks table gives the exact number of variables in the label
+          sheets that are not in the data (their labels are not applied), with every name in a fold, and the number
+          with conflicting labels. It is a note: it does not change the table&apos;s status.
         </li>
         <li>
           <strong>Structure.</strong> Duplicated respondents, constant columns, label look-alikes, and codes that look
@@ -170,7 +233,29 @@ export default function ImportGuide() {
         A questionnaire sits inside the data file card, and a guide inside the transcript card, rolled up. They are
         read automatically when they arrive, and the wrong one can be removed with the delete button beside it.
       </P>
+      <H3>Codebook</H3>
+      <P>
+        A codebook lists each variable with its label and answer codes, as survey archives such as the Berkeley IGS Poll
+        or the World Bank publish them. In Excel, CSV, text or JSON it is read directly, without the AI: the app finds the
+        column of variable names, the labels and answer lists written like &quot;1=Democrat, 2=Republican&quot;, or a
+        layout with one row per answer code. In Word or PDF it is read by the AI. Each variable is then matched to the
+        data file&apos;s variable of the same name; confirm the same-code matches and tables show the codebook&apos;s
+        labels. A data workbook with its own Codebook sheet is still read with the data, without a separate file.
+      </P>
+      <H3>Labels and documentation</H3>
+      <P>
+        A data file&apos;s Labels and documentation tab sets each variable beside its codebook entry and questionnaire
+        question, and says where the labels in tables come from: the data file&apos;s own labels first, then the
+        codebook&apos;s, then the questionnaire&apos;s. A codebook and a questionnaire can both be confirmed for the same
+        variable. Where they give different answer labels, tables use the codebook&apos;s and the tab lists the
+        difference, so you can check it. The tab also counts the variables documented and not documented, and lists
+        codebook entries with no confirmed column in the file.
+      </P>
       <H3>Questionnaire</H3>
+      <P>
+        A questionnaire can be Word, PDF, Excel or CSV. An XLSForm (the survey and choices sheets used by ODK,
+        KoboToolbox and SurveyCTO) is read directly; any other spreadsheet is read by the AI, as a Word file is.
+      </P>
       <P>
         The read produces a list of items: code, wording, answer options and any printed skip instruction. Matching to
         the data then proceeds from the most to the least reliable signal: same code, same code stem (Q12 to Q12_1; Q1
@@ -193,6 +278,20 @@ export default function ImportGuide() {
         </li>
         <li>They can later give wording for the labels in a statistical output set (see below).</li>
       </UL>
+      <P>
+        Codes the questionnaire marks as don&apos;t know are treated as missing once a link is confirmed, so bases and
+        percentages can change. A note on the data file&apos;s links tab and on the questionnaire says so. Nothing
+        applies until a link is confirmed, and the data file itself is never changed. The card counts these as
+        &quot;Question and variable links confirmed&quot;.
+      </P>
+      <P>
+        A multiple-response heading question (such as EN20, with the data in EN20_1 to EN20_12) has no single variable
+        of its own. When no variable has the code itself, the variables named the code plus a separator and a suffix
+        are suggested together as its family, and &quot;Confirm same-code matches&quot; can confirm them. By hand,
+        &quot;Choose variable&quot; offers &quot;Link all N&quot; for the family. The separator is the boundary: EN2
+        never takes EN20_1, and EN20 never takes EN201. Linked to a family, the question only adds its wording as a
+        tooltip; the members keep their own answer labels.
+      </P>
       <H3>Guide</H3>
       <P>
         Moderator questions in each transcript are split out and compared with the guide items by wording overlap. A

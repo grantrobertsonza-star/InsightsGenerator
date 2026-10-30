@@ -9,7 +9,9 @@ import {
   evaluateObjectiveEvidenceAction,
   generateObjectiveEvidenceAction,
   loadObjectiveEvidenceAction,
+  promoteApprovedPlanTablesAction,
   retryObjectiveEvidenceAction,
+  setPlanLineApprovalAction,
 } from "@/lib/objectiveEvidenceActions";
 import type { EvidenceQuestion, ItemEvidence } from "@/lib/objectiveEvidence";
 
@@ -82,7 +84,30 @@ type GroupHandlers = {
   onSave: (q: EvidenceQuestion) => void;
   onToggle: (q: EvidenceQuestion) => void;
   onRetry: (id?: string) => void;
+  /** CE-6: approve (or withdraw approval of) plan lines at the wording shown. */
+  onApprove: (qs: EvidenceQuestion[], approve: boolean) => void;
+  busy: boolean;
 };
+
+const APPROVAL_CHIP: Record<EvidenceQuestion["approval"], { text: string; cls: string } | null> = {
+  approved: { text: "Approved", cls: "bg-green-50 text-green-800 ring-green-200" },
+  changed: { text: "Changed since approval", cls: "bg-amber-50 text-amber-800 ring-amber-200" },
+  proposed: { text: "Proposed", cls: "bg-slate-50 text-slate-600 ring-slate-200" },
+  unknown: null,
+};
+
+/** The plan's lines that count: current groups' included lines. Orphans are not part of the plan. */
+export function planCounts(items: ItemEvidence[]): { lines: number; approved: number; changed: number; proposed: number; toApprove: EvidenceQuestion[] } {
+  const lines = items.filter((it) => !it.orphaned).flatMap((it) => it.questions).filter((q) => !q.excluded);
+  const toApprove = lines.filter((q) => q.approval === "proposed" || q.approval === "changed");
+  return {
+    lines: lines.length,
+    approved: lines.filter((q) => q.approval === "approved").length,
+    changed: lines.filter((q) => q.approval === "changed").length,
+    proposed: lines.filter((q) => q.approval === "proposed").length,
+    toApprove,
+  };
+}
 
 /**
  * The evidence groups: current ones (filtered by the selected objective), the "no evidence for this
@@ -136,7 +161,7 @@ export function EvidenceGroups({
 }
 
 function EvidenceGroupCard({ it, orphan, handlers }: { it: ItemEvidence; orphan: boolean; handlers: GroupHandlers }) {
-  const { runId, editing, draft, onDraft, onStartEdit, onCancelEdit, onSave, onToggle, onRetry } = handlers;
+  const { runId, editing, draft, onDraft, onStartEdit, onCancelEdit, onSave, onToggle, onRetry, onApprove, busy } = handlers;
   return (
     <div className="rounded-lg border border-border p-3" data-orphaned={orphan ? "true" : "false"} data-identity={it.identity}>
       <div className="flex items-center gap-2">
@@ -152,7 +177,7 @@ function EvidenceGroupCard({ it, orphan, handlers }: { it: ItemEvidence; orphan:
       {orphan && <p className="mt-0.5 text-xs text-amber-800">{orphanReason(it)}</p>}
       <ul className="mt-2 space-y-2">
         {it.questions.map((q) => (
-          <li key={q.id} className={`rounded border border-border/70 p-2 text-sm ${q.excluded ? "opacity-50" : ""}`}>
+          <li key={q.id} data-plan-line={q.id} data-approval={q.approval} className={`rounded border border-border/70 p-2 text-sm ${q.excluded ? "opacity-50" : ""}`}>
             {editing === q.id ? (
               <div className="space-y-1.5">
                 {(["question", "request_text", "supports_if", "against_if"] as const).map((k) => (
@@ -176,6 +201,11 @@ function EvidenceGroupCard({ it, orphan, handlers }: { it: ItemEvidence; orphan:
                   {q.stance ? <Pill stance={q.stance} /> : <span className="text-xs text-muted">{q.error ? "Could not be answered" : "Not read yet"}</span>}
                   {q.results.length > 1 && q.stance && <span className="text-xs text-muted">all files combined</span>}
                   {q.source !== "auto" && <span className="text-xs text-muted">{q.source}</span>}
+                  {!orphan && !q.excluded && APPROVAL_CHIP[q.approval] && (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${APPROVAL_CHIP[q.approval]!.cls}`} data-testid="plan-approval">
+                      {APPROVAL_CHIP[q.approval]!.text}
+                    </span>
+                  )}
                 </div>
                 <p className="mt-1 text-foreground">{q.question}</p>
                 <p className="mt-0.5 text-xs text-muted">
@@ -202,6 +232,16 @@ function EvidenceGroupCard({ it, orphan, handlers }: { it: ItemEvidence; orphan:
                   <button className="text-muted underline" onClick={() => onToggle(q)}>
                     {q.excluded ? "Include" : "Leave out"}
                   </button>
+                  {!orphan && !q.excluded && (q.approval === "proposed" || q.approval === "changed") && (
+                    <button className="text-muted underline" disabled={busy} onClick={() => onApprove([q], true)}>
+                      {q.approval === "changed" ? "Approve this wording" : "Approve"}
+                    </button>
+                  )}
+                  {!orphan && (q.approval === "approved" || q.approval === "changed") && (
+                    <button className="text-muted underline" disabled={busy} onClick={() => onApprove([q], false)}>
+                      Withdraw approval
+                    </button>
+                  )}
                   {q.error && (
                     <button className="text-muted underline" onClick={() => onRetry(q.id)}>
                       Try again
@@ -256,6 +296,9 @@ export default function ObjectiveEvidence({
   const [variablesTruncated, setVariablesTruncated] = useState<boolean | null>(false);
   // OBJ-REV-001/002 Rule B: false when migration 0095 is missing (reported by the load action).
   const [originAvailable, setOriginAvailable] = useState(true);
+  // CE-6: whether approvals can be read (migration 0123) and the plan's methodology note.
+  const [planAvailable, setPlanAvailable] = useState(true);
+  const [planNote, setPlanNote] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState({ question: "", request_text: "", supports_if: "", against_if: "" });
 
@@ -265,6 +308,8 @@ export default function ObjectiveEvidence({
       setItems(r.items);
       setVariablesTruncated(r.variablesTruncated);
       setOriginAvailable(r.originAvailable);
+      setPlanAvailable(r.planAvailable);
+      setPlanNote(r.planMethodologyNote);
       setHasPending(r.remaining > 0);
     } else setError(r.error);
   }
@@ -280,6 +325,8 @@ export default function ObjectiveEvidence({
       setItems(r.items);
       setVariablesTruncated(r.variablesTruncated);
       setOriginAvailable(r.originAvailable);
+      setPlanAvailable(r.planAvailable);
+      setPlanNote(r.planMethodologyNote);
       setHasPending(r.remaining > 0);
       const none = r.items.reduce((n, i) => n + i.questions.length, 0) === 0;
       if (!none || !hasObjectiveOrDecision || dataFiles.length === 0) return;
@@ -393,6 +440,33 @@ export default function ObjectiveEvidence({
     await refresh();
   }
 
+  // CE-6: approval at the wording shown; a line changed meanwhile is refused and nothing is saved.
+  async function approve(qs: EvidenceQuestion[], yes: boolean) {
+    setError(null);
+    setBusy(yes ? "Approving..." : "Withdrawing approval...");
+    const r = await settled(setPlanLineApprovalAction(runId, qs.map((q) => ({ id: q.id, expectedRevision: q.question_revision })), yes));
+    if (!r.ok) setError(`Not ${yes ? "approved" : "changed"}: ${r.error}`);
+    await refresh();
+    setBusy(null);
+  }
+
+  async function addPlanTables(file: { id: string; name: string }) {
+    setError(null);
+    setNote(null);
+    setBusy("Adding plan tables...");
+    const r = await settled(promoteApprovedPlanTablesAction(runId, file.id));
+    if (!r.ok) setError(`Not added: ${r.error}`);
+    else {
+      const parts = [`${r.moved} table${r.moved === 1 ? "" : "s"} from ${file.name} added to Cross tabs as drafts; commit them there to make planned findings.`];
+      if (r.alreadyInCrossTabs > 0) parts.push(`${r.alreadyInCrossTabs} already there.`);
+      if (r.withoutTable > 0) parts.push(`${r.withoutTable} approved line${r.withoutTable === 1 ? " has" : "s have"} no table for this file yet (not read, silent or failed).`);
+      if (r.notCurrent > 0) parts.push(`${r.notCurrent} approved line${r.notCurrent === 1 ? " belongs" : "s belong"} to an objective or decision no longer in the plan, so ${r.notCurrent === 1 ? "its table was" : "their tables were"} not added.`);
+      setNote(parts.join(" "));
+    }
+    await refresh();
+    setBusy(null);
+  }
+
   async function retry(id?: string) {
     setError(null);
     const r = await settled(retryObjectiveEvidenceAction(runId, id));
@@ -408,18 +482,24 @@ export default function ObjectiveEvidence({
   if (dataFiles.length === 0) return null;
   const total = items.reduce((n, i) => n + i.questions.length, 0);
   const failed = items.flatMap((i) => i.questions).filter((q) => q.error && !q.excluded).length;
+  const plan = planCounts(items);
 
   return (
     <div className="mb-6 min-w-0 space-y-4 rounded-xl border border-border bg-white p-5">
       <div className="flex flex-col items-start gap-2">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-foreground">Evidence from the data</h3>
+          <h3 className="text-sm font-semibold text-foreground">Analysis plan and evidence from the data</h3>
           <p className="mt-1 text-xs text-muted">
             Each objective is broken into a few questions the data file can answer. A table is built for each and
             read as support for, against, or silent on the objective. No significance flag is needed: a level, a
             share, or a gap between groups all count. The questions are written before any table is seen, and you
             can edit or drop any of them. Every question is put to each data file in the project and the answers are
             combined: where files disagree the result is mixed, and a file without the variable is silent.
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            These questions are the analysis plan. Approve each line you want to stand: approved lines are kept when the
+            plan is written again, and their tables can be added to Cross tabs, where the findings committed from them are
+            marked as planned, with their objective.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -450,6 +530,34 @@ export default function ObjectiveEvidence({
           just now - treat coverage as unverified rather than assuming nothing was left out.
         </p>
       )}
+      {!planAvailable && (
+        <p className="text-xs text-amber-700" data-testid="plan-migration-notice">
+          Approving the analysis plan needs database migration 0123_analysis_plan. Until it is applied, approval is not
+          shown or saved. Apply it (npx.cmd supabase migration up), then reload.
+        </p>
+      )}
+      {planAvailable && plan.lines > 0 && (
+        <div className="rounded-lg border border-border bg-slate-50/60 p-3 text-xs" data-testid="plan-summary">
+          <p className="text-foreground">
+            Plan: {plan.lines} line{plan.lines === 1 ? "" : "s"}, {plan.approved} approved
+            {plan.changed > 0 ? `, ${plan.changed} changed since approval` : ""}, {plan.proposed} proposed.
+          </p>
+          {planNote && <p className="mt-1 text-amber-700" data-testid="plan-methodology-note">{planNote}</p>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            {plan.toApprove.length > 0 && (
+              <button className={btn} disabled={busy !== null} onClick={() => void approve(plan.toApprove, true)}>
+                Approve all {plan.toApprove.length} shown
+              </button>
+            )}
+            {plan.approved > 0 &&
+              dataFiles.map((f) => (
+                <button key={f.id} className={btn} disabled={busy !== null} onClick={() => void addPlanTables(f)}>
+                  Add approved tables{dataFiles.length > 1 ? ` from ${f.name}` : ""} to Cross tabs
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
       {note && <p className="text-xs text-muted">{note}</p>}
 
       <EvidenceGroups
@@ -470,6 +578,8 @@ export default function ObjectiveEvidence({
           onSave: (q) => void save(q),
           onToggle: (q) => void toggle(q),
           onRetry: (id) => void retry(id),
+          onApprove: (qs, yes) => void approve(qs, yes),
+          busy: busy !== null,
         }}
       />
       {total === 0 && !busy && <p className="text-sm text-muted">Not gathered yet.</p>}

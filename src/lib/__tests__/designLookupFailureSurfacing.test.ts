@@ -12,6 +12,8 @@
 // loadVariableDictionaryWithStatus mocked to fail exactly as a permission/connection error would.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("../crosstabs", () => ({
   loadVariableDictionaryWithStatus: vi.fn(),
   buildCrosstab: vi.fn(),
@@ -36,9 +38,9 @@ vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequest
 const FAKE_DICT = {
   variables: [{ name: "q1", label: "Q1", nValid: 100, nDistinct: 5, pctValid: 95, weightLike: false, inSet: null }],
   sets: [],
-} as any;
+} as never;
 
-const BASE_SETUP: DataSetup = { unit: "respondents", layout: "rows_are_cases", method: "survey", accepted: false, wave: null, design: null };
+const BASE_SETUP: DataSetup = { unit: "respondents", layout: "rows_are_cases", method: "survey", accepted: false, wave: null, waveDate: null, waveIncluded: true, design: null, headerRowsSkipped: null };
 const OK_SETUP_STATUS: { ok: true; setup: DataSetup } = { ok: true, setup: BASE_SETUP };
 const FAILED_SETUP_STATUS = (error: string): { ok: false; setup: DataSetup; error: string } => ({
   ok: false,
@@ -55,7 +57,7 @@ describe("calculation callers surface a design-lookup failure instead of silentl
     vi.mocked(loadVariableDictionaryWithStatus).mockResolvedValue({ ok: true, dictionary: FAKE_DICT });
     vi.mocked(loadDataSetupWithStatus).mockResolvedValue(FAILED_SETUP_STATUS("permission denied for table documents"));
 
-    const r = await runDistributionAction("run-1", "doc-1", "q1", undefined, null);
+    const r = await runDistributionAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "q1", undefined, null);
 
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/could not be read/);
@@ -71,7 +73,7 @@ describe("calculation callers surface a design-lookup failure instead of silentl
 
     // No `design` argument passed (undefined) - this call defers entirely to the persisted
     // setting, so the lookup failure must block it.
-    const r = await runNpsAction("run-1", "doc-1", "q1", undefined);
+    const r = await runNpsAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "q1", undefined);
 
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/could not be read/);
@@ -81,13 +83,13 @@ describe("calculation callers surface a design-lookup failure instead of silentl
   it("runNpsAction proceeds normally when the CALLER supplies its own explicit design, even if the persisted DESIGN lookup fails - it would never have been consulted anyway", async () => {
     vi.mocked(loadVariableDictionaryWithStatus).mockResolvedValue({ ok: true, dictionary: FAKE_DICT });
     vi.mocked(loadDataSetupWithStatus).mockResolvedValue(FAILED_SETUP_STATUS("permission denied for table documents"));
-    vi.mocked(buildCrosstab).mockResolvedValue({ tableId: "table-1" } as any);
-    vi.mocked(loadCrosstab).mockResolvedValue({ result: null } as any);
+    vi.mocked(buildCrosstab).mockResolvedValue({ tableId: "table-1" } as never);
+    vi.mocked(loadCrosstab).mockResolvedValue({ result: null } as never);
 
     // An explicit design (including explicit null) always wins over the persisted setting per
     // effectiveDesignChoice, so a failed lookup of a setting that would never be consulted must
     // not block this call.
-    const r = await runNpsAction("run-1", "doc-1", "q1", undefined, null, null);
+    const r = await runNpsAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "q1", undefined, null, null);
 
     expect(buildCrosstab).toHaveBeenCalled();
     // (The call still fails downstream here because loadCrosstab returned no result - that's
@@ -141,17 +143,17 @@ describe("calculation callers surface a design-lookup failure instead of silentl
         throw new Error("unhandled mock query: " + sql);
       },
     };
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(fakeClient));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(fakeClient as never));
     vi.mocked(planCrosstabFromText).mockResolvedValue({
       rows: [{ key: "revenue", label: "Revenue", vars: ["revenue"] }],
       columns: [],
       filters: [],
       unclear: [],
-    } as any);
+    } as never);
     vi.mocked(loadVariableDictionaryWithStatus).mockResolvedValue({ ok: true, dictionary: FAKE_DICT });
     vi.mocked(loadDataSetupWithStatus).mockResolvedValue(FAILED_SETUP_STATUS("permission denied for table documents"));
 
-    const stored = await evaluateEvidenceQuestion("tenant-1", "run-1", { id: "doc-1", name: "Wave 1" }, "ev-1");
+    const stored = await evaluateEvidenceQuestion("tenant-1", "00000000-0000-4000-8000-0000000000cc", { id: "doc-1", name: "Wave 1" }, "ev-1");
 
     expect(stored).toBe(true); // something WAS durably stored - an error row, not nothing
     expect(buildCrosstab).not.toHaveBeenCalled(); // never silently computed a stance on a guess
@@ -176,7 +178,7 @@ describe("ANA-NPS-003 (Brief 37 repair): a layout/dictionary lookup failure is j
   it("runDistributionAction fails actionably when the dictionary/layout lookup fails", async () => {
     vi.mocked(loadVariableDictionaryWithStatus).mockResolvedValue({ ok: false, error: "permission denied for table documents" });
 
-    const r = await runDistributionAction("run-1", "doc-1", "q1", undefined, null);
+    const r = await runDistributionAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "q1", undefined, null);
 
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/could not be read/);
@@ -187,7 +189,7 @@ describe("ANA-NPS-003 (Brief 37 repair): a layout/dictionary lookup failure is j
   it("runNpsAction with NO explicit design fails actionably when the dictionary/layout lookup fails", async () => {
     vi.mocked(loadVariableDictionaryWithStatus).mockResolvedValue({ ok: false, error: "connection terminated unexpectedly" });
 
-    const r = await runNpsAction("run-1", "doc-1", "q1", undefined);
+    const r = await runNpsAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "q1", undefined);
 
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/could not be read/);
@@ -199,7 +201,7 @@ describe("ANA-NPS-003 (Brief 37 repair): a layout/dictionary lookup failure is j
 
     // Explicit design, including explicit null strata - exactly the shape that bypasses the
     // DESIGN lookup entirely. It must NOT also bypass the layout/dictionary lookup.
-    const r = await runNpsAction("run-1", "doc-1", "q1", undefined, "psu_var", null);
+    const r = await runNpsAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "q1", undefined, "psu_var", null);
 
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/could not be read/);
@@ -210,7 +212,7 @@ describe("ANA-NPS-003 (Brief 37 repair): a layout/dictionary lookup failure is j
     vi.mocked(loadVariableDictionaryWithStatus).mockResolvedValue({ ok: false, error: "permission denied for table documents" });
 
     // design: null, groupVar: null - an explicit, deliberate "no design this time" choice.
-    const r = await runNpsAction("run-1", "doc-1", "q1", undefined, null, null);
+    const r = await runNpsAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "q1", undefined, null, null);
 
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/could not be read/);
@@ -257,16 +259,16 @@ describe("ANA-NPS-003 (Brief 37 repair): a layout/dictionary lookup failure is j
         throw new Error("unhandled mock query: " + sql);
       },
     };
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(fakeClient));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(fakeClient as never));
     vi.mocked(planCrosstabFromText).mockResolvedValue({
       rows: [{ key: "revenue", label: "Revenue", vars: ["revenue"] }],
       columns: [],
       filters: [],
       unclear: [],
-    } as any);
+    } as never);
     vi.mocked(loadVariableDictionaryWithStatus).mockResolvedValue({ ok: false, error: "permission denied for table documents" });
 
-    const stored = await evaluateEvidenceQuestion("tenant-1", "run-1", { id: "doc-1", name: "Wave 1" }, "ev-1");
+    const stored = await evaluateEvidenceQuestion("tenant-1", "00000000-0000-4000-8000-0000000000cc", { id: "doc-1", name: "Wave 1" }, "ev-1");
 
     expect(stored).toBe(true);
     expect(buildCrosstab).not.toHaveBeenCalled();

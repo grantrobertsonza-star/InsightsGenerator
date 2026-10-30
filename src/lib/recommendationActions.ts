@@ -2,21 +2,24 @@
 
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
-import { figureCheckAvailable } from "./figureChecks";
 import { generateRecommendations, generateSynthesizedRecommendations } from "./recommendationAgent";
 import { refreshRecommendationQuality } from "./recommendationQualityScorer";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, assertRunAccessible, runAccessible } from "./runOwnership";
+import {
+  addResearcherRecommendation,
+  isRequestKey,
+  parseRecommendationFields,
+  saveRecommendationEdit,
+  type RecommendationAddResult,
+  type RecommendationEditResult,
+  type RecommendationFields,
+} from "./recommendationWrites";
 
-type RecommendationFields = {
-  action_text: string;
-  owner_role: string;
-  owner_feasibility_note: string;
-  timeline: string;
-  metric: string;
-  priority: "high" | "medium" | "low";
-  assumptions_and_risks: string;
-  alternatives_considered: string;
-};
+
+// SEC1: each status change and delete below names tenant_id, so another organisation's
+// recommendation matches no row and is left unchanged (the same no-op as a recommendation that no
+// longer exists), whether or not row-level security applies to the connection.
 
 /**
  * Unlike decision and objective candidates, recommendations have no single
@@ -28,10 +31,12 @@ type RecommendationFields = {
  */
 export async function acceptRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await withTenant(TENANT_ID, async (client) => {
-    await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2", [
+    await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2 and tenant_id = $3", [
       recommendationId,
       runId,
+      TENANT_ID,
     ]);
   });
   revalidatePath(`/runs/${runId}`);
@@ -39,10 +44,12 @@ export async function acceptRecommendation(runId: string, recommendationId: stri
 
 export async function rejectRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await withTenant(TENANT_ID, async (client) => {
-    await client.query("update recommendations set status = 'rejected' where id = $1 and run_id = $2", [
+    await client.query("update recommendations set status = 'rejected' where id = $1 and run_id = $2 and tenant_id = $3", [
       recommendationId,
       runId,
+      TENANT_ID,
     ]);
   });
   revalidatePath(`/runs/${runId}`);
@@ -55,10 +62,12 @@ export async function rejectRecommendation(runId: string, recommendationId: stri
  */
 export async function restoreRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await withTenant(TENANT_ID, async (client) => {
-    await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2", [
+    await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2 and tenant_id = $3", [
       recommendationId,
       runId,
+      TENANT_ID,
     ]);
   });
   revalidatePath(`/runs/${runId}`);
@@ -70,56 +79,31 @@ export async function restoreRecommendation(runId: string, recommendationId: str
  * review screen, never a bare save), and flags it edited the same way an
  * edited decision candidate is, so a later reader can see this wasn't
  * accepted exactly as the agent proposed it.
+ *
+ * `expected` is the fields as the editor opened them (Codex REC500-F01): a stale
+ * or deleted target is refused with what is stored now, and nothing is saved.
+ * The old quality score is cleared in the same transaction (REC500-F02); see
+ * recommendationWrites.saveRecommendationEdit.
  */
 export async function updateAndAcceptRecommendation(
   runId: string,
   recommendationId: string,
-  fields: RecommendationFields
-) {
+  fields: RecommendationFields,
+  expected?: RecommendationFields
+): Promise<RecommendationEditResult> {
   const TENANT_ID = await requireTenantId();
-  await withTenant(TENANT_ID, async (client) => {
-    // Numerical traceability (0101): the stored figure check described the AI's wording. A
-    // researcher's own wording is not AI output, so the check is cleared (not checked) rather than
-    // carried over to text it never examined.
-    const clearCheck = (await figureCheckAvailable(client)) ? ", figure_check = null" : "";
-    await client.query(
-      `update recommendations
-       set action_text = $1, owner_role = $2, owner_feasibility_note = $3, timeline = $4, metric = $5,
-           priority = $6, assumptions_and_risks = $7, alternatives_considered = $8, status = 'accepted',
-           edited = true${clearCheck}
-       where id = $9 and run_id = $10`,
-      [
-        fields.action_text,
-        fields.owner_role,
-        fields.owner_feasibility_note,
-        fields.timeline,
-        fields.metric,
-        fields.priority,
-        fields.assumptions_and_risks,
-        fields.alternatives_considered,
-        recommendationId,
-        runId,
-      ]
-    );
-  });
-  // An edited recommendation's old score no longer describes it. Separate
-  // from the update above so editing keeps working before migration 0045.
-  try {
-    await withTenant(TENANT_ID, async (client) => {
-      await client.query(
-        `update recommendations
-         set rec_actionability_score = null, rec_feasibility_score = null, rec_evidence_score = null,
-             rec_impact_score = null, rec_quality_score = null, rec_quality_tier = null,
-             rec_quality_rationale = null
-         where id = $1 and run_id = $2`,
-        [recommendationId, runId]
-      );
-    });
-  } catch {
-    // Quality columns not there yet.
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
+  const checked = parseRecommendationFields(fields);
+  if (!checked || (expected !== undefined && !parseRecommendationFields(expected))) {
+    return { ok: false, error: "This recommendation could not be saved: a field is missing or its priority is not high, medium or low." };
   }
+  const result = await saveRecommendationEdit(TENANT_ID, runId, recommendationId, checked, expected);
+  if (!result.ok) return result;
+  // The edit and the cleared score are committed; scoring the new wording is a separate model call.
+  // Its failure leaves the recommendation unscored (shown as not scored), never with the old score.
   await refreshRecommendationQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
+  return { ok: true };
 }
 
 /**
@@ -127,54 +111,31 @@ export async function updateAndAcceptRecommendation(
  * insight, rather than one the agent proposed. Written as already accepted,
  * same as a self-authored decision or objective candidate now: typing it in
  * is the deliberate act of adding it as an action item, so there's no extra
- * accept click to make them do afterward.
+ * accept click to make them do afterward. `requestKey` is the add form's own
+ * identity, sent again on a retry (Codex REC500-F03); see
+ * recommendationWrites.addResearcherRecommendation.
  */
 export async function addOwnRecommendation(
   runId: string,
   insightId: string,
-  fields: RecommendationFields
-): Promise<{ ok: true } | { ok: false; error: string }> {
+  fields: RecommendationFields,
+  requestKey: string
+): Promise<RecommendationAddResult> {
   const TENANT_ID = await requireTenantId();
-  // REC-001: the anchor's ownership is validated in the SAME statement that writes the
-  // recommendation (insert ... select ... where the insight belongs to this run), inside the
-  // tenant-scoped transaction, so a recommendation can never be attached to another project's
-  // insight, and an insight deleted meanwhile cannot be written against. Nothing inserted -> refused.
-  const inserted = await withTenant(TENANT_ID, async (client) => {
-    const r = await client.query(
-      `insert into recommendations
-         (tenant_id, run_id, insight_id, action_text, owner_role, owner_feasibility_note, timeline, metric,
-          priority, assumptions_and_risks, alternatives_considered, source, status)
-       select $1, $2, i.id, $4, $5, $6, $7, $8, $9, $10, $11, 'researcher_authored', 'accepted'
-       from insights i
-       where i.id = $3 and i.run_id = $2
-       returning id`,
-      [
-        TENANT_ID,
-        runId,
-        insightId,
-        fields.action_text,
-        fields.owner_role,
-        fields.owner_feasibility_note,
-        fields.timeline,
-        fields.metric,
-        fields.priority,
-        fields.assumptions_and_risks,
-        fields.alternatives_considered,
-      ]
-    );
-    return r.rowCount ?? 0;
-  });
-  if (inserted === 0) {
-    return { ok: false, error: "That insight is not part of this project any more, so no recommendation was added. Reload and choose again." };
-  }
-  revalidatePath(`/runs/${runId}`);
-  return { ok: true };
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
+  const checked = parseRecommendationFields(fields);
+  if (!checked) return { ok: false, error: "This recommendation needs an action, and a priority of high, medium or low." };
+  if (!isRequestKey(requestKey)) return { ok: false, error: "This form could not be identified. Reload the page and add the recommendation again." };
+  const result = await addResearcherRecommendation(TENANT_ID, runId, { kind: "insight", id: insightId }, checked, requestKey);
+  if (result.ok) revalidatePath(`/runs/${runId}`);
+  return result;
 }
 
 export async function deleteRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await withTenant(TENANT_ID, async (client) => {
-    await client.query("delete from recommendations where id = $1 and run_id = $2", [recommendationId, runId]);
+    await client.query("delete from recommendations where id = $1 and run_id = $2 and tenant_id = $3", [recommendationId, runId, TENANT_ID]);
   });
   revalidatePath(`/runs/${runId}`);
 }
@@ -192,6 +153,7 @@ export async function regenerateRecommendations(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await generateRecommendations(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
@@ -200,7 +162,7 @@ export async function regenerateRecommendations(
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'recommendation_agent_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'recommendation_agent_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, message]
       );
     }).catch(() => {});
@@ -212,50 +174,25 @@ export async function regenerateRecommendations(
  * Adds a recommendation the researcher wrote themselves, tied to a
  * synthesized insight rather than a pre-insight -- the mirror of
  * addOwnRecommendation for the funnel-output layer. Written as already
- * accepted, same reasoning as its pre-insight counterpart.
+ * accepted, same reasoning as its pre-insight counterpart; the anchor must
+ * still be accepted (the picker only offers accepted insights).
  */
 export async function addOwnSynthesizedRecommendation(
   runId: string,
   synthesizedInsightId: string,
-  fields: RecommendationFields
-): Promise<{ ok: true } | { ok: false; error: string }> {
+  fields: RecommendationFields,
+  requestKey: string
+): Promise<RecommendationAddResult> {
   const TENANT_ID = await requireTenantId();
-  // REC-001: same single-statement ownership validation as addOwnRecommendation; the anchor must
-  // also still be accepted (the picker only offers accepted insights).
-  const inserted = await withTenant(TENANT_ID, async (client) => {
-    const r = await client.query(
-      `insert into recommendations
-         (tenant_id, run_id, synthesized_insight_id, action_text, owner_role, owner_feasibility_note, timeline,
-          metric, priority, assumptions_and_risks, alternatives_considered, source, status)
-       select $1, $2, si.id, $4, $5, $6, $7, $8, $9, $10, $11, 'researcher_authored', 'accepted'
-       from synthesized_insights si
-       where si.id = $3 and si.run_id = $2 and si.review_status = 'accepted'
-       returning id`,
-      [
-        TENANT_ID,
-        runId,
-        synthesizedInsightId,
-        fields.action_text,
-        fields.owner_role,
-        fields.owner_feasibility_note,
-        fields.timeline,
-        fields.metric,
-        fields.priority,
-        fields.assumptions_and_risks,
-        fields.alternatives_considered,
-      ]
-    );
-    return r.rowCount ?? 0;
-  });
-  if (inserted === 0) {
-    return {
-      ok: false,
-      error: "That insight is not an accepted insight of this project any more, so no recommendation was added. Reload and choose again.",
-    };
-  }
-  await refreshRecommendationQuality(TENANT_ID, runId);
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
+  const checked = parseRecommendationFields(fields);
+  if (!checked) return { ok: false, error: "This recommendation needs an action, and a priority of high, medium or low." };
+  if (!isRequestKey(requestKey)) return { ok: false, error: "This form could not be identified. Reload the page and add the recommendation again." };
+  const result = await addResearcherRecommendation(TENANT_ID, runId, { kind: "synthesized", id: synthesizedInsightId }, checked, requestKey);
+  if (!result.ok) return result;
+  if (!result.alreadySaved) await refreshRecommendationQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
-  return { ok: true };
+  return result;
 }
 
 /**
@@ -268,6 +205,7 @@ export async function regenerateSynthesizedRecommendations(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await generateSynthesizedRecommendations(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
@@ -276,10 +214,34 @@ export async function regenerateSynthesizedRecommendations(
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'synthesized_recommendation_agent_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'synthesized_recommendation_agent_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, message]
       );
     }).catch(() => {});
     return { ok: false, error: message };
+  }
+}
+
+/**
+ * CE-2: the researcher chooses the decisions a recommendation serves, from the project's current
+ * decisions, against what they saw (recommendationDecisions.ts setServedDecisions). All or nothing.
+ */
+export async function setServedDecisionsAction(
+  runId: string,
+  recommendationId: string,
+  chosenKeys: unknown,
+  expectedServed: unknown,
+): Promise<{ ok: true; changed: boolean } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
+  if (!Array.isArray(chosenKeys) || chosenKeys.length > 100 || !chosenKeys.every((k) => typeof k === "string") || typeof expectedServed !== "string")
+    return { ok: false, error: "The decisions chosen were not understood. Reload and try again." };
+  try {
+    const { setServedDecisions } = await import("./recommendationDecisions");
+    const r = await withTenant(TENANT_ID, (client) => setServedDecisions(client, TENANT_ID, runId, recommendationId, chosenKeys, expectedServed));
+    if (r.changed) revalidatePath(`/runs/${runId}`);
+    return { ok: true, ...r };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

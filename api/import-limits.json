@@ -1,4 +1,5 @@
 {
-  "maxFileBytes": 20000000,
-  "maxCases": 100000
+  "maxFileBytes": 100000000,
+  "maxCases": 100000,
+  "maxIndicatorValues": 500000
 }

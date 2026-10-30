@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { withTenant } from "./db";
+import { runOwned } from "./runOwnership";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { assertImportFileSupported } from "./importLimits";
 import { queueDocumentStorageCleanup, finishDocumentStorageCleanup } from "./documentStorageCleanup";
@@ -26,8 +27,28 @@ export function contentSha256(buffer: Buffer): string {
 
 const BUCKET = "documents";
 
-export const UPLOAD_KINDS = ["report", "table", "transcript", "instrument"] as const;
-export const INSTRUMENT_TYPES = ["questionnaire", "interview_guide", "focus_group_guide"] as const;
+// "evidence": a brief or proposal, context for the project and not mined for findings (the same kind
+// Set Objectives stores); uploadable from Import data since 2026-10-19.
+// "technical": methodology, fieldwork, sampling, weighting or analysis documentation (Grant,
+// 2026-10-24; migration 0112), read for the Research assistant to quote; never mined for findings.
+// "indicator": published statistics by area and period (Grant, 2026-10-28; migration 0126), read by
+// indicatorData.ts into series and observations; never mined for findings.
+export const UPLOAD_KINDS = ["report", "table", "transcript", "instrument", "evidence", "technical", "indicator"] as const;
+
+/** Said when a technical document is refused because migration 0112 is not applied. */
+export const TECHNICAL_MIGRATION_MESSAGE =
+  "Technical documents need the database update 0112_technical_documents.sql. Nothing was stored; apply it and add the file again.";
+/** Said when Indicator data is refused because migration 0126 is not applied (same text as indicatorData.ts). */
+export const INDICATOR_UPLOAD_MIGRATION_MESSAGE =
+  "Indicator data needs the database update 0126_indicator_observations.sql. Nothing was stored; apply it and add the file again.";
+/** Kinds added by a migration: before it, the kind check refuses the insert and this is said instead. */
+const KIND_MIGRATION_MESSAGE: Partial<Record<UploadKind, string>> = {
+  technical: TECHNICAL_MIGRATION_MESSAGE,
+  indicator: INDICATOR_UPLOAD_MIGRATION_MESSAGE,
+};
+// "codebook" (Grant, 2026-10-26; migration 0118): a data file's variable list with labels and answer
+// codes, read and linked like a questionnaire.
+export const INSTRUMENT_TYPES = ["questionnaire", "interview_guide", "focus_group_guide", "codebook"] as const;
 export type InstrumentTypeChoice = (typeof INSTRUMENT_TYPES)[number];
 export type UploadKind = (typeof UPLOAD_KINDS)[number];
 
@@ -56,6 +77,52 @@ export function isUploadKind(value: FormDataEntryValue | null): value is UploadK
  */
 export function isTableIngestionType(value: FormDataEntryValue | null): value is TableIngestionType {
   return typeof value === "string" && (TABLE_INGESTION_TYPES as readonly string[]).includes(value);
+}
+
+/** What lay under a failed storage write, for diagnosis: the network error's code and message. */
+export type StorageFailureCause = { code: string | null; message: string };
+
+/**
+ * The innermost cause of a storage client error. supabase-js reports a network failure as a
+ * StorageUnknownError whose `originalError` is fetch's TypeError("fetch failed"), and that error's
+ * `cause` is what actually happened (UND_ERR_SOCKET, ECONNRESET, UND_ERR_HEADERS_TIMEOUT, ...).
+ * Addresses are replaced, because a storage address can carry a signed token; nothing else is read.
+ * Null when there is nothing beneath the top-level message.
+ */
+export function storageFailureCause(error: unknown): StorageFailureCause | null {
+  let current: unknown = error;
+  let deepest: { code?: unknown; message?: unknown } | null = null;
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+    const next = (current as { originalError?: unknown; cause?: unknown }).originalError ?? (current as { cause?: unknown }).cause;
+    if (!next || typeof next !== "object") break;
+    deepest = next as { code?: unknown; message?: unknown };
+    current = next;
+  }
+  if (!deepest) return null;
+  const code = typeof deepest.code === "string" && /^[A-Z0-9_]{2,60}$/.test(deepest.code) ? deepest.code : null;
+  const message = String(deepest.message ?? "")
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[address]")
+    .replace(/\b(token|apikey|key|signature|authorization)=\S+/gi, "$1=[hidden]")
+    .replace(/Bearer\s+\S+/gi, "Bearer [hidden]")
+    .slice(0, 300);
+  if (!code && !message) return null;
+  return { code, message };
+}
+
+/**
+ * A storage write failed. The message names the file, the storage client's message and, when there is
+ * one, the underlying cause in plain words, so a failure such as "fetch failed" can be told apart
+ * (Codex's 120 MB check, batch 65); `failureCause` carries the same for the upload_error trace.
+ */
+export class StorageWriteError extends Error {
+  readonly failureCause: StorageFailureCause | null;
+  constructor(fileName: string, error: { message: string }) {
+    const cause = storageFailureCause(error);
+    // Without a cause the message is exactly what it always was.
+    const why = cause ? `. The connection reported: ${[cause.code, cause.message].filter(Boolean).join(", ")}.` : "";
+    super(`Upload of ${fileName} failed: ${error.message}${why}`);
+    this.failureCause = cause;
+  }
 }
 
 /**
@@ -101,14 +168,17 @@ export async function storeUploadedDocument(
   // identity to check, so uploads behave exactly as before.
   const sha256 = contentSha256(buffer);
   const dedupe = await withTenant(tenantId, async (client) => {
+    // SEC1: ownership first. The duplicate probe answers with an existing file's name, so run before
+    // the check it would tell a caller another organisation's file name for a project it does not own.
+    if (!(await runOwned(client, tenantId, runId))) throw new Error("Project not found for upload.");
     const probe = await client.query<{ available: boolean }>(
       `select exists (select 1 from information_schema.columns
                       where table_name = 'documents' and column_name = 'content_sha256') as available`,
     );
     if (probe.rows[0]?.available !== true) return { available: false as const };
     const existing = await client.query<{ source_filename: string }>(
-      "select source_filename from documents where run_id = $1 and kind = $2 and content_sha256 = $3 limit 1",
-      [runId, kind, sha256],
+      "select source_filename from documents where run_id = $1 and tenant_id = $4 and kind = $2 and content_sha256 = $3 limit 1",
+      [runId, kind, sha256, tenantId],
     );
     return { available: true as const, existing: existing.rows[0]?.source_filename ?? null };
   });
@@ -130,7 +200,7 @@ export async function storeUploadedDocument(
       if (!intent.rowCount) throw new Error("This upload was cleaned up before it started. Retry the file.");
       // Cleanup takes the same lock, so it cannot remove bytes between upload and insertion.
       const { error: uploadError } = await supabaseAdmin.storage.from(BUCKET).upload(storagePath, buffer, { contentType: file.type || undefined });
-      if (uploadError) throw new Error(`Upload of ${file.name} failed: ${uploadError.message}`);
+      if (uploadError) throw new StorageWriteError(file.name, uploadError);
       // The instrument column only exists once migration 0060 is applied, so
       // it is only named for instrument uploads and every other upload is
       // unaffected until then.
@@ -168,6 +238,12 @@ export async function storeUploadedDocument(
     }
     // A concurrent retry stored the same bytes first (unique index from 0098): a duplicate,
     // reported as such - the storage object was cleaned up above like any failed insert.
+    // Before migration 0112 (technical) or 0126 (indicator) the kind check refuses the document; the
+    // insert rolled back and the stored object was cleaned up above, so nothing is left behind.
+    const kindMessage = KIND_MIGRATION_MESSAGE[kind];
+    if (kindMessage && (error as { code?: string })?.code === "23514" && /documents_kind_check/.test(String((error as { constraint?: string })?.constraint ?? (error as Error).message))) {
+      throw new Error(kindMessage);
+    }
     if ((error as { code?: string })?.code === "23505" && /documents_run_kind_content_uidx/.test(String((error as { constraint?: string })?.constraint ?? (error as Error).message))) {
       throw new DuplicateUploadError(file.name, file.name);
     }
@@ -199,7 +275,8 @@ export async function storeUploadedDocument(
  * incomplete, believed it had recorded that. Returning whether the write actually took
  * effect lets a caller that cares (extractThemes.ts's three apply-codebook call sites, in
  * particular - see their own comments) tell the two apart and say so, rather than
- * implying a status was saved when it was not.
+ * implying a status was saved when it was not. False covers both a pending migration and a
+ * document that is no longer there (DI-F05); the callers' messages name both.
  */
 export async function markDocumentProcessingStatus(
   tenantId: string,
@@ -210,10 +287,14 @@ export async function markDocumentProcessingStatus(
   status: "ready" | "incomplete" | "failed",
 ): Promise<boolean> {
   try {
-    await withTenant(tenantId, async (client) => {
-      await client.query("update documents set processing_status = $1 where id = $2", [status, documentId]);
+    // Codex DI-F05: true only when this tenant's document row was updated. A deleted document (for
+    // example removed while it was being processed) or another tenant's (row-level security hides it)
+    // updates no row, and that is reported as not recorded rather than as recorded.
+    const updated = await withTenant(tenantId, async (client) => {
+      const r = await client.query("update documents set processing_status = $1 where id = $2 and tenant_id = $3", [status, documentId, tenantId]);
+      return r.rowCount ?? 0;
     });
-    return true;
+    return updated === 1;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!/processing_status/.test(message)) throw error;

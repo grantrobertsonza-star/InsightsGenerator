@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { CURRENT_SENTENCE_RULE, splitSentences, type SentenceRule } from "./sentences";
 
 // Pure helpers for the transcript coding pipeline (extractThemes.ts): turn a
 // transcript into speaker segments, check a quote against those segments,
@@ -752,7 +753,6 @@ export type ApplyItem = {
   units: string[];
 };
 
-const ABBREVIATIONS = /\b(e\.g|i\.e|etc|vs|mr|mrs|ms|dr|prof|no|approx|st)\.$/i;
 const MIN_UNIT_CHARS = 25;
 
 /**
@@ -762,28 +762,10 @@ const MIN_UNIT_CHARS = 25;
  * under 25 characters is joined to the sentence before it (or after it when it opens the turn), so
  * "Yes. Because of the fees." keeps its answer and its reason together enough to read.
  */
-export function splitSentences(flat: string): string[] {
-  const raw: string[] = [];
-  let start = 0;
-  const re = /[.!?]+["')\]]*\s+(?=[A-Z0-9"'(\[])/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(flat)) !== null) {
-    const end = m.index + m[0].length;
-    const piece = flat.slice(start, end).trim();
-    // Not a boundary: an abbreviation, or a number such as "3. " inside a list of one word.
-    if (ABBREVIATIONS.test(piece.replace(/\s+$/, "")) || /\b\d+\.$/.test(piece)) continue;
-    raw.push(piece);
-    start = end;
-  }
-  const tail = flat.slice(start).trim();
-  if (tail) raw.push(tail);
-  return raw;
-}
-
-export function splitIntoUnits(text: string): string[] {
+export function splitIntoUnits(text: string, rule: SentenceRule = CURRENT_SENTENCE_RULE): string[] {
   const flat = text.replace(/\s+/g, " ").trim();
   if (!flat) return [];
-  const raw = splitSentences(flat);
+  const raw = splitSentences(flat, rule);
   const units: string[] = [];
   for (const piece of raw) {
     if (units.length > 0 && piece.length < MIN_UNIT_CHARS) units[units.length - 1] += ` ${piece}`;
@@ -806,10 +788,10 @@ const FOOTER_MIN_TURNS = 3;
  * speech, so it must not be coded. A run of one to three closing sentences counts when at least three
  * turns end with exactly the same words. Longest first, so a two-sentence footer is removed whole.
  */
-export function findRepeatedFooters(texts: string[]): string[] {
+export function findRepeatedFooters(texts: string[], rule: SentenceRule = CURRENT_SENTENCE_RULE): string[] {
   const counts = new Map<string, number>();
   for (const t of texts) {
-    const sentences = splitSentences(t.replace(/\s+/g, " ").trim());
+    const sentences = splitSentences(t.replace(/\s+/g, " ").trim(), rule);
     const seen = new Set<string>();
     for (let k = 1; k <= Math.min(3, sentences.length); k++) {
       const suffix = sentences.slice(-k).join(" ");
@@ -865,6 +847,10 @@ export function stripFooters(text: string, footers: string[]): string {
  * never actually shown (it only ever saw the footer-stripped text). This function strips the
  * footer first, the same way the original coding pass did, so the two agree.
  *
+ * `rule` is the sentence-boundary rule to retrace (sentences.ts). New coding always uses
+ * CURRENT_SENTENCE_RULE; getCodedUnitPassages also retraces "legacy-number-full-stop" so a passage
+ * coded before COD5K-F01 is recognised as the unit the model saw then, not reported as changed.
+ *
  * Returns null when the segment cannot be found among `allSegmentTexts`, or when the
  * requested unit number is out of range for what this segment's (re-derived) units are -
  * both mean the stored transcript has moved on since the code was applied (a resegmentation,
@@ -874,14 +860,15 @@ export function reconstructCodedUnitText(
   allSegmentTexts: { index: number; text: string }[],
   targetIndex: number,
   unit: number,
+  rule: SentenceRule = CURRENT_SENTENCE_RULE,
 ): string | null {
   const target = allSegmentTexts.find((s) => s.index === targetIndex);
   if (!target) return null;
-  const footers = findRepeatedFooters(allSegmentTexts.map((s) => s.text));
+  const footers = findRepeatedFooters(allSegmentTexts.map((s) => s.text), rule);
   const stripped = stripFooters(target.text, footers);
   const flat = stripped.replace(/\s+/g, " ").trim();
   if (!flat) return null;
-  const units = splitIntoUnits(flat);
+  const units = splitIntoUnits(flat, rule);
   const list = units.length > 0 ? units : [flat];
   return list[unit - 1] ?? null;
 }

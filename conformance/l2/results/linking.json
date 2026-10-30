@@ -1,0 +1,342 @@
+[
+ {
+  "id": "L001",
+  "title": "exact names: each codebook entry suggested for its own column at confidence 1",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md route 1 exact code"
+ },
+ {
+  "id": "L002",
+  "title": "'Confirm same-code matches' confirms the four exact links; calculations see them, codebook first",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Linking; questionnaire-meaning-failure.md"
+ },
+ {
+  "id": "L003",
+  "title": "case-insensitive: codebook Q1 links to data q1 at confidence 1",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md compares names without case"
+ },
+ {
+  "id": "L004",
+  "title": "separators are one: codebook q1.a links to data q1_a at confidence 1",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md _ . and - as one separator"
+ },
+ {
+  "id": "L005",
+  "title": "Q1a links to Q1_a (separator set aside, no digit split)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md where none is equal it ignores separators (Q1a is Q1_a)"
+ },
+ {
+  "id": "L006",
+  "title": "trailing separator: codebook Q1 links to data column q1_",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md separators set aside"
+ },
+ {
+  "id": "L007",
+  "title": "a single letter-suffixed column (Q1 vs Q1a) is a stem suggestion at 0.8, not bulk-confirmed",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md route 3 (0.8 alone)"
+ },
+ {
+  "id": "L008",
+  "title": "two letter-suffixed columns (Q1a, Q1b) are stem suggestions at 0.85",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md route 3 (0.85)"
+ },
+ {
+  "id": "L009",
+  "title": "Q1 never takes Q10 or Q11",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md identity is the raw code"
+ },
+ {
+  "id": "L010",
+  "title": "multiple-response family: Q13 suggested for Q13_1..Q13_14 at 0.92 and bulk-confirmed",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md route 2 family"
+ },
+ {
+  "id": "L011",
+  "title": "EN20 family takes EN20_1 and EN20_2 but never EN201",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md the separator is the boundary"
+ },
+ {
+  "id": "L012",
+  "title": "EN201 never takes EN20_1",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md never across a separator between two digits"
+ },
+ {
+  "id": "L013",
+  "title": "ambiguous columns q_1 and Q.1 for codebook Q_1 (neither written as the code): both offered at 0.8, neither bulk-confirmed",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F06"
+ },
+ {
+  "id": "L013b",
+  "title": "columns q1 and Q_1 for codebook Q1: is Q_1 a second candidate (ambiguous) or is q1 the match?",
+  "kind": "question",
+  "status": "QUESTION-differs",
+  "detail": "Q1 offered: q1:1",
+  "clause": "claude/codebook-import.md IS-F06 'case, spacing and separators set aside' vs claude/questionnaire-variable-linking.md separators ignored only when none is equal"
+ },
+ {
+  "id": "L014",
+  "title": "columns q1 and Q1 for codebook q1: the literal one wins at 1, the other is not linked",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F06"
+ },
+ {
+  "id": "L015",
+  "title": "codebook has entries Q1 and q1, data only Q1: the literal entry Q1 takes it",
+  "kind": "question",
+  "status": "QUESTION-differs",
+  "detail": "links to Q1: q1->Q1:code:1:suggested",
+  "clause": "claude/codebook-import.md IS-F06 covers several columns per item, not several items per column"
+ },
+ {
+  "id": "L016",
+  "title": "names with spaces and CJK link as written; 'Q 1' links to Q1",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F05; claude/questionnaire-variable-linking.md spaces removed"
+ },
+ {
+  "id": "L017",
+  "title": "entries absent from the data (w2) get no link; columns absent from the codebook get none",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md 'No variable named w2'"
+ },
+ {
+  "id": "L018",
+  "title": "a duplicated codebook entry is one item with one link (first description)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md first description wins"
+ },
+ {
+  "id": "L020",
+  "title": "wording only: an entry whose code is not in the data is offered by wording, at most 0.89, not bulk-confirmed",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md route 5"
+ },
+ {
+  "id": "L021",
+  "title": "a variable label that starts with the code ('Q7. ...') links at 0.9",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md route 4"
+ },
+ {
+  "id": "L022",
+  "title": "wording with too few shared words is not offered",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md route 5 (WORDING_MIN)"
+ },
+ {
+  "id": "L030",
+  "title": "questionnaire 1A worded identically (5+ words) to confirmed codebook Q1: linked through the codebook, confirmed",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md batch 49 rule"
+ },
+ {
+  "id": "L031",
+  "title": "identical wording of four words is not linked through the codebook",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md At least five words"
+ },
+ {
+  "id": "L032",
+  "title": "'< 5000' is not '> 5000': not linked through the codebook",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md B49-F01 symbols kept"
+ },
+ {
+  "id": "L033",
+  "title": "wording shared by two confirmed codebook entries is ambiguous: not linked through the codebook",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md only unambiguous pairs"
+ },
+ {
+  "id": "L034",
+  "title": "two questionnaire items with the same wording: neither linked through the codebook",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md exactly one questionnaire item has it"
+ },
+ {
+  "id": "L035",
+  "title": "a codebook entry only suggested (not confirmed) gives no link through the codebook",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md confirmed for a variable"
+ },
+ {
+  "id": "L036",
+  "title": "codebook and questionnaire may both confirm the same variable; codebook listed first",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md LBL-01"
+ },
+ {
+  "id": "L037",
+  "title": "questionnaire numbered '13' with data Q13_1..Q13_14 (questionnaire numbers vs data names)",
+  "kind": "known",
+  "status": "KNOWN-absent",
+  "detail": "links: none",
+  "clause": "no route links a bare number to a Q-prefixed family; picker needed"
+ },
+ {
+  "id": "L040",
+  "title": "a codebook from another project is refused at matching and nothing is written",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F03"
+ },
+ {
+  "id": "L041",
+  "title": "a codebook in the bin is refused and its confirmed links stop counting",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F03"
+ },
+ {
+  "id": "L042",
+  "title": "a codebook replaced by a new upload: the old one's links go with it to the bin; the new one starts as suggestions",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F03 / documentBin"
+ },
+ {
+  "id": "L050",
+  "title": "reread of the same codebook: item and link identities and confirmations unchanged",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/instrument-reread-coverage.md"
+ },
+ {
+  "id": "L051",
+  "title": "reread after a confirmed entry's answer codes change: same item, link still confirmed, codes updated",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/instrument-reread-coverage.md"
+ },
+ {
+  "id": "L052",
+  "title": "reread after a confirmed entry's label is reworded (same variable name): the confirmed link survives",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "standing requirements 3 and 9; claude/instrument-reread-coverage.md stable confirmed IDs"
+ },
+ {
+  "id": "L053",
+  "title": "reread after a variable is dropped from the codebook: its item and links go, others stay confirmed",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md / instruments.ts an item that genuinely dropped out is removed"
+ },
+ {
+  "id": "L054",
+  "title": "reread where a confirmed entry's answer list is now unreadable: read incomplete, previous codes and link kept",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F04 'does not replace an earlier complete reading'"
+ },
+ {
+  "id": "L055",
+  "title": "matching again keeps confirmed and rejected links and adds no duplicates",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/questionnaire-variable-linking.md Matching again"
+ },
+ {
+  "id": "L056",
+  "title": "a variable confirmed for one entry is refused for another entry of the same codebook, naming it",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IR-04 variableTakenBy"
+ },
+ {
+  "id": "L057",
+  "title": "one codebook matched to two waves gets links for each file; confirming covers both",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Which data file"
+ },
+ {
+  "id": "L058",
+  "title": "which data file: the only one is chosen; two equal waves are a choice, never a default",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Which data file (chooseMatchTarget)"
+ },
+ {
+  "id": "L059",
+  "title": "which data file: a clear lead (4 vs 0 items) is chosen as best",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Which data file"
+ },
+ {
+  "id": "IGSL1",
+  "title": "IGS codebook stored as 266 items in hand-read order",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Reading"
+ },
+ {
+  "id": "IGSL2",
+  "title": "IGS: each of the 264 data columns suggested for its same-named entry at 1; w2 and generation unlinked",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Linking"
+ },
+ {
+  "id": "IGSL3",
+  "title": "IGS: 'Confirm same-code matches' confirms all 264",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Linking"
+ },
+ {
+  "id": "IGSL4",
+  "title": "IGS questionnaire 1A links to Q1 through the confirmed codebook entry (identical wording)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md batch 49 (Grant's case)"
+ },
+ {
+  "id": "IGSL5",
+  "title": "IGS questionnaire grid 5A linked to Q5_1..Q5_8",
+  "kind": "known",
+  "status": "KNOWN-absent",
+  "detail": "5A links: 5A->Q5_1:wording:0.89:suggested",
+  "clause": "planned batch 53 (grid detection)"
+ }
+]

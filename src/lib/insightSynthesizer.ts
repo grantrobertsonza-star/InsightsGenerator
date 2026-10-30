@@ -1,3 +1,4 @@
+import { loadObjectiveLines, objectivesFramingLine, OBJECTIVES_ARE_CONTEXT } from "./projectObjectives";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -7,6 +8,8 @@ import { refreshContradictions } from "./contradictionDetector";
 import type { SupportParts } from "./supportStatusShared";
 import { figureCheck, type FigureCheck } from "./numberTrace";
 import { figureCheckAvailable } from "./figureChecks";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
+import { preInsightSupportSnapshotAvailable } from "./supportStatus";
 
 // Same ceiling as generateInsights' MAX_FINDINGS_FOR_INSIGHT: the pool of
 // pre-insights this pass can see at once, kept to one model call's worth
@@ -51,11 +54,16 @@ type EligiblePreInsight = {
   tension: string;
   implication: string;
   theme: string | null;
-  /** FND-001: finding_support_parts() of this pre-insight's finding AS READ HERE, i.e. the
-   * evidence the model is about to cluster and reframe. Stored on the source link when the
-   * insight is persisted, so a change made while drafting (model calls run outside any
-   * transaction) shows as "changed since drafted" immediately rather than being stamped as
-   * current. Null when migration 0096 is not applied. */
+  /** FND-001, EC10K-F03: the support this pre-insight's wording was drafted from, i.e. its own
+   * insights.support_snapshot (0103), recorded when insightGenerator.ts wrote it. The synthesized
+   * insight is a reframing of that wording, so this is what its source link records. It is NOT the
+   * finding's fingerprint now: stamping the current fingerprint around older wording made a finding
+   * corrected after its pre-insight was drafted read "Support current" through recommendations and
+   * exports. A change made at any point after the pre-insight was drafted (before clustering or while
+   * the model answers) therefore shows as changed since drafted until the pre-insight is written
+   * again from the finding as it now stands. Null when the pre-insight recorded none (drafted before
+   * 0103, or 0103 not applied) or 0096 is not applied: the link then reads "not checked", never
+   * current. */
   support_snapshot: SupportParts | null;
   /** INS-001: finding_evidence_key() of this pre-insight's finding - which independent piece of
    * evidence it rests on (its source table, its source document, or itself; a claim grounded by
@@ -224,11 +232,13 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
        ) as independence`,
     );
     const tracking = probe.rows[0]?.available === true;
+    // EC10K-F03: the pre-insight's own drafted-from snapshot needs 0103 (insights.support_snapshot).
+    const draftedFrom = tracking && (await preInsightSupportSnapshotAvailable(client));
     // INS-001: catalog pre-check for migration 0097, same pattern and reason as 0096 above.
     const independence = probe.rows[0]?.independence === true;
     const result = await client.query<EligiblePreInsight>(
       `select i.id, i.headline, i.observation, i.tension, i.implication, f.theme,
-              ${tracking ? "finding_support_parts(f.id)" : "null::jsonb"} as support_snapshot,
+              ${draftedFrom ? "i.support_snapshot" : "null::jsonb"} as support_snapshot,
               ${independence ? "finding_evidence_key(f.id)" : "null::text"} as evidence_key
        from insights i
        join findings f on f.id = i.finding_id
@@ -246,15 +256,18 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
 
   if (eligible.length < MIN_CLUSTER_SIZE) return;
 
+  // CE-2: the accepted objectives (or the free text), in both modes, as context only.
+  const objectiveLines = await withTenant(tenantId, (client) => loadObjectiveLines(client, runId, run.research_objective));
   const framingBlock =
     run.entry_point === "validate"
       ? `This project's confirmed decision(s): "${run.decision_statement}". Favor clusters that bear on ` +
         "these decision(s), but relevance is a tiebreaker, not a strict filter: a pre-insight that clusters " +
         "well with others but whose decision-relevance is unclear can still be grouped, the researcher " +
-        "reviews what comes out of this, don't pre-reject it here.\n\n"
+        "reviews what comes out of this, don't pre-reject it here.\n\n" +
+        (objectivesFramingLine(objectiveLines) ? `${objectivesFramingLine(objectiveLines)} ${OBJECTIVES_ARE_CONTEXT}\n\n` : "")
       : [
           run.business_problem ? `Business problem: "${run.business_problem}"` : null,
-          run.research_objective ? `Research objective: "${run.research_objective}"` : null,
+          objectivesFramingLine(objectiveLines),
           "No decision exists yet for this project. Favor clusters that bear on the problem/objective " +
             "above (or, if neither was given, on what a stakeholder in this space would plausibly act on), " +
             "but relevance is a tiebreaker, not a strict filter: don't pre-reject a pre-insight from " +
@@ -348,9 +361,42 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
     .filter((c) => c.passesValidityGate);
   if (toPersist.length === 0) return;
 
+  // EC10K-F04: two overlapping passes (an automatic refresh and the researcher's "Run synthesis", or a
+  // retry after a reply that never arrived) read the same unclaimed pre-insights and each used to insert
+  // its own insight from them. The write is now one transaction under a per-project lock (an advisory
+  // lock, the pattern coverage saving uses), and each candidate's pre-insights are read again under it:
+  // a candidate is written only if every one of its pre-insights is still in this project, its finding
+  // still not rejected, and not yet the source of any synthesized insight. A candidate whose pre-insights
+  // were claimed meanwhile is not written (recorded in the trace); its unclaimed pre-insights stay
+  // eligible. Nothing already written is removed, whoever wrote it. A failure anywhere rolls the whole
+  // write back, so a retry finds the same pre-insights unclaimed.
+  const notWritten: { label: string; reason: string }[] = [];
   await withTenant(tenantId, async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtextextended('insight_synthesis:' || $1::text, 0))", [runId]);
+    const found = await client.query("select 1 from runs where id = $1", [runId]);
+    if (found.rowCount !== 1) throw new Error("Project not found, so no synthesized insight was saved.");
     const storeCheck = await figureCheckAvailable(client);
+    const claimedInThisWrite = new Set<string>();
     for (const candidate of toPersist) {
+      const memberIds = candidate.cluster.members.map((m) => m.id);
+      const stillFree = await client.query<{ id: string }>(
+        `select i.id
+         from insights i
+         join findings f on f.id = i.finding_id
+         where i.id = any($1::uuid[])
+           and i.run_id = $2
+           and f.status != 'rejected'
+           and not exists (select 1 from synthesized_insight_sources s where s.pre_insight_id = i.id)`,
+        [memberIds, runId],
+      );
+      if (stillFree.rowCount !== memberIds.length || memberIds.some((id) => claimedInThisWrite.has(id))) {
+        notWritten.push({
+          label: candidate.cluster.label,
+          reason: `${memberIds.length - (stillFree.rowCount ?? 0)} of its ${memberIds.length} pre-insights were claimed by another synthesis, rejected or removed while this one was running`,
+        });
+        continue;
+      }
+      memberIds.forEach((id) => claimedInThisWrite.add(id));
       const themes = new Set(candidate.cluster.members.map((m) => m.theme).filter((t): t is string => !!t));
       // triangulation_count stays the number of source links written below (one per distinct
       // member, de-duplicated by clusterPreInsights' `claimed` set): FND-001's deleted-source
@@ -414,12 +460,13 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
       }
       for (const member of candidate.cluster.members) {
         if (supportTracking) {
-          // FND-001: the drafted-from fingerprint (see EligiblePreInsight.support_snapshot).
+          // FND-001, EC10K-F03: the pre-insight's drafted-from snapshot (see
+          // EligiblePreInsight.support_snapshot); SQL null when it recorded none.
           await client.query(
             `insert into synthesized_insight_sources (tenant_id, synthesized_insight_id, pre_insight_id, support_snapshot)
-             values ($1, $2, $3, $4)
+             values ($1, $2, $3, $4::jsonb)
              on conflict do nothing`,
-            [tenantId, synthesizedInsightId, member.id, JSON.stringify(member.support_snapshot)]
+            [tenantId, synthesizedInsightId, member.id, member.support_snapshot === null ? null : JSON.stringify(member.support_snapshot)]
           );
         } else {
           await client.query(
@@ -430,6 +477,13 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
           );
         }
       }
+    }
+    if (notWritten.length > 0) {
+      await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'insight_synthesizer_claimed_meanwhile', $3)`, [
+        tenantId,
+        runId,
+        JSON.stringify({ not_written: notWritten }),
+      ]);
     }
   });
 }
@@ -540,8 +594,11 @@ async function clusterPreInsights(
 
   await logApiUsage(tenantId, runId, "insight_synthesizer_cluster", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  const rawClusters = extractRawClusters(toolUse && toolUse.type === "tool_use" ? toolUse.input : null);
+  // EC10K-F02: only a finished record_clusters call is used (modelToolResult.ts). A cut-off answer
+  // can hold the first clusters with their member lists cut short, which read as a complete grouping;
+  // it throws here, so synthesis writes nothing and records the failure (refreshSynthesizedInsights),
+  // and a stability resample counts it as a failed resample.
+  const rawClusters = extractRawClusters(finishedToolInput(response, "record_clusters", "The grouping of pre-insights"));
 
   const claimed = new Set<number>();
   const clusters: Cluster[] = [];
@@ -597,6 +654,8 @@ async function callReframe(
   passesValidityGate: boolean;
   gateFailureReason: string | null;
   hadToolUse: boolean;
+  /** Why the answer was not used (cut off, refused, another tool, wrong shape); null when finished. */
+  unfinished: string | null;
 }> {
   const membersBlock = cluster.members
     .map(
@@ -677,11 +736,22 @@ async function callReframe(
 
   await logApiUsage(tenantId, runId, "insight_synthesizer_reframe", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  const raw = toolUse && toolUse.type === "tool_use" ? (toolUse.input as Record<string, unknown>) : null;
+  // EC10K-F02: only a finished record_synthesized_insight call is used (modelToolResult.ts). A cut-off
+  // answer can carry a block whose fields all look complete (and a passes_validity_gate written before
+  // the cut), which was published as an insight. An unfinished answer is treated like no answer: the
+  // one retry below asks again, and a second unfinished answer drops the cluster with the reason.
+  let raw: Record<string, unknown> | null = null;
+  let unfinished: string | null = null;
+  try {
+    raw = finishedToolInput(response, "record_synthesized_insight", "The synthesis of a cluster");
+  } catch (error) {
+    if (!(error instanceof UnfinishedModelResultError)) throw error;
+    unfinished = error.message;
+  }
 
   return {
     stopReason: response.stop_reason ?? null,
+    unfinished,
     hadToolUse: raw !== null,
     headline: raw && typeof raw.headline === "string" ? raw.headline.trim() : "",
     observation: raw && typeof raw.observation === "string" ? raw.observation.trim() : "",
@@ -731,8 +801,8 @@ async function reframeAndGateCluster(
 
   if (!first.hadToolUse || (firstMissing && firstMissing.length > 0)) {
     const retryNote = !first.hadToolUse
-      ? "Your previous attempt at this exact cluster did not return a usable tool call at all. Try again, " +
-        "and make sure you call record_synthesized_insight with every required field filled in."
+      ? "Your previous attempt at this exact cluster did not return a usable, finished tool call. Try again, " +
+        "keep every field brief, and make sure you call record_synthesized_insight with every required field filled in."
       : `Your previous attempt at this exact cluster left ${firstMissing!.join(" and ")} blank. Every one of ` +
         "those fields must contain real text this time, there is no case where leaving one empty is correct.";
     result = await callReframe(tenantId, runId, cluster, framingBlock, retryNote);
@@ -743,8 +813,8 @@ async function reframeAndGateCluster(
     return {
       ok: false,
       reason:
-        `no tool_use block in the response after ${attempts} attempt(s) ` +
-        `(stop_reason: ${result.stopReason ?? "unknown"})`,
+        `no finished result after ${attempts} attempt(s) ` +
+        `(stop_reason: ${result.stopReason ?? "unknown"}${result.unfinished ? `; ${result.unfinished}` : ""})`,
     };
   }
 

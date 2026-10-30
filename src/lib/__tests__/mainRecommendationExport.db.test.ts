@@ -15,6 +15,7 @@
 //     written by any export.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { SOFFICE, officeConvert } from "./helpers/officeRender";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,7 +34,6 @@ vi.mock("@/lib/fieldTableSlides", async () => await import("../fieldTableSlides"
 vi.mock("@/lib/mainRecommendationExport", async () => await import("../mainRecommendationExport"));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 
-const SOFFICE = ["soffice", "libreoffice"].find((b) => spawnSync("which", [b]).status === 0);
 const PDFTOTEXT = spawnSync("which", ["pdftotext"]).status === 0;
 const LONG = Array.from({ length: 60 }, (_, i) => `Risk ${i + 1}: the campaign window may close before the owner can act.`).join(" ") + " LONG_END_SENTINEL";
 
@@ -178,8 +178,8 @@ describe.skipIf(!TEST_DATABASE_URL)("main Recommendations list exports (GT-007, 
   it.skipIf(!SOFFICE || !PDFTOTEXT)("Slides rendered: every word inside the page and above the footer; the long text complete", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "main-rec-"));
     writeFileSync(path.join(dir, "all.pptx"), (await deck("all")).buffer);
-    const conv = spawnSync(SOFFICE!, ["--headless", "--convert-to", "pdf", "--outdir", dir, path.join(dir, "all.pptx")], { encoding: "utf8", timeout: 120_000 });
-    expect(conv.status, conv.stderr).toBe(0);
+    const conv = officeConvert(path.join(dir, "all.pptx"), "pdf", dir);
+    expect(conv.status, conv.detail).toBe(0);
     const bbox = spawnSync("pdftotext", ["-bbox", path.join(dir, "all.pdf"), "-"], { encoding: "utf8", maxBuffer: 1e8 }).stdout;
     for (const [i, page] of bbox.split(/<page /).slice(1).entries()) {
       const width = Number(/width="([\d.]+)"/.exec(page)![1]);

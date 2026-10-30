@@ -8,6 +8,7 @@ Exit code is 0 when all checks pass.
 import importlib.util
 import math
 import os
+import json
 import sys
 import tempfile
 
@@ -137,7 +138,9 @@ sel = q1 == 1
 def stats(mask):
     ww = w[mask]; n_eff = ww.sum() ** 2 / (ww ** 2).sum(); return (w[mask & sel].sum() / ww.sum()), n_eff
 p1, e1 = stats(m); p2, e2 = stats(c)
-z = (p1 - p2) / math.sqrt(p1 * (1 - p1) / e1 + p2 * (1 - p2) / e2)
+# Pooled under the null hypothesis on effective bases (batch 47): the two groups' shares combined.
+p0 = (p1 * e1 + p2 * e2) / (e1 + e2)
+z = (p1 - p2) / math.sqrt(p0 * (1 - p0) * (1 / e1 + 1 / e2))
 pv = math.erfc(abs(z) / math.sqrt(2))
 got_p = row["p"][cols[rc]]
 check("complement z-test p-value", got_p is not None and abs(got_p - pv) < 0.0006, f"{got_p} vs {pv:.4f}")
@@ -272,7 +275,7 @@ for method, word in (("bonferroni", "Bonferroni"), ("fdr", "Benjamini-Hochberg")
 check("engine default is uncorrected and says so", "not corrected" in psf.crosstab(data, "t.sav", base_args)["notes"]["test"])
 check("notes carry the design and overlap statements", all(k in raw_res["notes"] for k in ("design", "overlap")))
 
-# column-pair letters against an independent pairwise z test (no correction)
+# column-pair letters against an independent pooled pairwise z test (no correction)
 lt = psf.crosstab(data, "t.sav", dict(base_args, correction="none"))
 lcols = {c["name"]: i for i, c in enumerate(lt["columns"])}
 check("columns carry letters", [c["letter"] for c in lt["columns"]][:3] == ["A", "B", "C"])
@@ -290,14 +293,16 @@ for row in data_rows(lt["questions"][0]):
                 continue
             ma, mb = reg == codes[a], reg == codes[b]
             pa = w[ma & (q1 == cat)].sum() / w[ma].sum(); pb = w[mb & (q1 == cat)].sum() / w[mb].sum()
-            se = math.sqrt(pa * (1 - pa) / _ne(w[ma]) + pb * (1 - pb) / _ne(w[mb]))
+            na_, nb_ = _ne(w[ma]), _ne(w[mb])
+            p0_ = (pa * na_ + pb * nb_) / (na_ + nb_)
+            se = math.sqrt(p0_ * (1 - p0_) * (1 / na_ + 1 / nb_))
             z = (pa - pb) / se
             if math.erfc(abs(z) / math.sqrt(2)) < 0.05 and z > 0:
                 exp += lt["columns"][lcols[b]]["letter"]
         got = row["letters"][lcols[a]]
         if sorted(got) != sorted(exp):
             ok_letters = False
-check("column-pair letters equal an independent pairwise z test", ok_letters)
+check("column-pair letters equal an independent pooled pairwise z test", ok_letters)
 
 # first-order Rao-Scott whole-table test against an independent calculation
 tt = lt["questions"][0].get("tableTests") or []
@@ -347,6 +352,8 @@ def _ratio_z(mask, sel):
     pj = w_[mask & sel].sum() / sw_
     return pj, np.where(mask, w_ * ((sel.astype(float)) - pj) / sw_, 0.0)
 
+from scipy.stats import t as _scipy_t
+_design_df = len(set(zip(strata_, psu_))) - len(set(strata_))
 ok_se = True
 for row in data_rows(rd["questions"][0]):
     cat = int(row["label"])
@@ -356,7 +363,9 @@ for row in data_rows(rd["questions"][0]):
     pb, zb = _ratio_z(~ka, sel)
     se_ = math.sqrt(_svy_var(za - zb, strata_, psu_))
     z_ = (pa - pb) / se_
-    p_exp = math.erfc(abs(z_) / math.sqrt(2))
+    # Design-based tests use a Student t reference with the design degrees of freedom (PSUs minus
+    # strata), as R's survey package and Stata's svy do; computed here from the data, not the engine.
+    p_exp = 2 * _scipy_t.sf(abs(z_), _design_df)
     got_p = row["p"][0]
     if got_p is None or abs(got_p - p_exp) > 6e-5:
         ok_se = False
@@ -370,8 +379,19 @@ r0 = data_rows(ro["questions"][0])[0]
 ya = (one["y"][one["grp"] == "A"] == 1).mean(); yb = (one["y"][one["grp"] == "B"] == 1).mean()
 N_ = 600
 va = N_ / (N_ - 1) * ya * (1 - ya) / 300; vb = N_ / (N_ - 1) * yb * (1 - yb) / 300
-p_closed = math.erfc(abs((ya - yb) / math.sqrt(va + vb)) / math.sqrt(2))
-check("one case per PSU reduces to the simple random sample formula", r0["p"][0] is not None and abs(r0["p"][0] - p_closed) < 6e-5, f"{r0['p'][0]} vs {p_closed}")
+# The standard error reduces to the simple random sample one; the reference distribution stays the
+# design t with 600 PSUs - 1 stratum = 599 degrees of freedom (Codex RP0-V01: this check used the normal
+# tail, 0.55657, while the engine correctly reports the t tail, 0.55680).
+z_closed = (ya - yb) / math.sqrt(va + vb)
+p_closed = 2 * _scipy_t.sf(abs(z_closed), 600 - 1)
+p_normal = math.erfc(abs(z_closed) / math.sqrt(2))
+check("one case per PSU reduces to the simple random sample formula (design t reference, 599 df)", r0["p"][0] is not None and abs(r0["p"][0] - p_closed) < 6e-5, f"{r0['p'][0]} vs {p_closed}")
+check("the check tells the t reference from the normal one (they differ by more than its tolerance)", abs(p_closed - p_normal) > 6e-5, f"{p_closed} vs {p_normal}")
+# Without a design the reference is the normal: same data, no design.
+ro_n = psf.crosstab(one.to_csv(index=False).encode(), "o.csv", {"columnVars": ["grp"], "rowItems": [{"key": "y", "label": "Y", "vars": ["y"]}], "weightVar": None, "correction": "none"})
+r0n = data_rows(ro_n["questions"][0])[0]
+z_srs = (ya - yb) / math.sqrt(ya * (1 - ya) / 300 + yb * (1 - yb) / 300)
+check("without a design the test uses the normal reference", r0n["p"][0] is not None and abs(r0n["p"][0] - math.erfc(abs(z_srs) / math.sqrt(2))) < 1e-3, f"{r0n['p'][0]} vs {math.erfc(abs(z_srs) / math.sqrt(2))}")
 
 # clustering must not make the test more certain than ignoring it, on clustered data
 rn = psf.crosstab(dbytes, "d.csv", {"columnVars": ["grp"], "rowItems": [{"key": "y", "label": "Y", "vars": ["y"]}], "weightVar": "w", "correction": "none"})
@@ -674,6 +694,389 @@ bad = _grp([{"label": "bad", "cats": ["A"], "minus": ["A"], "kind": "score"}])
 check("net score with overlapping answers is skipped with a reason", any("overlap" in x["reason"] for x in bad["skipped"]))
 tb_ = [r for r in rg["questions"][0]["rows"] if not r.get("isBase") and not r.get("isNet")]
 check("total row ignores subtotals and scores", len(tb_) == 3)
+
+# Batch 47 regression (Grant, 27 October 2026): a 0% cell against a small share. 0 of 53 in column A,
+# 11 of 947 in column B, unweighted. The unpooled test gives a zero variance for A and p = 0.0008, so it
+# flagged A as significantly lower. Pooled under the null hypothesis: p0 = 11/1000,
+# se = sqrt(p0 (1 - p0) (1/53 + 1/947)), z = -0.789, p = 0.430 (Fisher's exact test gives p = 1.0).
+zr = pd.DataFrame({"grp": ["A"] * 53 + ["B"] * 947, "y": [2] * 53 + [1] * 11 + [2] * 936, "psu": np.arange(1000)})
+zr_args = {"columnVars": ["grp"], "rowItems": [{"key": "y", "label": "Y", "vars": ["y"]}], "weightVar": None, "correction": "none"}
+rz = psf.crosstab(zr.to_csv(index=False).encode(), "z.csv", zr_args)
+zrow = next(r for r in data_rows(rz["questions"][0]) if r["label"] == "1")
+p0r = 11 / 1000
+z_ref = (0 - 11 / 947) / math.sqrt(p0r * (1 - p0r) * (1 / 53 + 1 / 947))
+p_ref = math.erfc(abs(z_ref) / math.sqrt(2))
+check("0 of 53 vs 11 of 947: pooled p-value (0.430, not 0.0008)", zrow["p"][0] is not None and abs(zrow["p"][0] - p_ref) < 1e-3 and abs(p_ref - 0.4302) < 1e-3, f"{zrow['p'][0]} vs {p_ref}")
+check("0 of 53 vs 11 of 947: the 0% cell is not flagged lower", zrow["sig"][0] == 0, str(zrow["sig"]))
+check("0 of 53 vs 11 of 947: no column letters either way", not any(zrow.get("letters") or []), str(zrow.get("letters")))
+check("the notes name the pooled test and its method version", "pooled" in rz["notes"]["test"] and rz["notes"].get("methodVersion") == psf.TABLE_METHOD)
+check("no design: nothing reported as untested", rz["notes"].get("degenerateUntested") is None)
+# Boundary: a real difference is still found by the pooled test (0 of 200 vs 60 of 800).
+big = pd.DataFrame({"grp": ["A"] * 200 + ["B"] * 800, "y": [2] * 200 + [1] * 60 + [2] * 740})
+rb = psf.crosstab(big.to_csv(index=False).encode(), "b.csv", zr_args)
+brow = next(r for r in data_rows(rb["questions"][0]) if r["label"] == "1")
+check("pooled test still flags a clear difference at 0% (0 of 200 vs 60 of 800)", brow["sig"][0] == -1 and brow["p"][0] < 0.001, f"{brow['sig']} {brow['p']}")
+# Under a design a 0% share has no linearised variance: the cell is left untested and the notes say so.
+rzd = psf.crosstab(zr.to_csv(index=False).encode(), "z.csv", dict(zr_args, design={"psu": "psu", "strata": None}))
+zdrow = next(r for r in data_rows(rzd["questions"][0]) if r["label"] == "1")
+check("design: the 0% cell is untested (no p, no flag)", zdrow["p"][0] is None and zdrow["sig"][0] == 0, f"{zdrow['p']} {zdrow['sig']}")
+check("design: the notes count the untested cells", bool(rzd["notes"].get("degenerateUntested")) and "0% or 100%" in rzd["notes"]["degenerateUntested"])
+
+# Batch 47 regression: run-together non-answer labels ("DontKnow", "Not_applicable") are non-answers too,
+# in the banner and in the rows, when non-answers are excluded; kept when the researcher includes them.
+rk_ = np.random.default_rng(47)
+dkn = pd.DataFrame({"ivr": rk_.choice([1, 2, 3], 600), "sat": rk_.choice([1, 2, 3, 4], 600)})
+dk_path = os.path.join(tempfile.mkdtemp(), "dk.sav")
+pyreadstat.write_sav(dkn, dk_path, variable_value_labels={"ivr": {1: "Yes", 2: "No", 3: "DontKnow"}, "sat": {1: "Good", 2: "Fair", 3: "Poor", 4: "Not_applicable"}})
+dk_bytes = open(dk_path, "rb").read()
+dk_args = {"columnVars": ["ivr"], "rowItems": [{"key": "sat", "label": "Sat", "vars": ["sat"]}], "weightVar": None, "correction": "none"}
+rdk = psf.crosstab(dk_bytes, "dk.sav", dk_args)
+check("run-together 'DontKnow' is not a banner column when non-answers are excluded", [c["name"] for c in rdk["columns"]] == ["Yes", "No"], str([c["name"] for c in rdk["columns"]]))
+dk_rows = [r["label"] for r in data_rows(rdk["questions"][0])]
+check("'Not_applicable' is not an answer row when non-answers are excluded", "Not_applicable" not in dk_rows and {"Good", "Fair", "Poor"} <= set(dk_rows), str(dk_rows))
+sub_ = dkn[(dkn["ivr"] == 1) & (dkn["sat"] != 4)]
+exp_good = (sub_["sat"] == 1).mean() * 100
+got_good = next(r for r in data_rows(rdk["questions"][0]) if r["label"] == "Good")["pct"][0]
+check("the base excludes the non-answers (Good among Yes, answering)", abs(got_good - exp_good) < 0.06, f"{got_good} vs {exp_good}")
+rkeep = psf.crosstab(dk_bytes, "dk.sav", dict(dk_args, excludeDk=False))
+check("with non-answers included, 'DontKnow' and 'Not_applicable' stay", "DontKnow" in [c["name"] for c in rkeep["columns"]] and "Not_applicable" in [r["label"] for r in data_rows(rkeep["questions"][0])])
+check("ordinary words that start like a non-answer are still answers", not any(psf._DK_RE.match(x) for x in ("Donations", "Nature", "Domestic", "Noise", "Yes", "No")))
+
+# Batch 48: the Mean tick adds a mean row above each rating-scale question, and names the others.
+rk48 = np.random.default_rng(48)
+n48 = 500
+sat48 = rk48.integers(0, 11, n48).astype(float)
+sat48[rk48.random(n48) < 0.08] = 99.0  # don't know
+d48 = pd.DataFrame({"seg": rk48.choice([1, 2], n48).astype(float), "sat": sat48, "region": rk48.choice([1, 2, 3], n48).astype(float), "w": np.exp(rk48.normal(0, 0.4, n48))})
+p48 = os.path.join(tempfile.mkdtemp(), "m48.sav")
+sat_labels = {float(k): str(k) for k in range(11)}; sat_labels[99.0] = "Don't know"
+pyreadstat.write_sav(d48, p48, variable_value_labels={"seg": {1: "Seg A", 2: "Seg B"}, "sat": sat_labels, "region": {1: "North", 2: "South", 3: "East"}})
+b48 = open(p48, "rb").read()
+a48 = {"columnVars": ["seg"], "rowItems": [{"key": "sat", "label": "Satisfaction", "vars": ["sat"]}, {"key": "region", "label": "Region", "vars": ["region"]}], "weightVar": "w", "correction": "none"}
+r48 = psf.crosstab(b48, "m48.sav", dict(a48, meanRows=True))
+qs48 = {q["key"]: q for q in r48["questions"]}
+sat_rows = [r for r in qs48["sat"]["rows"] if not r.get("isBase")]
+check("Mean tick: the first row after the bases is the mean", sat_rows[0].get("autoMean") is True and sat_rows[0]["label"] == "Mean" and sat_rows[0].get("isMean") is True, str([r["label"] for r in sat_rows][:3]))
+for ci, code in enumerate([1.0, 2.0]):
+    mk = (d48["seg"] == code) & (d48["sat"] != 99)
+    exp48 = float((d48["w"][mk] * d48["sat"][mk]).sum() / d48["w"][mk].sum())
+    check(f"Mean tick: weighted mean of the codes, don't know left out (column {ci})", abs(sat_rows[0]["pct"][ci] - exp48) < 0.006, f"{sat_rows[0]['pct'][ci]} vs {exp48}")
+mkT = d48["sat"] != 99
+check("Mean tick: total mean", abs(sat_rows[0]["total"]["pct"] - float((d48["w"][mkT] * d48["sat"][mkT]).sum() / d48["w"][mkT].sum())) < 0.006)
+check("Mean tick: a mean is tested like any mean (p-values present)", any(p is not None for p in sat_rows[0]["p"]))
+check("Mean tick: no mean for codes that are not a scale", not any(r.get("autoMean") for r in qs48["region"]["rows"]))
+check("Mean tick: the question without a mean is named", "Region" in (r48["notes"].get("meanNotAdded") or "") and "Satisfaction" not in (r48["notes"].get("meanNotAdded") or ""))
+r48off = psf.crosstab(b48, "m48.sav", a48)
+check("no Mean tick (or a request saved before it): no mean row, nothing named", not any(r.get("autoMean") for q in r48off["questions"] for r in q["rows"]) and r48off["notes"].get("meanNotAdded") is None and r48off["notes"].get("meanRows") is False)
+own = dict(a48, meanRows=True, rowItems=[{"key": "sat", "label": "Satisfaction", "vars": ["sat"], "groups": [{"label": "Satisfaction", "kind": "mean", "place": "end", "cats": [str(k) for k in range(11)]}]}])
+r48own = psf.crosstab(b48, "m48.sav", own)
+means48 = [r for r in r48own["questions"][0]["rows"] if r.get("isMean")]
+check("a question with its own mean group gets no second mean", len(means48) == 1 and not means48[0].get("autoMean"), str([r["label"] for r in means48]))
+
+# Indicator data reader (batch 54): its own self-test, run here so this gate covers it.
+import subprocess  # noqa: E402
+
+_ind = subprocess.run([sys.executable, os.path.join(HERE, "indicator_selftest.py")], capture_output=True, text=True)
+print(_ind.stdout.rstrip())
+check("indicator data reader self-test (scripts/indicator_selftest.py)", _ind.returncode == 0, _ind.stderr[-400:])
+
+# CT5K-F01 (Codex, 28 October 2026): row percentages and shares of responses were divided from counts
+# already rounded to one decimal for display, so multiplying every positive weight by one constant changed
+# them (with weights of 1/1024 the selected answer's row % read 0/0/100 and a share of responses was blank
+# despite 100 unweighted cases). Expected values below are written by hand from the counts, not from the engine.
+def _rows_by(q, key="label"):
+    return {r.get(key): r for r in q["rows"] if not r.get("isBase")}
+
+def _close(a, b, tol=0.051):
+    if a is None or b is None:
+        return a is None and b is None
+    return abs(a - b) <= tol
+
+def _all_close(a, b, tol=0.051):
+    return isinstance(a, list) and len(a) == len(b) and all(_close(x, y, tol) for x, y in zip(a, b))
+
+ra = []
+for g in range(3):
+    k_sel, k_m2 = [10, 30, 60][g], [30, 50, 70][g]
+    for i in range(100):
+        ra.append({"Y": 1.0 if i < k_sel else 2.0, "G": float(g + 1), "H": 1.0 if i % 2 == 0 else 2.0,
+                   "M_1": float(i < k_sel), "M_2": float(i < k_m2),
+                   # K_1 is chosen only in the third group; nobody chose K_2. Both answered by everyone.
+                   "K_1": float(g == 2 and i < 20), "K_2": 0.0, "W": 1.0})
+dA = pd.DataFrame(ra)
+pA = os.path.join(tempfile.mkdtemp(), "ct5k.sav")
+pyreadstat.write_sav(dA, pA, variable_value_labels={
+    # Code 3 is declared and never used: its row is kept with a zero count in every column.
+    "Y": {1: "Selected", 2: "Other", 3: "Never"}, "G": {1: "G1", 2: "G2", 3: "G3"}, "H": {1: "Even", 2: "Odd"},
+    "M_1": {0: "No", 1: "Yes"}, "M_2": {0: "No", 1: "Yes"}, "K_1": {0: "No", 1: "Yes"}, "K_2": {0: "No", 1: "Yes"}})
+bA = open(pA, "rb").read()
+
+def _ct5k(cols_, weight_scale, rows_):
+    d = dA.copy()
+    d["W"] = weight_scale
+    p = os.path.join(tempfile.mkdtemp(), "ct5k.sav")
+    pyreadstat.write_sav(d, p, variable_value_labels={
+        "Y": {1: "Selected", 2: "Other", 3: "Never"}, "G": {1: "G1", 2: "G2", 3: "G3"}, "H": {1: "Even", 2: "Odd"},
+        "M_1": {0: "No", 1: "Yes"}, "M_2": {0: "No", 1: "Yes"}, "K_1": {0: "No", 1: "Yes"}, "K_2": {0: "No", 1: "Yes"}})
+    return psf.crosstab(open(p, "rb").read(), "ct5k.sav", {"columnVars": cols_, "weightVar": "W", "correction": "none", "rowItems": rows_})
+
+ct5k_items = [
+    {"key": "Y", "label": "Y", "vars": ["Y"], "groups": [{"kind": "net", "label": "Picked", "cats": ["Selected"], "place": "end"}]},
+    {"key": "M", "label": "M", "vars": ["M_1", "M_2"], "stem": ""},
+    {"key": "K", "label": "K", "vars": ["K_1", "K_2"], "stem": ""},
+    {"key": "U", "label": "U", "kind": "nets", "vars": [], "nets": [{"label": "Any M", "vars": ["M_1", "M_2"]}]},
+]
+for scale in [1.0, 1 / 1024, 1e-6, 1000.0, 3.7]:
+    tag = f"weights x{scale:g}"
+    rt = _ct5k(["G", "H"], scale, ct5k_items)
+    qs = {q["key"]: q for q in rt["questions"]}
+    y = _rows_by(qs["Y"])
+    # G block is columns 0-2, H block columns 3-4: each row % is within its own banner variable.
+    check(f"CT5K {tag}: selected answer row % 10/30/60 (G) and 50/50 (H)", _all_close(y["Selected"]["rowPct"], [10.0, 30.0, 60.0, 50.0, 50.0]), str(y["Selected"]["rowPct"]))
+    check(f"CT5K {tag}: other answer row % 45/35/20 (G); H 50/50", _all_close(y["Other"]["rowPct"], [45.0, 35.0, 20.0, 50.0, 50.0]), str(y["Other"]["rowPct"]))
+    check(f"CT5K {tag}: column % unchanged by weight scale", _all_close(y["Selected"]["pct"], [10.0, 30.0, 60.0, 33.3, 33.3]), str(y["Selected"]["pct"]))
+    check(f"CT5K {tag}: NET row % from unrounded counts", _all_close(y["NET: Picked"]["rowPct"], [10.0, 30.0, 60.0, 50.0, 50.0]), str(y["NET: Picked"]["rowPct"]))
+    check(f"CT5K {tag}: an answer nobody gave has no row % (zero denominator, explicit None)", y["Never"]["rowPct"] == [None] * 5 and y["Never"]["pct"] == [0.0] * 5, str(y["Never"]["rowPct"]))
+    m = _rows_by(qs["M"], "variable")
+    check(f"CT5K {tag}: share of responses overall 40/60", _close(m["M_1"]["total"]["respPct"], 40.0) and _close(m["M_2"]["total"]["respPct"], 60.0), f'{m["M_1"]["total"]["respPct"]} {m["M_2"]["total"]["respPct"]}')
+    check(f"CT5K {tag}: share of responses per column (G1 25/75, G2 37.5/62.5, G3 46.2/53.8)",
+          _all_close(m["M_1"]["respPct"][:3], [25.0, 37.5, 46.2]) and _all_close(m["M_2"]["respPct"][:3], [75.0, 62.5, 53.8]), f'{m["M_1"]["respPct"]} {m["M_2"]["respPct"]}')
+    check(f"CT5K {tag}: share of responses in each banner's NET column 40/60", all(_close(nt["respPct"], 40.0) for nt in m["M_1"]["net"]) and all(_close(nt["respPct"], 60.0) for nt in m["M_2"]["net"]), str([nt["respPct"] for nt in m["M_1"]["net"]]))
+    check(f"CT5K {tag}: multi-response option row % (M_2 20/33.3/46.7)", _all_close(m["M_2"]["rowPct"][:3], [20.0, 33.3, 46.7]), str(m["M_2"]["rowPct"]))
+    k = _rows_by(qs["K"], "variable")
+    check(f"CT5K {tag}: zero-selected columns: share of responses unavailable where no option was chosen, 100/0 where one was",
+          k["K_1"]["respPct"][:3] == [None, None, 100.0] and k["K_2"]["respPct"][:3] == [None, None, 0.0], f'{k["K_1"]["respPct"]} {k["K_2"]["respPct"]}')
+    check(f"CT5K {tag}: an option chosen in one column only: row % 0/0/100; never chosen: None",
+          _all_close(k["K_1"]["rowPct"][:3], [0.0, 0.0, 100.0]) and k["K_2"]["rowPct"] == [None] * 5, f'{k["K_1"]["rowPct"]} {k["K_2"]["rowPct"]}')
+    check(f"CT5K {tag}: share of responses total with a zero option 100/0", k["K_1"]["total"]["respPct"] == 100.0 and k["K_2"]["total"]["respPct"] == 0.0)
+    u = _rows_by(qs["U"])
+    check(f"CT5K {tag}: researcher net row % 20/33.3/46.7", _all_close(u["NET: Any M"]["rowPct"][:3], [20.0, 33.3, 46.7]), str(u["NET: Any M"]["rowPct"]))
+    # The unrounded figures are saved with the result (countExact, pctExact, seExact), so figures derived
+    # in src/lib (NPS, top-box, the export's Total line) never add the display values. Hand counts below.
+    check(f"CT5K {tag}: countExact is the unrounded weighted count (10/30/60 cases x weight)",
+          _all_close(y["Selected"]["countExact"], [10 * scale, 30 * scale, 60 * scale, 50 * scale, 50 * scale], 1e-9 * max(scale, 1))
+          and abs(y["Selected"]["total"]["countExact"] - 100 * scale) <= 1e-9 * max(scale, 1), str(y["Selected"]["countExact"]))
+    check(f"CT5K {tag}: pctExact is the unrounded share (H: 50/150 = 33.333...)", _all_close(y["Selected"]["pctExact"], [10.0, 30.0, 60.0, 100 / 3, 100 / 3], 1e-9), str(y["Selected"]["pctExact"]))
+    check(f"CT5K {tag}: NET column carries countExact and pctExact", all(abs(nt["pctExact"] - 100 / 3) < 1e-9 and abs(nt["countExact"] - 100 * scale) <= 1e-9 * max(scale, 1) for nt in y["Selected"]["net"]))
+    check(f"CT5K {tag}: pctExact is null exactly where pct is", all((a is None) == (b is None) for q in rt["questions"] for r in q["rows"] if not r.get("isBase") for a, b in zip(r["pct"], r["pctExact"])))
+    check(f"CT5K {tag}: seExact rounds to se", all((a is None and b is None) or (a is not None and abs(round(b, 2) - a) < 1e-9) for a, b in zip(y["Selected"]["se"], y["Selected"]["seExact"])))
+    # Overlapping banner (a multiple-response set as columns): a case can sit in both columns; each row %
+    # divides by the sum over that banner's columns, the existing domain. Hand count: every Selected case is
+    # in both M_1 and M_2 (100 each); Other cases are only in M_2: 20 + 20 + 10 = 50.
+    ro = _ct5k(["set:M"], scale, [ct5k_items[0]])
+    yo = _rows_by(ro["questions"][0])
+    check(f"CT5K {tag}: overlapping banner row % (Selected 50/50, Other 0/100)", _all_close(yo["Selected"]["rowPct"], [50.0, 50.0]) and _all_close(yo["Other"]["rowPct"], [0.0, 100.0]), f'{yo["Selected"]["rowPct"]} {yo["Other"]["rowPct"]}')
+
+# Ordinary fractional weights, a tiny column and partly missing options, against a direct calculation from
+# the case records; then the same table with every weight multiplied by 1/1024 and by 1000 must give the same
+# percentages and the same blanks (suppressed tiny column, zero denominators).
+rkf = np.random.default_rng(59)
+nf = 406
+gf = np.concatenate([rkf.choice([1.0, 2.0, 3.0], nf - 6), np.full(6, 4.0)])  # group 4: 6 cases, suppressed
+hf = rkf.choice([1.0, 2.0], nf)
+yf = rkf.choice([1.0, 2.0, 3.0], nf, p=[0.2, 0.5, 0.3])
+mf = {f"M_{j}": (rkf.random(nf) < [0.15, 0.35, 0.6][j - 1]).astype(float) for j in (1, 2, 3)}
+mf["M_3"][rkf.random(nf) < 0.25] = np.nan  # option 3 not asked of a quarter
+wf = rkf.uniform(0.013, 0.097, nf)
+dF = pd.DataFrame({"Y": yf, "G": gf, "H": hf, **mf, "W": wf})
+labF = {"Y": {1: "A", 2: "B", 3: "C"}, "G": {1: "G1", 2: "G2", 3: "G3", 4: "Tiny"}, "H": {1: "H1", 2: "H2"},
+        **{f"M_{j}": {0: "No", 1: "Yes"} for j in (1, 2, 3)}}
+
+def _ct5k_frac(scale):
+    d = dF.copy()
+    d["W"] = d["W"] * scale
+    p = os.path.join(tempfile.mkdtemp(), "ct5kf.sav")
+    pyreadstat.write_sav(d, p, variable_value_labels=labF)
+    return psf.crosstab(open(p, "rb").read(), "ct5kf.sav", {"columnVars": ["G", "H"], "weightVar": "W", "correction": "none", "rowItems": [
+        {"key": "Y", "label": "Y", "vars": ["Y"]}, {"key": "M", "label": "M", "vars": ["M_1", "M_2", "M_3"], "stem": ""}]})
+
+colsF = [("G", 1.0), ("G", 2.0), ("G", 3.0), ("G", 4.0), ("H", 1.0), ("H", 2.0)]
+def _ref_rowpct(sel, valid):
+    out = []
+    for var, code in colsF:
+        num = float(dF["W"][sel & valid & (dF[var] == code)].sum())
+        den = sum(float(dF["W"][sel & valid & (dF[v2] == c2)].sum()) for v2, c2 in colsF if v2 == var)
+        n = int((valid & (dF[var] == code)).sum())
+        out.append(None if n < 10 or den <= 0 else round(100 * num / den, 1))
+    return out
+def _ref_resppct(opt):
+    out = []
+    for var, code in colsF:
+        col = dF[var] == code
+        num = float(dF["W"][col & (dF[opt] == 1)].sum())
+        den = sum(float(dF["W"][col & (dF[o] == 1)].sum()) for o in ("M_1", "M_2", "M_3"))
+        n = int((col & dF[opt].notna()).sum())
+        out.append(None if n < 10 or den <= 0 else round(100 * num / den, 1))
+    return out
+
+fr = {s: _ct5k_frac(s) for s in (1.0, 1 / 1024, 1000.0)}
+qf = {q["key"]: q for q in fr[1.0]["questions"]}
+yfr = _rows_by(qf["Y"], "rawCode")
+validY = dF["Y"].notna()
+check("CT5K fractional weights: single-answer row % equals the direct calculation", all(_all_close(yfr[str(c)]["rowPct"], _ref_rowpct(dF["Y"] == float(c), validY)) for c in (1, 2, 3)),
+      str([(yfr[str(c)]["rowPct"], _ref_rowpct(dF["Y"] == float(c), validY)) for c in (1, 2, 3)]))
+mfr = _rows_by(qf["M"], "variable")
+check("CT5K fractional weights: share of responses equals the direct calculation", all(_all_close(mfr[o]["respPct"], _ref_resppct(o)) for o in ("M_1", "M_2", "M_3")),
+      str([(mfr[o]["respPct"], _ref_resppct(o)) for o in ("M_1", "M_2", "M_3")]))
+check("CT5K fractional weights: option row % equals the direct calculation", all(_all_close(mfr[o]["rowPct"], _ref_rowpct(dF[o] == 1, dF[o].notna())) for o in ("M_1", "M_2", "M_3")),
+      str([(mfr[o]["rowPct"], _ref_rowpct(dF[o] == 1, dF[o].notna())) for o in ("M_1", "M_2", "M_3")]))
+check("CT5K fractional weights: the tiny column stays suppressed", yfr["1"]["rowPct"][3] is None and mfr["M_1"]["respPct"][3] is None)
+
+def _figures(res_):
+    out = []
+    for q in res_["questions"]:
+        for r in q["rows"]:
+            if r.get("isBase"):
+                continue
+            out.append((r["label"], r.get("pct"), r.get("rowPct"), r.get("respPct"), r["total"].get("pct"), r["total"].get("respPct"),
+                        [(nt.get("pct"), nt.get("rowPct"), nt.get("respPct")) for nt in r["net"]]))
+    return out
+
+def _same_figures(a, b):
+    def same(x, y):
+        if isinstance(x, (list, tuple)):
+            return isinstance(y, (list, tuple)) and len(x) == len(y) and all(same(p, q) for p, q in zip(x, y))
+        if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+            return abs(x - y) <= 0.1001  # one display step: a value on a rounding boundary may land either side
+        return x == y
+    return same(a, b)
+
+base_f = _figures(fr[1.0])
+for s in (1 / 1024, 1000.0):
+    check(f"CT5K fractional weights x{s:g}: every percentage and every blank unchanged by rescaling", _same_figures(base_f, _figures(fr[s])))
+
+# Mean rows and histograms carry their unrounded figures too (CT5K-F01): the weighted mean of the codes,
+# computed here directly, and each value's weighted share.
+check("CT5K: a mean row's pctExact is the unrounded weighted mean", all(abs(sat_rows[0]["pctExact"][ci] - float((d48["w"][(d48["seg"] == code) & (d48["sat"] != 99)] * d48["sat"][(d48["seg"] == code) & (d48["sat"] != 99)]).sum() / d48["w"][(d48["seg"] == code) & (d48["sat"] != 99)].sum())) < 1e-9 for ci, code in enumerate([1.0, 2.0])))
+h48 = qs48["sat"].get("desc", {}).get("hist") or []
+check("CT5K: histogram bars carry pctExact that rounds to pct and adds to 100", bool(h48) and all(abs(round(b["pctExact"], 1) - b["pct"]) < 1e-9 for b in h48) and abs(sum(b["pctExact"] for b in h48) - 100) < 1e-9, str(h48[:2]))
+
+# D2 (29 October 2026): a codebook's question number, type and multiple-response set columns are kept by header
+# name; a universe column ("aware_b01=1") is a condition, never an answer list; a JSON codebook's separate
+# "labels" list gives the answers of a variable whose entry has none; value_labels gives every variable's answer
+# labels with codes as the engine writes them.
+_cb = psf.codebook_items(b"variable,label,question,question_type,mr_set,universe\nconsider_b08,Consideration BMW,F1,multiple_response,consider,All\nattr_a01_b01,Toyota associated with Reliable,I1,Multiple Response,attr_a01,aware_b01=1\nq9,Rating,Q9,matrix thing,,All\n", "cb.csv")["items"]
+check("D2: codebook question fields kept by header", [(i["variable"], i.get("questionId"), i.get("questionType"), i.get("mrSet")) for i in _cb] == [("consider_b08", "F1", "multiple_response", "consider"), ("attr_a01_b01", "I1", "multiple_response", "attr_a01"), ("q9", "Q9", None, None)], str(_cb))
+check("D2: an unknown question type is kept as written, never mapped", _cb[2].get("questionTypeAsWritten") == "matrix thing")
+check("D2: a universe column is not an answer list", all(i["options"] == [] for i in _cb), str([i["options"] for i in _cb]))
+check("D2: a 'Question' column holding wording is not a question number", all("questionId" not in i for i in psf.codebook_items(b"variable,label,question\nq1,Age,How old are you today?\nq2,Sex,What is your sex?\n", "c.csv")["items"]))
+_js = psf.codebook_items(json.dumps({"variables": [{"variable": "top", "label": "Top of mind", "question": "A1", "question_type": "categorical", "mr_set": ""}], "labels": [["top", "Top of mind", 1, "Toyota"], ["top", "Top of mind", 2, "BMW"]]}).encode(), "m.json")["items"]
+check("D2: JSON side labels and question fields", _js == [{"variable": "top", "label": "Top of mind", "options": [{"code": "1", "label": "Toyota"}, {"code": "2", "label": "BMW"}], "note": None, "section": None, "sheet": None, "questionId": "A1", "questionType": "categorical", "mrSet": None}], str(_js))
+_vl = psf.value_labels(b"id,brand,score\n1,1,5\n2,2,6\n", "v.csv", {"overlay": {"variableLabels": {}, "valueLabels": {"brand": {"1": "Toyota", "2.0": "BMW"}}, "questions": {}}})
+check("D2: value_labels applies the overlay by the engine's rule, codes as written by the engine", _vl == {"valueLabels": {"brand": {"1": "Toyota", "2": "BMW"}}, "cut": []}, str(_vl))
+
+# A workbook's Labels sheet headed with underscores ("variable, label, value, value_label", Grant's tracker packs):
+# each code takes its value label, not the variable's label (before: every brand code read "First choice brand").
+_lab = pd.DataFrame({"variable": ["brand", "brand", "brand"], "label": ["First choice brand"] * 3, "value": [1, 2, 3], "value_label": ["Toyota", "BMW", "Haval"]})
+_cbk = pd.DataFrame({"variable": ["brand"], "label": ["First choice brand"]})
+_bw = _wb({"Respondents": (pd.DataFrame({"brand": [1, 2, 3, 2]}), 0, True), "Codebook": (_cbk, 0, True), "Labels": (_lab, 0, True)})
+check("label sheet headed value_label: codes take their value labels", [c["label"] for c in psf.categories(_bw, "w5.xlsx", "brand")["categories"]] == ["Toyota", "BMW", "Haval"], str(psf.categories(_bw, "w5.xlsx", "brand")["categories"]))
+check("label sheet headed value_label: the variable keeps its own label", {v["name"]: v["label"] for v in psf.dictionary(_bw, "w5.xlsx")["variables"]}["brand"] == "First choice brand")
+
+# D2b (29 October 2026): driver columns drop non-answers by the answer-domain owner and report each predictor's scale
+# top: the highest declared substantive answer (a declared 5 nobody chose counts; 6 = Don't know never does).
+_lab2 = pd.DataFrame({"variable": ["sat"] * 6, "label": ["Satisfaction"] * 6, "value": [1, 2, 3, 4, 5, 6], "value_label": ["Very poor", "Poor", "Fair", "Good", "Very good", "Don't know"]})
+_dw = _wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3, 4, 5, 2], "sat": [1, 2, 3, 4, 6, 2]}), 0, True), "Labels": (_lab2, 0, True)})
+_dc = psf.driver_columns(_dw, "d.xlsx", {"outcome": "y", "predictors": ["sat"]})
+_sat = _dc["predictors"][0]
+check("D2b: driver columns drop 6 = Don't know", [r[0] for r in _dc["x"]] == [1.0, 2.0, 3.0, 4.0, None, 2.0], str(_dc["x"]))
+check("D2b: the scale top is the declared 5, unchosen, never the non-answer 6", _sat.get("scaleTop") == 5.0 and _sat.get("scaleStated") is True and _sat["max"] == 4.0, str(_sat))
+_dn = psf.driver_columns(_wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3], "q": [1, 2, 4]}), 0, True)}), "n.xlsx", {"outcome": "y", "predictors": ["q"]})["predictors"][0]
+check("D2b: without an answer list the scale top is the highest answer, said so", _dn.get("scaleTop") == 4.0 and _dn.get("scaleStated") is False, str(_dn))
+
+# Decision 9 (29 October 2026): title rows above a CSV, TSV or Excel header. First part: up to 14 leading rows holding
+# at most one written value are set aside by detection. Second part: the researcher's header row (headerRowsSkipped,
+# the number of rows holding text above the header) replaces detection, the rows above it are named as title rows, a
+# row past the end of the file is refused, and the choice is part of the read cache key.
+import openpyxl as _oxl
+
+
+def _title_book(rows, id_format=None):
+    """A workbook whose one sheet holds these rows from row 1 (None is an empty cell); id_format is applied to the
+    first column of every row after the first row starting with "id"."""
+    wb = _oxl.Workbook()
+    ws = wb.active
+    ws.title = "Data"
+    below_header = False
+    for r, row in enumerate(rows, start=1):
+        for c, v in enumerate(row, start=1):
+            if v is not None:
+                cell = ws.cell(row=r, column=c, value=v)
+                if id_format and below_header and c == 1:
+                    cell.number_format = id_format
+        if row and row[0] == "id":
+            below_header = True
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+_hr_csv = b"Brand survey 2026\nFieldwork: October\nid,brand,score\n1,1,5\n2,2,6\n"
+_hr = psf.read_table(_hr_csv, "hr.csv")
+check("decision 9: a CSV's two title rows are detected (unchanged)", _hr["headers"] == ["id", "brand", "score"] and _hr["titleRows"] == ["Brand survey 2026", "Fieldwork: October"] and len(_hr["rows"]) == 2, str(_hr["headers"]))
+_hrx_b = _title_book([["Brand survey 2026"], ["Fieldwork: October"], ["id", "brand", "score"], [1, 1, 5], [2, 2, 6]])
+_hrx = psf.read_table(_hrx_b, "hr.xlsx")
+check("decision 9: an Excel sheet's two title rows are detected (unchanged)", _hrx["headers"] == ["id", "brand", "score"] and _hrx["titleRows"] == ["Brand survey 2026", "Fieldwork: October"] and len(_hrx["rows"]) == 2, str(_hrx["headers"]))
+_hr2 = psf.read_table(_hr_csv, "hr.csv", {"headerRowsSkipped": 2})
+check("decision 9: header row 3 chosen gives the same table as detection", _hr2["headers"] == _hr["headers"] and _hr2["rows"] == _hr["rows"] and _hr2["titleRows"] == _hr["titleRows"])
+_hr0 = psf.read_table(_hrx_b, "hr0.xlsx", {"headerRowsSkipped": 0})
+check("decision 9: header row 1 chosen over a one-cell title takes the title as the header (the choice wins over detection)", _hr0["headers"][0] == "Brand survey 2026" and _hr0["titleRows"] == [] and len(_hr0["rows"]) == 4, str(_hr0["headers"]))
+_hr0c = psf.read_table(b"Report title,,\nid,brand,score\n1,1,5\n", "hr0.csv", {"headerRowsSkipped": 0})
+check("decision 9: a CSV's chosen header row 1 gives its width and its names", _hr0c["headers"][0] == "Report title" and len(_hr0c["headers"]) == 3 and len(_hr0c["rows"]) == 2, str(_hr0c["headers"]))
+try:
+    psf.read_table(_hr_csv, "hr0.csv", {"headerRowsSkipped": 0})
+    _narrow = "read"
+except ValueError as exc:
+    _narrow = str(exc)
+check("decision 9: a CSV's chosen one-value header row with wider rows below is refused naming the line, not guessed", "Line 3" in _narrow and "header row has 1 columns" in _narrow, _narrow)
+_long = b"Brand survey 2026\nPrepared by,Acme Research\nNote: weighted\nid,brand,score\n1,1,5\n2,2,6\n3,1,4\n"
+try:
+    psf.read_table(_long, "long.csv")
+    _long_auto = "read"
+except ValueError as exc:
+    _long_auto = str(exc)
+check("decision 9: detection misses a preamble with a two-value line (the case a chosen header row is for)", "header row has 2 columns" in _long_auto, _long_auto)
+_hr3 = psf.read_table(_long, "long.csv", {"headerRowsSkipped": 3})
+check("decision 9: header row 4 chosen reads the table under a preamble detection misses, and names the rows above it", _hr3["headers"] == ["id", "brand", "score"] and _hr3["titleRows"] == ["Brand survey 2026", "Prepared by Acme Research", "Note: weighted"] and [r["score"] for r in _hr3["rows"]] == [5, 6, 4], str(_hr3))
+_hr3x = psf.read_table(_title_book([["Brand survey 2026"], ["Prepared by", "Acme Research"], [None], ["Note: weighted"], ["id", "brand", "score"], [1, 1, 5], [2, 2, 6]]), "long.xlsx", {"headerRowsSkipped": 3})
+check("decision 9: in Excel the chosen row counts rows holding text, and a blank row above it is set aside unnamed", _hr3x["headers"] == ["id", "brand", "score"] and _hr3x["titleRows"] == ["Brand survey 2026", "Prepared by Acme Research", "Note: weighted"] and len(_hr3x["rows"]) == 2, str(_hr3x))
+for _bad_bytes, _bad_name in ((_long, "past.csv"), (_hrx_b, "past.xlsx")):
+    try:
+        psf.read_table(_bad_bytes, _bad_name, {"headerRowsSkipped": 9})
+        _past = "read"
+    except ValueError as exc:
+        _past = str(exc)
+    check(f"decision 9: a header row past the end of {_bad_name} is refused, never moved to the last row", "header row is set to row 10" in _past and "only" in _past, _past)
+_bad_values = []
+for _bad in (-1, 15, 1.5, True, "2"):
+    try:
+        psf.read_table(_hr_csv, "hr.csv", {"headerRowsSkipped": _bad})
+        _bad_values.append(_bad)
+    except ValueError:
+        pass
+check("decision 9: a header row setting that is not a whole number from 0 to 14 is refused", _bad_values == [], str(_bad_values))
+_sav_buf = os.path.join(tmp, "hr.sav")
+pyreadstat.write_sav(pd.DataFrame({"a": [1.0, 2.0]}), _sav_buf)
+try:
+    psf.dictionary(open(_sav_buf, "rb").read(), "hr.sav", {"headerRowsSkipped": 0})
+    _sav_msg = "read"
+except ValueError as exc:
+    _sav_msg = str(exc)
+check("decision 9: a header row set on an SPSS file is refused with the reason", "only CSV, TSV" in _sav_msg, _sav_msg)
+check("decision 9: an SPSS file with the header row detected automatically reads as before", psf.dictionary(open(_sav_buf, "rb").read(), "hr.sav", {"headerRowsSkipped": None})["nCases"] == 2)
+# The cache key: the same bytes read under two choices, in either order, give two tables, never the cached one.
+psf._READ_CACHE.clear()
+_k_auto = psf.dictionary(_hrx_b, "k.xlsx")
+_k_zero = psf.dictionary(_hrx_b, "k.xlsx", {"headerRowsSkipped": 0})
+_k_auto_again = psf.dictionary(_hrx_b, "k.xlsx")
+check("decision 9: the header row choice is part of the read cache key", [v["name"] for v in _k_auto["variables"]] == ["id", "brand", "score"] and [v["name"] for v in _k_zero["variables"]][0] == "Brand survey 2026" and [v["name"] for v in _k_auto_again["variables"]] == ["id", "brand", "score"], str([v["name"] for v in _k_zero["variables"]]))
+check("decision 9: categories and cross tabs read the chosen header row too", [(c["label"], c["n"]) for c in psf.categories(_long, "long.csv", "brand", None, None, None, 3)["categories"]] == [("1", 2), ("2", 1)] and psf.crosstab(_long, "long.csv", {"columnVars": [], "rowItems": [{"key": "brand", "label": "Brand", "vars": ["brand"]}], "headerRowsSkipped": 3})["total"]["n"] == 3)
+# An identifier formatted 0000 below title rows: the format check reads the identifier cells of the rows read as cases
+# (before, it read the sheet from row 2 whatever the header's row, so the title rows moved every identifier by two).
+_pad = psf.read_table(_title_book([["Respondents"], ["Wave 1"], ["id", "score"], [7, 5], [12, 6]], id_format="0000"), "pad.xlsx")
+check("decision 9: a zero-padded identifier below two title rows keeps its own padding", [r["id"] for r in _pad["rows"]] == ["0007", "0012"], str(_pad["rows"]))
+_pad3 = psf.read_table(_title_book([["Respondents"], ["Prepared by", "Acme"], ["id", "score"], [7, 5], [12, 6]], id_format="0000"), "pad3.xlsx", {"headerRowsSkipped": 2})
+check("decision 9: a zero-padded identifier below a chosen header row keeps its own padding", [r["id"] for r in _pad3["rows"]] == ["0007", "0012"], str(_pad3["rows"]))
 
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

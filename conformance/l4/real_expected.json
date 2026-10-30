@@ -1,0 +1,1164 @@
+{
+ "files": {
+  "databook": {
+   "source": "/mnt/user-data/uploads/InsighsAI/TestProjects/Finscope2025/FInScope SA 2025 Survey - Databook 16 March 2026.pptx",
+   "file": "work/databook_subset.pptx",
+   "pages": {
+    "1": {
+     "original_slide": 10,
+     "native_tables": [
+      [
+       [
+        "",
+        "2025\n(n=5600)",
+        "2024\n(n=5600)",
+        "2023\n(n=5600)",
+        "2022\n(n=5604)"
+       ],
+       [
+        "Race:",
+        "",
+        "%",
+        "%",
+        "%"
+       ],
+       [
+        "Black",
+        "80",
+        "80",
+        "79",
+        "79"
+       ],
+       [
+        "White",
+        "9",
+        "9",
+        "9",
+        "9"
+       ],
+       [
+        "Coloured",
+        "8",
+        "9",
+        "9",
+        "9"
+       ],
+       [
+        "Asian",
+        "3",
+        "3",
+        "3",
+        "3"
+       ],
+       [
+        "Gender:",
+        "",
+        "%",
+        "%",
+        "%"
+       ],
+       [
+        "Male",
+        "48",
+        "48",
+        "48",
+        "48"
+       ],
+       [
+        "Female",
+        "52",
+        "52",
+        "52",
+        "52"
+       ],
+       [
+        "Age:",
+        "",
+        "%",
+        "%",
+        "%"
+       ],
+       [
+        "16 \u2013 17",
+        "4",
+        "4",
+        "3",
+        "4"
+       ],
+       [
+        "18 \u2013 29",
+        "29",
+        "28",
+        "30",
+        "29"
+       ],
+       [
+        "30 \u2013 44",
+        "33",
+        "35",
+        "34",
+        "34"
+       ],
+       [
+        "45 \u2013 59",
+        "19",
+        "20",
+        "19",
+        "19"
+       ],
+       [
+        "60+",
+        "14",
+        "14",
+        "14",
+        "13"
+       ],
+       [
+        "LSM:",
+        "",
+        "%",
+        "%",
+        "%"
+       ],
+       [
+        "1 \u2013 2",
+        "0",
+        "0",
+        "2",
+        "2"
+       ],
+       [
+        "3 \u2013 4",
+        "9",
+        "8",
+        "16",
+        "15"
+       ],
+       [
+        "5 \u2013 6",
+        "57",
+        "55",
+        "55",
+        "55"
+       ],
+       [
+        "7 \u2013 8",
+        "24",
+        "25",
+        "17",
+        "18"
+       ],
+       [
+        "9 \u2013 10",
+        "10",
+        "11",
+        "9",
+        "9"
+       ]
+      ],
+      [
+       [
+        "",
+        "2025\n(n=5600)",
+        "2024\n(n=5600)",
+        "2023\n(n=5600)",
+        "2022\n(n=5604)"
+       ],
+       [
+        "Personal monthly income:",
+        "",
+        "%",
+        "%",
+        "%"
+       ],
+       [
+        "No income",
+        "2",
+        "3",
+        "3",
+        "2"
+       ],
+       [
+        "R1 - R999",
+        "19",
+        "21",
+        "31",
+        "29"
+       ],
+       [
+        "R1,000 - R1,999",
+        "13",
+        "15",
+        "16",
+        "25"
+       ],
+       [
+        "R2,000 - R2,999",
+        "25",
+        "20",
+        "20",
+        "12"
+       ],
+       [
+        "R3,000 - R5,999",
+        "21",
+        "20",
+        "17",
+        "17"
+       ],
+       [
+        "R6,000 - R7,999",
+        "5",
+        "4",
+        "2",
+        "4"
+       ],
+       [
+        "R8,000 - R9,999",
+        "3",
+        "3",
+        "2",
+        "3"
+       ],
+       [
+        "R10,000 - R11,999",
+        "3",
+        "3",
+        "3",
+        "2"
+       ],
+       [
+        "R12,000 - R16,999",
+        "2",
+        "2",
+        "2",
+        "4"
+       ],
+       [
+        "R17,000 - R24,999",
+        "3",
+        "4",
+        "3",
+        "2"
+       ],
+       [
+        "R25,000 - R29,999",
+        "1",
+        "1",
+        "1",
+        "1"
+       ],
+       [
+        "R30,000 - R39,999",
+        "2",
+        "1",
+        "1",
+        "1"
+       ],
+       [
+        "R40,000 - R49,999",
+        "0.4",
+        "1",
+        "0.1",
+        "0.3"
+       ],
+       [
+        "R50,000 - R59,999",
+        "0.2",
+        "0.1",
+        "0.2",
+        "0.2"
+       ],
+       [
+        "R60,000 or more",
+        "0.2",
+        "0.2",
+        "0.1",
+        "0.3"
+       ],
+       [
+        "Refused",
+        "0",
+        "0",
+        "0",
+        "0.2"
+       ]
+      ]
+     ],
+     "charts": []
+    },
+    "2": {
+     "original_slide": 15,
+     "native_tables": [],
+     "charts": [
+      {
+       "categories": [
+        "Gauteng",
+        "KwaZulu-Natal",
+        "Western Cape",
+        "Eastern Cape",
+        "Limpopo",
+        "Mpumalanga",
+        "North West",
+        "Free State",
+        "Northern Cape"
+       ],
+       "series": [
+        {
+         "name": "2024",
+         "values": []
+        },
+        {
+         "name": "2023",
+         "values": [
+          11491171.0,
+          8836802.0,
+          5659282.0,
+          4979391.0,
+          4380862.0,
+          3598246.0,
+          2663665.0,
+          2122725.0,
+          953555.0
+         ]
+        },
+        {
+         "name": "2022",
+         "values": [
+          12080646.0,
+          7737487.0,
+          5369128.0,
+          4367642.0,
+          3828292.0,
+          3309371.0,
+          2920281.0,
+          2049463.0,
+          909578.0
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    "3": {
+     "original_slide": 60,
+     "native_tables": [
+      [
+       [
+        "",
+        "2024\n (n=5600)",
+        "2024\n (n=5600)",
+        "2023\n (n=5600)",
+        "2022\n (n=5604)"
+       ],
+       [
+        "LSM Input Variables",
+        "",
+        "",
+        "%",
+        "%"
+       ],
+       [
+        "Electric stove",
+        "85",
+        "84",
+        "89",
+        "88"
+       ],
+       [
+        "Fridge with/without freezer",
+        "81",
+        "78",
+        "81",
+        "83"
+       ],
+       [
+        "House/cluster/townhouse",
+        "84",
+        "76",
+        "80",
+        "82"
+       ],
+       [
+        "Tap water in home/on plot",
+        "78",
+        "74",
+        "76",
+        "80"
+       ],
+       [
+        "TV set",
+        "78",
+        "73",
+        "81",
+        "84"
+       ],
+       [
+        "Flush toilet in house/on plot",
+        "66",
+        "65",
+        "65",
+        "68"
+       ],
+       [
+        "Microwave oven",
+        "64",
+        "63",
+        "63",
+        "67"
+       ],
+       [
+        "1 or more radio excl car radio",
+        "52",
+        "57",
+        "57",
+        "60"
+       ],
+       [
+        "Pay TV such as \u000bM-Net/DStv/Top TV",
+        "51",
+        "51",
+        "59",
+        "58"
+       ],
+       [
+        "Built-in kitchen sink",
+        "51",
+        "48",
+        "47",
+        "49"
+       ],
+       [
+        "Washing machine",
+        "46",
+        "47",
+        "45",
+        "46"
+       ],
+       [
+        "Metropolitan area",
+        "46",
+        "45",
+        "45",
+        "45"
+       ],
+       [
+        "Exactly one cellphone  or no cellphone in household",
+        "41",
+        "34",
+        "41",
+        "36"
+       ],
+       [
+        "Three or more cellphones in household",
+        "31",
+        "37",
+        "29",
+        "34"
+       ],
+       [
+        "Hot running water",
+        "31",
+        "31",
+        "29",
+        "31"
+       ],
+       [
+        "Two cellphones in household",
+        "28",
+        "29",
+        "30",
+        "29"
+       ]
+      ],
+      [
+       [
+        "",
+        "2024\n (n=5600)",
+        "2024\n (n=5600)",
+        "2023\n(n=5600)",
+        "2022\n(n=5604)"
+       ],
+       [
+        "LSM Input Variables",
+        "",
+        "",
+        "%",
+        "%"
+       ],
+       [
+        "Deep freezer",
+        "28",
+        "32",
+        "26",
+        "26"
+       ],
+       [
+        "Live in a rural area outside GP or WP",
+        "24",
+        "28",
+        "25",
+        "25"
+       ],
+       [
+        "DVD/Blu Ray player",
+        "18",
+        "21",
+        "24",
+        "27"
+       ],
+       [
+        "1/more motor vehicles",
+        "25",
+        "27",
+        "23",
+        "26"
+       ],
+       [
+        "Computer/laptop at home",
+        "23",
+        "23",
+        "23",
+        "22"
+       ],
+       [
+        "Home theatre system",
+        "17",
+        "19",
+        "19",
+        "23"
+       ],
+       [
+        "Vacuum cleaner/Floor polisher",
+        "13",
+        "17",
+        "13",
+        "15"
+       ],
+       [
+        "Home security service",
+        "10",
+        "9",
+        "9",
+        "10"
+       ],
+       [
+        "Domestic servant",
+        "9",
+        "8",
+        "8",
+        "8"
+       ],
+       [
+        "Dishwashing machine",
+        "7",
+        "9",
+        "8",
+        "8"
+       ],
+       [
+        "Air conditioner",
+        "6",
+        "8",
+        "7",
+        "8"
+       ],
+       [
+        "Tumble dryer",
+        "8",
+        "10",
+        "6",
+        "8"
+       ],
+       [
+        "Telephone- Telkom/Neotel",
+        "3",
+        "3",
+        "4",
+        "3"
+       ],
+       [
+        "Swimming pool",
+        "3",
+        "3",
+        "3",
+        "4"
+       ]
+      ]
+     ],
+     "charts": []
+    }
+   },
+   "hand_spot_checks": {
+    "1": [
+     "Race: Black 2025 80, 2024 80, 2023 79, 2022 79",
+     "Gender: Male 48 in all four years",
+     "Personal monthly income: No income 2, 3, 3, 2; R2,000 - R2,999 25, 20, 20, 12",
+     "Column headers carry the base: 2025 (n=5600), 2022 (n=5604)"
+    ],
+    "2": [
+     "Chart only: Gauteng 2023 11,491,171 and 2022 12,080,646; Northern Cape 953,555 and 909,578"
+    ]
+   }
+  },
+  "tesla": {
+   "source": "/mnt/user-data/uploads/InsighsAI/TestProjects/EV Tesla/QMDA Tesla Survey Presentation Final.pptx",
+   "file": "/mnt/user-data/uploads/InsighsAI/TestProjects/EV Tesla/QMDA Tesla Survey Presentation Final.pptx",
+   "pages": {
+    "13": {
+     "native_tables": [],
+     "charts": [
+      {
+       "categories": [
+        "Female",
+        "Male",
+        "Other",
+        "Prefer not to say"
+       ],
+       "series": [
+        {
+         "name": "Likely",
+         "values": [
+          0.12173913043478261,
+          0.09565217391304348,
+          0.008695652173913044,
+          0.0
+         ]
+        },
+        {
+         "name": "Unlikely",
+         "values": [
+          0.21739130434782608,
+          0.1391304347826087,
+          0.008695652173913044,
+          0.0
+         ]
+        },
+        {
+         "name": "Very likely",
+         "values": [
+          0.09565217391304348,
+          0.008695652173913044,
+          0.0,
+          0.0
+         ]
+        },
+        {
+         "name": "Very unlikely",
+         "values": [
+          0.17391304347826086,
+          0.11304347826086956,
+          0.0,
+          0.017391304347826087
+         ]
+        }
+       ]
+      },
+      {
+       "categories": [
+        "18-24",
+        "25-34",
+        "35-44",
+        "45-54",
+        "55+"
+       ],
+       "series": [
+        {
+         "name": "Likely",
+         "values": [
+          0.017391304347826087,
+          0.043478260869565216,
+          0.034782608695652174,
+          0.08695652173913043,
+          0.043478260869565216
+         ]
+        },
+        {
+         "name": "Unlikely",
+         "values": [
+          0.06086956521739131,
+          0.06086956521739131,
+          0.034782608695652174,
+          0.1565217391304348,
+          0.05217391304347826
+         ]
+        },
+        {
+         "name": "Very likely",
+         "values": [
+          0.0,
+          0.02608695652173913,
+          0.017391304347826087,
+          0.05217391304347826,
+          0.008695652173913044
+         ]
+        },
+        {
+         "name": "Very unlikely",
+         "values": [
+          0.034782608695652174,
+          0.0782608695652174,
+          0.0,
+          0.0782608695652174,
+          0.11304347826086956
+         ]
+        }
+       ]
+      },
+      {
+       "categories": [
+        "Above R200,000",
+        "Below R10,000",
+        "Prefer not to say",
+        "R10,000 - R30,000",
+        "R60,000 - R100,000"
+       ],
+       "series": [
+        {
+         "name": "Likely",
+         "values": [
+          0.0,
+          0.03614457831325301,
+          0.03614457831325301,
+          0.12048192771084337,
+          0.03614457831325301
+         ]
+        },
+        {
+         "name": "Unlikely",
+         "values": [
+          0.012048192771084338,
+          0.03614457831325301,
+          0.12048192771084337,
+          0.08433734939759036,
+          0.08433734939759036
+         ]
+        },
+        {
+         "name": "Very likely",
+         "values": [
+          0.0,
+          0.012048192771084338,
+          0.024096385542168676,
+          0.03614457831325301,
+          0.024096385542168676
+         ]
+        },
+        {
+         "name": "Very unlikely",
+         "values": [
+          0.07228915662650602,
+          0.03614457831325301,
+          0.07228915662650602,
+          0.12048192771084337,
+          0.03614457831325301
+         ]
+        }
+       ]
+      },
+      {
+       "categories": [
+        "Diploma/Certificate",
+        "High school",
+        "Other",
+        "Postgraduate degree"
+       ],
+       "series": [
+        {
+         "name": "Likely",
+         "values": [
+          0.06451612903225806,
+          0.053763440860215055,
+          0.0,
+          0.11827956989247312
+         ]
+        },
+        {
+         "name": "Unlikely",
+         "values": [
+          0.11827956989247312,
+          0.07526881720430108,
+          0.0,
+          0.17204301075268819
+         ]
+        },
+        {
+         "name": "Very likely",
+         "values": [
+          0.03225806451612903,
+          0.010752688172043012,
+          0.0,
+          0.053763440860215055
+         ]
+        },
+        {
+         "name": "Very unlikely",
+         "values": [
+          0.10752688172043011,
+          0.07526881720430108,
+          0.03225806451612903,
+          0.08602150537634409
+         ]
+        }
+       ]
+      },
+      {
+       "categories": [
+        "Eastern Cape",
+        "Free State",
+        "Gauteng",
+        "KwaZulu Natal",
+        "Northern Cape",
+        "Western cape"
+       ],
+       "series": [
+        {
+         "name": "Likely",
+         "values": [
+          0.008695652173913044,
+          0.008695652173913044,
+          0.06086956521739131,
+          0.06086956521739131,
+          0.0,
+          0.08695652173913043
+         ]
+        },
+        {
+         "name": "Unlikely",
+         "values": [
+          0.02608695652173913,
+          0.008695652173913044,
+          0.10434782608695652,
+          0.05217391304347826,
+          0.0,
+          0.17391304347826086
+         ]
+        },
+        {
+         "name": "Very likely",
+         "values": [
+          0.0,
+          0.0,
+          0.043478260869565216,
+          0.043478260869565216,
+          0.0,
+          0.017391304347826087
+         ]
+        },
+        {
+         "name": "Very unlikely",
+         "values": [
+          0.017391304347826087,
+          0.02608695652173913,
+          0.06086956521739131,
+          0.017391304347826087,
+          0.008695652173913044,
+          0.17391304347826086
+         ]
+        }
+       ]
+      },
+      {
+       "categories": [
+        "Unlikely",
+        "Very unlikely",
+        "Likely",
+        "Very likely"
+       ],
+       "series": [
+        {
+         "name": "Total",
+         "values": [
+          0.3652173913043478,
+          0.30434782608695654,
+          0.22608695652173913,
+          0.10434782608695652
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    "16": {
+     "native_tables": [
+      [
+       [
+        "Question",
+        "Positive",
+        "Neutral /Undecided",
+        "Negative"
+       ],
+       [
+        "Would you buy an EV?",
+        "Yes, in the next 5 years",
+        "Maybe, if conditions improve",
+        "No, not practical"
+       ],
+       [
+        "Spend On EV",
+        "500K-800K",
+        "Less than 500k",
+        "Won\u2019t buy one"
+       ],
+       [
+        "Top concern",
+        "Price & infrastructure",
+        "Battery life & resale value",
+        "Charging & cost"
+       ],
+       [
+        "View on government incentives?",
+        "Should increase subsidies",
+        "Would help, but not essential",
+        "Government shouldn\u2019t interfere"
+       ],
+       [
+        "How do they see the future of EVs?",
+        "Adoption will rise quickly",
+        "EVs will grow, but slowly",
+        "EVs won\u2019t replace petrol anytime soon"
+       ],
+       [
+        "Would they recommend EVs?",
+        "Yes",
+        "Maybe",
+        "No"
+       ]
+      ]
+     ],
+     "charts": []
+    },
+    "18": {
+     "native_tables": [
+      [
+       [
+        "Indicator",
+        "Data",
+        "Source"
+       ],
+       [
+        "Economic and Population Indicators",
+        "",
+        ""
+       ],
+       [
+        "GDP Growth Rate (2023)",
+        "0.70%",
+        "World Bank (2023)"
+       ],
+       [
+        "Inflation Rate (2023)",
+        "5.40%",
+        "South African Reserve Bank (2023)"
+       ],
+       [
+        "Interest Rate (2023)",
+        "Repo rate at 6.5%",
+        "South African Reserve Bank (2023)"
+       ],
+       [
+        "Population Size (2024 est.)",
+        "64.104 million",
+        "Wikipedia (2024)"
+       ],
+       [
+        "Average Age",
+        "Median age of 27.6 years",
+        "Statistics South Africa (2022)"
+       ],
+       [
+        "Gender Distribution",
+        "51% Female, 49% Male",
+        "Statistics South Africa (2022)"
+       ],
+       [
+        "Income Distribution",
+        "Gini coefficient of 0.63 (high inequality)",
+        "World Bank (2022)"
+       ],
+       [
+        "Education Levels",
+        "32.1% completed secondary; 12.3% higher education",
+        "Statistics South Africa (2022)"
+       ],
+       [
+        "Unemployment Rate (2025 est.)",
+        "33.90%",
+        "Wikipedia (2024)"
+       ],
+       [
+        "Urbanization Rate",
+        "66.7% of the population resides in urban areas",
+        "United Nations (2022)"
+       ],
+       [
+        "Employment Sectors",
+        "12.5% manufacturing, 23.5% community services, 19.2% trade",
+        "Statistics South Africa (2022)"
+       ],
+       [
+        "Automotive Indicators",
+        "",
+        ""
+       ],
+       [
+        "Automotive Market Size (2029)",
+        "Projected to reach US$8.8 billion",
+        "Statista (n.d.)"
+       ],
+       [
+        "New Car Sales (January 2025)",
+        "34,530 passenger cars sold",
+        "MarkLines (2025)"
+       ],
+       [
+        "Average Price of New Cars (Q1 2024)",
+        "R392,174",
+        "BusinessTech (2024)"
+       ],
+       [
+        "Average Loan Value for Financed Vehicles (Q1 2024)",
+        "R391,000",
+        "TransUnion (2024)"
+       ],
+       [
+        "Percentage of New Cars Over R500,000 (2024)",
+        "73%",
+        "TopAuto (2024)"
+       ],
+       [
+        "Total Number of Registered Vehicles (November 2024)",
+        "Approximately 7 - 12.1 million",
+        "GreenCape(2024); Statista (2024)"
+       ],
+       [
+        "Car Ownership",
+        "Approximately 35% of households own at least one car",
+        "Statistics South Africa (2022)"
+       ],
+       [
+        "Fuel Prices (2023)",
+        "Petrol: R19.54/L, Diesel: R17.10/L",
+        "Department of Energy (2023)"
+       ],
+       [
+        "Electricity Access",
+        "84.7% of households have access to electricity",
+        "Statistics South Africa (2022)"
+       ],
+       [
+        "Charging Infrastructure",
+        "Limited public EV charging stations, mostly in urban centers; 450 statations",
+        "GreenCape (2022)"
+       ],
+       [
+        "Public Transport Usage",
+        "56.5% of households use public transport",
+        "Statistics South Africa (2022)"
+       ],
+       [
+        "Bussines Confidence Indicators",
+        "",
+        ""
+       ],
+       [
+        "Government Incentives for EVs",
+        "Import duty reduced from 25% to 18%, no VAT exemptions",
+        "National Treasury (2023)"
+       ],
+       [
+        "Business Confidence Index (November 2024)",
+        "118.1",
+        "Reuters (2024)"
+       ],
+       [
+        "Corruption Perceptions Index (2023)",
+        "Score of 41/100; ranked 83rd out of 180 countries",
+        "Transparency International (2023)"
+       ]
+      ]
+     ],
+     "charts": []
+    }
+   },
+   "hand": {
+    "13": {
+     "chart": "How likely would you be to buy an electric vehicle within the next 5 years?",
+     "values": {
+      "Unlikely": "37%",
+      "Very unlikely": "30%",
+      "Likely": "23%",
+      "Very likely": "10%"
+     },
+     "claim_on_slide": "33% would buy an EV within 5 years",
+     "claim_derivation": "Likely 23% + Very likely 10% = 33%; the figure is not printed in the chart"
+    }
+   }
+  },
+  "brc": {
+   "source": "/mnt/user-data/uploads/InsighsAI/TestProjects/BRC/BRC ES Webinar - ASK AFRICA - Still Eating Together 2026.pdf",
+   "file": "/mnt/user-data/uploads/InsighsAI/TestProjects/BRC/BRC ES Webinar - ASK AFRICA - Still Eating Together 2026.pdf",
+   "hand": {
+    "17": {
+     "tables": [
+      {
+       "title": "HOW INTERNET & WI-FI CHANGED THE WAY THEY WATCH.",
+       "rows": [
+        [
+         "Mostly traditional TV, little change",
+         "39%"
+        ],
+        [
+         "Now stream more than traditional TV",
+         "20%"
+        ],
+        [
+         "Combine TV and streaming to find content",
+         "12%"
+        ],
+        [
+         "Mostly online, rarely traditional TV",
+         "9%"
+        ]
+       ]
+      },
+      {
+       "title": "HOW DATA COST & AVAILABILITY AFFECT THEIR VIEWING.",
+       "rows": [
+        [
+         "Mostly free-to-air, little change",
+         "38%"
+        ],
+        [
+         "Both pay-TV & streaming, adjust by budget",
+         "15%"
+        ],
+        [
+         "Stream until data runs out, then TV",
+         "14%"
+        ],
+        [
+         "Only stream, no traditional TV",
+         "10%"
+        ],
+        [
+         "Mostly streaming, some TV by content",
+         "7%"
+        ]
+       ]
+      }
+     ],
+     "notes": "Two tables side by side; some rows carry an italic significance note on a second line (*SEM Supergroup H significantly higher)."
+    }
+   },
+   "infographic_pages": [
+    10,
+    15,
+    18,
+    22,
+    23
+   ],
+   "infographic_note": "Most figures in this deck are infographic tiles (a large percentage and a sentence), not tables."
+  }
+ }
+}

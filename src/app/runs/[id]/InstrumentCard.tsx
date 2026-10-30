@@ -1,28 +1,45 @@
 "use client";
 
+import { matchOutcomeMessage, type MatchOutcome } from "@/lib/instrumentMatchMessage";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
+  chooseInstrumentLinkAction,
+  chooseInstrumentLinkFamilyAction,
   confirmLinksAction,
+  confirmQuestionLinksAction,
   guideCoverageAction,
   loadInstrumentReviewAction,
   readInstrumentAction,
   setInstrumentTargetAction,
+  listLinkableVariablesAction,
   setLinkStatusAction,
 } from "@/lib/instrumentActions";
 import type { InstrumentItem, InstrumentLink, InstrumentSummary } from "@/lib/instruments";
 import type { GuideReport } from "@/lib/guides";
+import { useInstrumentAutoStart } from "./useInstrumentAutoStart";
+import { codeFamily, matchableCode } from "@/lib/instrumentMatch";
 
 type DataDoc = { id: string; name: string };
+
+/** Variable names in reading order, numbers by value: EN20_2 before EN20_10. */
+const byCode = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true, sensitivity: "base" });
 
 const methodLabel: Record<InstrumentLink["method"], string> = {
   code: "Same code",
   stem: "Code stem",
   wording: "Wording",
   manual: "Chosen by you",
+  codebook: "Identical to codebook",
+  grid: "Grid row",
 };
 
 const btn =
   "rounded-lg border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-slate-50 disabled:opacity-50";
+// The per-link Confirm and Reject: small and on one line beside the variable.
+// The confirm and reject buttons name the code and the variable, so a long name would push them over the
+// variable they are about (Grant, 28 October 2026): they wrap inside the column instead of running past it.
+const linkChoiceBtn =
+  "max-w-full rounded-md border border-border bg-white px-2 py-0.5 text-left text-[11px] font-medium text-foreground [overflow-wrap:anywhere] hover:bg-slate-50 disabled:opacity-50";
 const btnPrimary =
   "rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-white hover:bg-primary-hover disabled:opacity-50";
 
@@ -31,6 +48,41 @@ const btnPrimary =
  * data file's variables, and check the links. Nothing is applied until a link
  * is confirmed here.
  */
+/**
+ * After "Confirm same-code matches": a variable already confirmed for another question is left as a
+ * suggestion (instruments.confirmInstrumentLinks, Codex IR-04), and the message says so with the first
+ * reason, rather than reporting only the ones confirmed.
+ */
+/** D2: a codebook's question numbers, types and sets are read but not kept until migration 0131 is applied. */
+function metaNote(r: Record<string, unknown>): string {
+  return (r.questionMetaNotStored ? " The question numbers, types and sets it gives were not saved: the database needs migration 0131." : "") + recheckNote(r);
+}
+
+/** Codex E1-F04: entries confirmed without a click whose answer list changed were checked again against every wave. */
+function recheckNote(r: Record<string, unknown>): string {
+  const c = r.automaticRecheck as { withdrawn: number; status: "done"; reconfirmed: number } | { withdrawn: number; status: "failed"; error: string } | undefined;
+  if (!c) return "";
+  const n = `${c.withdrawn} automatic link${c.withdrawn === 1 ? "" : "s"}`;
+  if (c.status === "failed") return ` ${n} whose answer list changed could not be checked again (${c.error}), so they are suggestions until you match the codebook again.`;
+  return ` ${n} whose answer list changed ${c.withdrawn === 1 ? "was" : "were"} checked again against every wave: ${c.reconfirmed} still fit and ${c.reconfirmed === 1 ? "is" : "are"} confirmed; the rest are suggestions to review.`;
+}
+
+function confirmedMessage(r: Record<string, unknown>): string {
+  const confirmed = Number(r.confirmed ?? 0);
+  const refused = Array.isArray(r.refused) ? (r.refused as { reason: string }[]) : [];
+  const head = `Confirmed ${confirmed} same-code ${confirmed === 1 ? "match" : "matches"}.`;
+  if (refused.length === 0) return head;
+  return `${head} ${refused.length} left as ${refused.length === 1 ? "a suggestion" : "suggestions"}: ${refused[0].reason}`;
+}
+
+function questionConfirmedMessage(code: string | null, r: Record<string, unknown>): string {
+  const confirmed = Number(r.confirmed ?? 0);
+  const refused = Array.isArray(r.refused) ? (r.refused as { reason: string }[]) : [];
+  const head = `Confirmed ${confirmed} ${confirmed === 1 ? "link" : "links"} for ${code || "this question"}.`;
+  if (refused.length === 0) return head;
+  return `${head} ${refused.length} left as ${refused.length === 1 ? "a suggestion" : "suggestions"}: ${refused[0].reason}`;
+}
+
 export default function InstrumentCard({
   runId,
   documentId,
@@ -51,42 +103,63 @@ export default function InstrumentCard({
   /** Guides inside a transcript's card: check coverage for that transcript only. */
   onlyTranscript?: string;
 }) {
-  const [pending, start] = useTransition();
+  const [ownPending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [target, setTarget] = useState(fixedTarget ?? summary.forDocumentId ?? dataDocs[0]?.id ?? "");
+  // Never a silent default among several data files: until one is chosen (here, or by the server's
+  // first match) the picker says so.
+  const [target, setTarget] = useState(fixedTarget ?? summary.forDocumentId ?? (dataDocs.length === 1 ? dataDocs[0].id : ""));
   const [review, setReview] = useState<{ items: InstrumentItem[]; links: InstrumentLink[] } | null>(null);
   const [report, setReport] = useState<GuideReport | null>(null);
   const [filter, setFilter] = useState<"suggested" | "unmatched" | "confirmed" | "all">("suggested");
+  // Choosing a variable by hand (Grant, 2026-10-20): the question whose picker is open, and the data
+  // file's variables, loaded once per data file when a picker first opens.
+  const [choosing, setChoosing] = useState<string | null>(null);
+  const [variables, setVariables] = useState<{ forTarget: string; list: { name: string; label: string }[] } | null>(null);
+  const [variablesError, setVariablesError] = useState<string | null>(null);
+  // Questions whose every link is shown: a multiple-response family can have dozens, and only the
+  // first six are listed until the researcher asks for the rest.
+  const [allLinksFor, setAllLinksFor] = useState<Set<string>>(new Set());
+
+  // Batch 49: each link shows its variable's label, so the researcher can compare the wording on the
+  // row. Loaded once per data file when the review opens (the same list the picker uses).
+  useEffect(() => {
+    if (!review || !target || variables?.forTarget === target) return;
+    let live = true;
+    void listLinkableVariablesAction(runId, target).then((r) => {
+      if (!live) return;
+      if (r.ok) setVariables({ forTarget: target, list: r.variables });
+      else setVariablesError(r.error);
+    });
+    return () => {
+      live = false;
+    };
+  }, [review, target, runId, variables?.forTarget]);
+  const labelOf = (name: string) => (variables?.forTarget === target ? variables.list.find((v) => v.name === name)?.label ?? null : null);
+  const targetName = dataDocs.find((d) => d.id === target)?.name ?? "the data file";
+
+  async function openPicker(itemId: string) {
+    setChoosing(itemId);
+    setVariablesError(null);
+    if (variables?.forTarget === target) return;
+    const r = await listLinkableVariablesAction(runId, target);
+    if (r.ok) setVariables({ forTarget: target, list: r.variables });
+    else setVariablesError(r.error);
+  }
 
   const isGuide = summary.type === "interview_guide" || summary.type === "focus_group_guide";
+  // A codebook is read and matched like a questionnaire (Grant, 2026-10-26); only its words differ.
+  const isCodebook = summary.type === "codebook";
+  const noun = isCodebook ? "codebook" : "questionnaire";
   const read = summary.items > 0;
 
-  // Read, then match (questionnaires) or check coverage (guides), once, without a click.
-  const started = useRef(false);
+  // Read, then match (questionnaires), once, without a click: the same rule the one-line entry in a
+  // data file's pane uses. Guide coverage below runs by itself once the guide is read.
+  const auto = useInstrumentAutoStart({ runId, documentId, summary, isGuide, target, enabled: !!autoStart });
+  const pending = ownPending || auto.running;
+  const shownError = error ?? auto.error;
+  const shownMessage = message ?? auto.message;
   const coverageRan = useRef(false);
-  useEffect(() => {
-    if (started.current || pending) return;
-    const needsRead = !!autoStart && summary.items === 0;
-    const links = summary.links.suggested + summary.links.confirmed + summary.links.rejected;
-    const needsMatch = !!autoStart && !isGuide && !!target && summary.items > 0 && links === 0;
-    if (!needsRead && !needsMatch) return;
-    started.current = true;
-    start(async () => {
-      if (needsRead) {
-        const r = await readInstrumentAction(runId, documentId);
-        if (!r.ok) {
-          setError(r.error);
-          return;
-        }
-      }
-      if (!isGuide && target) {
-        const m = await setInstrumentTargetAction(runId, documentId, target);
-        if (!m.ok) setError(m.error);
-        else setMessage(`${m.suggested} links suggested. Check them before they are used.`);
-      }
-    });
-  }, [autoStart, pending, summary.items, summary.links.suggested, summary.links.confirmed, summary.links.rejected, isGuide, target, runId, documentId]);
 
   // Guide coverage is a cheap count, so it runs by itself once the guide is read.
   useEffect(() => {
@@ -114,8 +187,24 @@ export default function InstrumentCard({
     else setError(r.error);
   }
 
+  // The links column is one data file's (Grant, 29 October 2026: with three waves linked, each question listed
+  // respondent_id three times under one file's heading). Another wave's links are reviewed by choosing it above.
+  const shownLinks = (review?.links ?? []).filter((l) => !target || l.dataDocumentId === target);
+  const otherFiles = new Set((review?.links ?? []).filter((l) => target && l.dataDocumentId !== target).map((l) => l.dataDocumentId)).size;
   const linksByItem = new Map<string, InstrumentLink[]>();
-  for (const l of review?.links ?? []) linksByItem.set(l.itemId, [...(linksByItem.get(l.itemId) ?? []), l]);
+  for (const l of shownLinks) linksByItem.set(l.itemId, [...(linksByItem.get(l.itemId) ?? []), l]);
+  // A question's links in the data file's column order (Grant, 28 October 2026: a family listed C1_11, C1_7,
+  // C1_8, C1_36 because its links share one confidence); names in reading order until the file's list loads.
+  const position = new Map((variables?.forTarget === target ? variables.list : []).map((v, n) => [v.name, n]));
+  for (const ls of linksByItem.values()) {
+    ls.sort((a, b) => (position.get(a.variable) ?? Infinity) - (position.get(b.variable) ?? Infinity) || byCode(a.variable, b.variable));
+  }
+  // Variables already confirmed for a question of this data file, with that question's code: they
+  // cannot be chosen for another one (chooseInstrumentLink refuses it too).
+  const itemCode = new Map((review?.items ?? []).map((i) => [i.id, i.code ?? i.text.slice(0, 30)]));
+  const takenBy = new Map(
+    (review?.links ?? []).filter((l) => l.status === "confirmed" && l.dataDocumentId === target).map((l) => [l.variable, { itemId: l.itemId, code: itemCode.get(l.itemId) ?? "" }]),
+  );
   const rows = (review?.items ?? []).filter((i) => {
     const ls = linksByItem.get(i.id) ?? [];
     if (filter === "all") return true;
@@ -128,10 +217,14 @@ export default function InstrumentCard({
       {!read ? (
         <div className="space-y-2">
           <p className="text-muted">
-            {autoStart && !error
+            {auto.running
               ? "Reading now. This can take a minute and runs by itself."
+              : summary.readFailure && !shownError
+              ? `The last read failed: ${summary.readFailure} Read it again to try once more.`
               : isGuide
               ? "Read the guide to list its questions and probes. They will be matched to the questions asked in your transcripts."
+              : isCodebook
+              ? "Read the codebook to list its variables, labels and answer codes. They are then matched to your data file's variables by name."
               : "Read the questionnaire to list its questions, answer options and skip instructions. They are then matched to your data file's variables."}
           </p>
           <button
@@ -141,7 +234,7 @@ export default function InstrumentCard({
               run(
                 () => readInstrumentAction(runId, documentId),
                 (r) => {
-                  if (r.complete) return `Read ${r.items} items.`;
+                  if (r.complete) return `Read ${r.items} items.${metaNote(r)}`;
                   const failedChunks = Number(r.failedChunks ?? 0);
                   const incompleteItems = Number(r.incompleteItems ?? 0);
                   // IMP-012: an incomplete read used to always be reported as a chunk count,
@@ -158,22 +251,27 @@ export default function InstrumentCard({
               )
             }
           >
-            {pending ? "Reading, this can take a minute..." : isGuide ? "Read guide" : "Read questionnaire"}
+            {pending ? "Reading, this can take a minute..." : isGuide ? "Read guide" : isCodebook ? "Read codebook" : "Read questionnaire"}
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Stat value={summary.items} label={isGuide ? "Questions and probes" : "Items read"} />
-          {!isGuide && <Stat value={`${summary.withRouting} of ${summary.statedRoutingText}`} label={summary.fromJumps > 0 ? `Skip instructions understood (+${summary.fromJumps} from GO TO jumps)` : "Skip instructions understood"} />}
-          {!isGuide && <Stat value={summary.links.confirmed} label="Links confirmed" />}
-          {!isGuide && <Stat value={summary.links.suggested} label="Links to check" />}
+          <Stat value={summary.items} label={isGuide ? "Questions and probes" : isCodebook ? "Variables read" : "Items read"} />
+          {!isGuide && !isCodebook && <Stat value={`${summary.withRouting} of ${summary.statedRoutingText}`} label={summary.fromJumps > 0 ? `Skip instructions understood (+${summary.fromJumps} from GO TO jumps)` : "Skip instructions understood"} />}
+          {!isGuide && <Stat value={summary.links.confirmed} label="Question and variable links confirmed" />}
+          {!isGuide && (
+            <Stat
+              value={summary.itemsToCheck}
+              label={`Questions to check (${summary.links.suggested.toLocaleString("en-GB")} ${summary.links.suggested === 1 ? "link" : "links"}; a grid question can have many)`}
+            />
+          )}
         </div>
       )}
 
       {read && !isGuide && (
         <div className="flex flex-wrap items-center gap-2">
           {dataDocs.length === 0 ? (
-            <span className="text-muted">Add the data file this questionnaire belongs to, then match.</span>
+            <span className="text-muted">Add the data file this {noun} belongs to, then match.</span>
           ) : (
             <>
               {!fixedTarget && <label className="text-muted" htmlFor={`target-${documentId}`}>Data file</label>}
@@ -183,21 +281,27 @@ export default function InstrumentCard({
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
               >
+                {!target && <option value="">Choose a data file</option>}
                 {dataDocs.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                  <option key={d.id} value={d.id}>{d.name}{summary.linkedDataDocumentIds.includes(d.id) ? " (linked)" : ""}</option>
                 ))}
               </select>}
               <button
                 className={btnPrimary}
                 disabled={pending || !target}
-                onClick={() => run(() => setInstrumentTargetAction(runId, documentId, target), (r) => `${r.suggested} links suggested. Check them before they are used.`)}
+                onClick={() => run(() => setInstrumentTargetAction(runId, documentId, target), (r) => matchOutcomeMessage(r as MatchOutcome))}
               >
                 {pending ? "Matching..." : summary.links.suggested + summary.links.confirmed > 0 ? "Match again" : "Match to variables"}
               </button>
             </>
           )}
           {summary.links.suggested > 0 && (
-            <button className={btn} disabled={pending} onClick={() => run(() => confirmLinksAction(runId, documentId), (r) => `Confirmed ${r.confirmed} same-code matches.`)}>
+            <button
+              className={btn}
+              disabled={pending}
+              title="Confirms suggestions found by code: the same code, and multiple-response families named after a question's code (EN20 to EN20_1, EN20_2 ...). Wording matches stay for you to check."
+              onClick={() => run(() => confirmLinksAction(runId, documentId), (r) => confirmedMessage(r))}
+            >
               Confirm same-code matches
             </button>
           )}
@@ -213,7 +317,7 @@ export default function InstrumentCard({
         <button className={btn} disabled={pending} onClick={() => run(
           () => readInstrumentAction(runId, documentId),
           r => r.complete
-            ? `Read ${r.items} items.`
+            ? `Read ${r.items} items.${metaNote(r)}`
             : `Read incomplete: ${r.failedChunks ?? 0} unread parts and ${r.incompleteItems ?? 0} incomplete items. Previously confirmed links were preserved.`,
         )}>
           {pending ? "Reading..." : "Read again"}
@@ -249,8 +353,8 @@ export default function InstrumentCard({
       {read && !summary.readStatus && (
         <p role="status" className="text-amber-800">Reading coverage is unknown for these saved items. Read again to establish complete coverage; confirmed links are preserved.</p>
       )}
-      {message && <p className="text-foreground">{message}</p>}
-      {error && <p className="text-danger">{error}</p>}
+      {shownMessage && <p className="text-foreground">{shownMessage}</p>}
+      {shownError && <p className="text-danger">{shownError}</p>}
 
       {review && (
         <div className="space-y-2">
@@ -265,19 +369,34 @@ export default function InstrumentCard({
               </button>
             ))}
           </div>
-          <div className="max-h-96 overflow-auto rounded-lg border border-border">
-            <table className="w-full min-w-[560px] text-left">
-              <thead className="sticky top-0 bg-slate-50">
+          {otherFiles > 0 && (
+            <p className="text-[11px] text-muted" data-testid="links-other-files">
+              {`Showing the links to ${targetName}. This ${noun} also has links to ${otherFiles} other data ${otherFiles === 1 ? "file" : "files"}: choose one under Data file to check them.`}
+            </p>
+          )}
+          {/* Taller, and resizable by its lower corner (Grant, 29 October 2026: "very cramped"); a short list keeps its
+              own height. */}
+          <div className={`${rows.length > 8 ? "h-[70vh]" : ""} min-h-32 resize-y overflow-auto rounded-lg border border-border`} data-testid="links-table">
+            {/* Fixed columns (Grant, 2026-10-20: the buttons were squeezed into a narrow last column and
+                stacked): the links column takes 45% of the width (29 October 2026: it was a fixed 22rem on a wide
+                screen, so each button wrapped to its own line), enough for a usual variable, its method and both
+                buttons on one line, and the question wraps instead. With long names the buttons move under the
+                variable rather than over it. */}
+            <table className="w-full min-w-[640px] table-fixed text-left">
+              <thead className="sticky top-0 z-10 bg-slate-50">
                 <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wide text-muted">
-                  <th className="w-16 px-2 py-1.5">Code</th>
+                  {/* Codes are kept as written (up to 256 characters: economycode, wpid_random): the column is
+                      wide enough for the usual names and a longer one wraps inside it instead of running
+                      into the question (Grant, 28 October 2026, Findex codebook). */}
+                  <th className="w-36 px-2 py-1.5">Code</th>
                   <th className="px-2 py-1.5">Question</th>
-                  <th className="px-2 py-1.5">Linked variable</th>
+                  <th className="w-[45%] px-2 py-1.5" data-testid="links-variable-heading">Variable in {targetName}</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.slice(0, 300).map((i) => (
                   <tr key={i.id} className="border-b border-border align-top last:border-0">
-                    <td className="px-2 py-1.5 font-medium text-foreground">{i.code ?? ""}</td>
+                    <td className="px-2 py-1.5 font-medium text-foreground [overflow-wrap:anywhere]" data-testid="item-code">{i.code ?? ""}</td>
                     <td className="px-2 py-1.5 text-muted">
                       {i.text}
                       {i.routingText && (
@@ -287,23 +406,137 @@ export default function InstrumentCard({
                         </div>
                       )}
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-1.5" data-testid="item-links" data-item-code={i.code ?? ""}>
                       {(linksByItem.get(i.id) ?? []).length === 0 ? (
-                        <span className="text-muted">No match</span>
+                        <span className="block text-muted" data-testid="item-no-match">
+                          {isCodebook && i.code ? `No variable named ${i.code} in ${targetName}` : "No match"}
+                        </span>
                       ) : (
-                        (linksByItem.get(i.id) ?? []).slice(0, 6).map((l) => (
-                          <div key={l.id} className="mb-1 flex flex-wrap items-center gap-1.5">
-                            <span className={l.status === "rejected" ? "text-muted line-through" : "font-medium text-foreground"}>{l.variable}</span>
-                            <span className="text-[10px] text-muted">{methodLabel[l.method]}, {Math.round(l.confidence * 100)}%</span>
-                            {l.status !== "confirmed" && (
-                              <button className={btn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "confirmed"))}>Confirm</button>
-                            )}
-                            {l.status !== "rejected" && (
-                              <button className={btn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "rejected"))}>Reject</button>
-                            )}
-                            {l.status === "confirmed" && <span className="text-[10px] text-success">Confirmed</span>}
+                        <>
+                        {(() => {
+                          // A question linked to several variables named after its code is a
+                          // multiple-response family (codeFamily, the matcher's rule): say so once.
+                          const linked = (linksByItem.get(i.id) ?? []).map((l) => l.variable);
+                          const family = codeFamily(i.code, linked).sort(byCode);
+                          return family.length >= 2 ? (
+                            <p className="mb-1 text-[10px] text-muted" data-testid="item-family">
+                              {`Multiple-response family: ${family[0]} to ${family[family.length - 1]} (${family.length} variables)`}
+                            </p>
+                          ) : null;
+                        })()}
+                        {(() => {
+                          // A grid or a family is one question: its suggestions are confirmed with one action
+                          // (each through the same rule as Confirm, so a column another question has stays).
+                          const suggested = (linksByItem.get(i.id) ?? []).filter((l) => l.status === "suggested");
+                          return suggested.length >= 2 ? (
+                            <button
+                              type="button"
+                              className="mb-1 rounded-md border border-border bg-white px-2 py-0.5 text-[11px] font-medium text-foreground hover:bg-slate-50 disabled:opacity-50"
+                              data-testid="item-confirm-all"
+                              disabled={pending}
+                              onClick={() => run(() => confirmQuestionLinksAction(runId, documentId, i.id, target), (r) => questionConfirmedMessage(i.code, r))}
+                            >
+                              {`Confirm all ${suggested.length} for ${i.code || "this question"}`}
+                            </button>
+                          ) : null;
+                        })()}
+                        {(linksByItem.get(i.id) ?? []).slice(0, allLinksFor.has(i.id) ? undefined : 6).map((l) => (
+                          <div key={l.id} className="mb-1 flex flex-wrap items-start gap-x-2 gap-y-1" data-testid="link-row">
+                            <div className="min-w-[9rem] flex-1" data-testid="link-variable">
+                              <span className={`block truncate ${l.status === "rejected" ? "text-muted line-through" : "font-medium text-foreground"}`} title={l.variable}>
+                                {l.variable}
+                              </span>
+                              {labelOf(l.variable) && labelOf(l.variable) !== l.variable && (
+                                <span className="block truncate text-[10px] text-muted" title={labelOf(l.variable) ?? ""} data-testid="link-variable-label">
+                                  {labelOf(l.variable)}
+                                </span>
+                              )}
+                              <span className="block text-[10px] text-muted" data-testid="link-method">
+                                {l.method === "codebook"
+                                  ? `Identical to codebook ${l.basisCode ?? "entry"}`
+                                  : `${methodLabel[l.method]}${l.method === "manual" ? "" : `, ${Math.round(l.confidence * 100)}%`}`}
+                                {l.status === "confirmed" && l.basisHolds !== false && <span className="ml-1 text-success">· Confirmed</span>}
+                                {l.status === "rejected" && <span className="ml-1">· Rejected</span>}
+                              </span>
+                              {l.method === "codebook" && l.basisHolds === false && l.status === "confirmed" && (
+                                <span className="block text-[10px] text-amber-800" data-testid="link-basis-withdrawn">
+                                  {l.basisLapse === "wording"
+                                    ? `The wording is not identical to codebook ${l.basisCode ?? "entry"}, so this link is not used. Match again to check it, or choose ${l.variable} to confirm it yourself.`
+                                    : `The codebook no longer confirms ${l.variable}, so this link is not used. Choose ${l.variable} again to confirm it yourself.`}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex max-w-full flex-wrap items-center gap-1" data-testid="link-choices">
+                              {l.status !== "confirmed" && (
+                                <button className={linkChoiceBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "confirmed"))}>
+                                  {`Confirm: ${i.code || "this"} is ${l.variable}`}
+                                </button>
+                              )}
+                              {l.status !== "rejected" && (
+                                <button className={linkChoiceBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "rejected"))}>
+                                  {`Not ${l.variable}`}
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        ))
+                        ))}
+                        {(linksByItem.get(i.id) ?? []).length > 6 && (
+                          <button
+                            type="button"
+                            className="text-[11px] font-medium text-primary hover:underline"
+                            data-testid="item-links-more"
+                            onClick={() =>
+                              setAllLinksFor((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(i.id)) next.delete(i.id);
+                                else next.add(i.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {allLinksFor.has(i.id) ? "Show the first 6" : `Show all ${(linksByItem.get(i.id) ?? []).length} links`}
+                          </button>
+                        )}
+                        </>
+                      )}
+                      {!isGuide && target && choosing !== i.id && (
+                        <button className="mt-0.5 text-[11px] font-medium text-primary hover:underline disabled:opacity-50" disabled={pending} onClick={() => void openPicker(i.id)}>
+                          {(linksByItem.get(i.id) ?? []).length === 0 ? "Choose variable" : "Choose another"}
+                        </button>
+                      )}
+                      {choosing === i.id && (
+                        <VariablePicker
+                          variables={variables?.forTarget === target ? variables.list : null}
+                          error={variablesError}
+                          taken={takenBy}
+                          itemId={i.id}
+                          itemCode={i.code}
+                          disabled={pending}
+                          onCancel={() => setChoosing(null)}
+                          onChooseFamily={(name, count) =>
+                            run(
+                              async () => {
+                                const r = await chooseInstrumentLinkFamilyAction(runId, documentId, i.id, target, name);
+                                if (r.ok) setChoosing(null);
+                                return r;
+                              },
+                              (r) => {
+                                const refused = (r.refused as { variable: string }[] | undefined) ?? [];
+                                return `Linked ${i.code ?? "the question"} to ${Number(r.linked)} of ${count} variables, confirmed as chosen by you.${refused.length > 0 ? ` Not linked, as another question already has them: ${refused.map((x) => x.variable).join(", ")}.` : ""}`;
+                              },
+                            )
+                          }
+                          onChoose={(name) =>
+                            run(
+                              async () => {
+                                const r = await chooseInstrumentLinkAction(runId, documentId, i.id, target, name);
+                                if (r.ok) setChoosing(null);
+                                return r;
+                              },
+                              () => `Linked ${i.code ?? "the question"} to ${name}, confirmed as chosen by you.`,
+                            )
+                          }
+                        />
                       )}
                     </td>
                   </tr>
@@ -313,6 +546,91 @@ export default function InstrumentCard({
           </div>
           {rows.length > 300 && <p className="text-muted">Showing the first 300 of {rows.length}. Use the filters to narrow the list.</p>}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** A search over the data file's variables, by name or label; one already confirmed elsewhere is shown, not offered. */
+function VariablePicker({
+  variables,
+  error,
+  taken,
+  itemId,
+  itemCode,
+  disabled,
+  onChoose,
+  onChooseFamily,
+  onCancel,
+}: {
+  variables: { name: string; label: string }[] | null;
+  error: string | null;
+  taken: Map<string, { itemId: string; code: string }>;
+  itemId: string;
+  itemCode: string | null;
+  disabled: boolean;
+  onChoose: (name: string) => void;
+  /** Links every variable of the question's multiple-response family; `name` is one of them. */
+  onChooseFamily: (name: string, count: number) => void;
+  onCancel: () => void;
+}) {
+  const [q, setQ] = useState("");
+  // The question's code names a set of variables (EN20 and EN20_1, EN20_2, ...): offer them together.
+  const family = variables ? codeFamily(itemCode, variables.map((v) => v.name)).sort(byCode) : [];
+  const needle = q.trim().toLowerCase();
+  const matches = (variables ?? []).filter((v) => needle === "" || v.name.toLowerCase().includes(needle) || v.label.toLowerCase().includes(needle));
+  return (
+    <div className="mt-1 space-y-1.5 rounded-lg border border-primary/30 bg-slate-50 p-2" data-testid="variable-picker">
+      <div className="flex items-center gap-1.5">
+        <input
+          autoFocus
+          aria-label="Search the data file's variables"
+          placeholder="Variable name or label"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          className="min-w-0 flex-1 rounded-md border border-border bg-white px-2 py-1 text-[11px]"
+        />
+        <button className={btn} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-danger">{error}</p>}
+      {!error && !variables && <p className="text-muted">Loading the data file&apos;s variables...</p>}
+      {family.length >= 2 && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChooseFamily(family[0], family.length)}
+          className="w-full rounded border border-primary/40 bg-white px-1.5 py-1 text-left text-[11px] font-medium text-primary hover:bg-primary-light disabled:opacity-60"
+          data-testid="variable-picker-link-all"
+        >
+          {/* The prefix as the file writes it: the code and its separator, such as "EN20_". */}
+          {`Link all ${family.length} in ${family[0].slice(0, matchableCode(itemCode).length + 1)}* (${family[0]} to ${family[family.length - 1]})`}
+        </button>
+      )}
+      {variables && (
+        <ul className="max-h-48 space-y-0.5 overflow-auto">
+          {matches.slice(0, 12).map((v) => {
+            const t = taken.get(v.name);
+            const elsewhere = t && t.itemId !== itemId;
+            return (
+              <li key={v.name}>
+                <button
+                  type="button"
+                  disabled={disabled || !!elsewhere}
+                  onClick={() => onChoose(v.name)}
+                  className="flex w-full items-baseline gap-2 rounded px-1.5 py-1 text-left hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span className="font-medium text-foreground">{v.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted">{v.label}</span>
+                  {elsewhere && <span className="shrink-0 text-[10px] text-muted">{`confirmed for ${t.code}`}</span>}
+                </button>
+              </li>
+            );
+          })}
+          {matches.length === 0 && <li className="text-muted">No variable matches that.</li>}
+          {matches.length > 12 && <li className="text-[10px] text-muted">{`Showing 12 of ${matches.length}. Type more to narrow it.`}</li>}
+        </ul>
       )}
     </div>
   );

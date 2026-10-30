@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { setupTarget } from "./helpers/setupTarget";
 import { createDisposableDb, TEST_DATABASE_URL, DISPOSABLE_DB_SKIP_REASON, type DisposableDb } from "./helpers/disposableDb";
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
@@ -13,7 +14,7 @@ vi.mock("../insightGenerator", () => ({ refreshInsights: vi.fn(async () => { if 
 vi.mock("../recommendationAgent", () => ({ refreshRecommendations: vi.fn(async () => {}) }));
 vi.mock("../objectiveQualityScorer", () => ({ refreshObjectiveQuality: vi.fn(async () => {}) }));
 vi.mock("../objectiveValidator", () => ({ refreshObjectiveValidationQuietly: vi.fn(async () => {}) }));
-vi.mock("../anthropic", () => ({ anthropic: { messages: { create: vi.fn(async () => ({ content: [{ type: "tool_use", input: { candidates: [{ candidate_text: "To assess synthetic evidence", rationale: "Retained synthetic finding" }] } }], usage: { input_tokens: 0, output_tokens: 0 } })) } }, CLAUDE_MODEL: "controlled" }));
+vi.mock("../anthropic", () => ({ anthropic: { messages: { create: vi.fn(async (req: { tool_choice?: { name?: string } }) => ({ stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice?.name, input: { candidates: [{ candidate_text: "To assess synthetic evidence", rationale: "Retained synthetic finding" }] } }], usage: { input_tokens: 0, output_tokens: 0 } })) } }, CLAUDE_MODEL: "controlled" }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../extractFindings", () => ({ readContextDocument: vi.fn() }));
@@ -39,7 +40,7 @@ describe.skipIf(!TEST_DATABASE_URL)("candidate lifecycle persistence (real datab
     await Promise.all([a.addOwnObjectiveCandidate(run, "Initial objective"), a.addOwnObjectiveCandidate(run, " Initial objective ")]);
     expect((await candidates("objective"))).toHaveLength(1);
     const id = (await candidates("objective"))[0].id;
-    await setup.editStatedObjective(run, "Initial objective", "Updated in Setup");
+    await setup.editStatedObjective(run, "Initial objective", "Updated in Setup", await setupTarget(db.pool, run, "Initial objective"));
     expect((await candidates("objective"))[0]).toMatchObject({ id, candidate_text: "Updated in Setup" });
     await a.acceptObjectiveCandidate(run, id, "Edited in Review");
     expect((await candidates("objective"))[0]).toMatchObject({ id, candidate_text: "Edited in Review" });
@@ -69,8 +70,8 @@ describe.skipIf(!TEST_DATABASE_URL)("candidate lifecycle persistence (real datab
     await db.pool.query("insert into findings(tenant_id,run_id,origin,finding_text) values($1,$2,'generated','Retained synthetic evidence')", [tenant, run]);
     await a.addOwnObjectiveCandidate(run, "Lifecycle A");
     const id = (await candidates("objective")).find(r => r.candidate_text === "Lifecycle A")!.id;
-    await setup.editStatedObjective(run, "Lifecycle A", "Lifecycle B");
-    await setup.editStatedObjective(run, "Lifecycle B", "Lifecycle C");
+    await setup.editStatedObjective(run, "Lifecycle A", "Lifecycle B", await setupTarget(db.pool, run, "Lifecycle A"));
+    await setup.editStatedObjective(run, "Lifecycle B", "Lifecycle C", await setupTarget(db.pool, run, "Lifecycle B"));
     await a.acceptObjectiveCandidate(run, id);
     await generateObjectiveCandidates(tenant, run);
     expect((await candidates("objective")).find(r => r.id === id)).toMatchObject({ candidate_text: "Lifecycle C", status: "accepted" });
@@ -86,15 +87,15 @@ describe.skipIf(!TEST_DATABASE_URL)("candidate lifecycle persistence (real datab
     const { generateObjectiveCandidates } = await import("../objectiveFramer");
     const form = new FormData(); form.set("researchObjective", "Setup-only A");
     await setup.saveRunContext(other, form);
-    await setup.editStatedObjective(other, "Setup-only A", "Setup-only B");
-    await setup.editStatedObjective(other, "Setup-only B", "Setup-only C");
+    await setup.editStatedObjective(other, "Setup-only A", "Setup-only B", await setupTarget(db.pool, other, "Setup-only A"));
+    await setup.editStatedObjective(other, "Setup-only B", "Setup-only C", await setupTarget(db.pool, other, "Setup-only B"));
     await db.pool.query("insert into findings(tenant_id,run_id,origin,finding_text) values($1,$2,'generated','Synthetic Setup-only evidence')", [tenant,other]);
     await generateObjectiveCandidates(tenant, other);
     const texts = async () => (await db.pool.query("select candidate_text from objective_candidates where run_id=$1", [other])).rows.map(r => r.candidate_text);
     expect(await texts()).toContain("Setup-only C");
     expect(await texts()).not.toContain("Setup-only A");
     expect(await texts()).not.toContain("Setup-only B");
-    await setup.editStatedObjective(other, "Setup-only C", null);
+    await setup.editStatedObjective(other, "Setup-only C", null, await setupTarget(db.pool, other, "Setup-only C"));
     await generateObjectiveCandidates(tenant, other);
     expect(await texts()).not.toContain("Setup-only C");
     expect((await db.pool.query("select initial_research_objective,objective_candidates_seeded from runs where id=$1", [other])).rows[0]).toMatchObject({ initial_research_objective: "Setup-only A", objective_candidates_seeded: true });

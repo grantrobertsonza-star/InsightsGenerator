@@ -12,6 +12,7 @@
 //      labels and the same per-code counts after reload.
 // Synthetic data only. No model calls.
 import { expect, test } from "@playwright/test";
+import { openCrosstabs, showTables } from "./helpers/crosstabs.mjs";
 import { readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -39,10 +40,8 @@ async function adapter(page, testInfo) {
 // After a reload: open the Crosstab workspace and return the saved result table for `row`.
 async function reopenSaved(page, run, row) {
   await page.goto(run.url, { waitUntil: "networkidle" });
-  const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-  await page.getByRole("button", { name: /^Analytics/ }).first().click();
-  await page.getByRole("button", { name: /^Crosstabs/ }).click();
-  await expect(dialog).toBeVisible({ timeout: 60_000 });
+  const dialog = await openCrosstabs(page);
+  await showTables(dialog);
   // Every saved table for this question (the same question can be saved more than once; each
   // copy is read the same way).
   const matching = dialog.locator(`table[data-testid="crosstab-result-table"][data-question-keys*='"${row}"']`);

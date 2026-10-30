@@ -3,8 +3,11 @@
 import { useState, useTransition } from "react";
 import { askCrosstabAction } from "@/lib/crosstabActions";
 import type { AskPlan } from "@/lib/crosstabAsk";
+import { ASK_MEMORY_REQUESTS } from "@/lib/crosstabAskShared";
 import type { VariableDictionary } from "@/lib/parseStatsFile";
 import { filterText } from "./CrosstabFilters";
+
+export type AskHistory = { documentId: string; items: { request: string; summary: string }[] };
 
 /**
  * Ask for a table in plain English. The answer is a setup to read and confirm, never a table that
@@ -16,25 +19,44 @@ export default function CrosstabAsk({
   dict,
   busy,
   onUse,
+  history,
+  onHistory,
 }: {
   runId: string;
   documentId: string;
   dict: VariableDictionary;
   busy: boolean;
   onUse: (plan: AskPlan, run: boolean) => void;
+  /**
+   * Memory (Grant, 2026-10-22): this panel's earlier requests on this data file, held by the
+   * workspace so they survive switching between ways of making tables (Add table now leaves this
+   * panel). Sent with the next request so "the table just produced" or "same but women only" can
+   * be followed; the tables themselves are read on the server from what was built. A history kept
+   * for another data file is not used.
+   */
+  history: AskHistory;
+  onHistory: (next: AskHistory) => void;
 }) {
   const [text, setText] = useState("");
   const [plan, setPlan] = useState<AskPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const earlier = history.documentId === documentId ? history.items : [];
 
   function ask() {
     setError(null);
     setPlan(null);
+    const request = text.trim();
+    const sentFor = documentId;
     start(async () => {
-      const r = await askCrosstabAction(runId, documentId, text);
-      if (r.ok) setPlan(r.plan);
-      else setError(r.error);
+      const r = await askCrosstabAction(runId, sentFor, request, earlier);
+      if (r.ok) {
+        setPlan(r.plan);
+        onHistory({
+          documentId: sentFor,
+          items: [...(history.documentId === sentFor ? history.items : []), { request, summary: r.plan.summary }].slice(-ASK_MEMORY_REQUESTS),
+        });
+      } else setError(r.error);
     });
   }
 
@@ -67,6 +89,14 @@ export default function CrosstabAsk({
           </button>
           <span className="text-muted">Enter sends, Shift+Enter adds a line.</span>
         </div>
+        <p className="text-[11px] text-muted" data-testid="crosstab-ask-memory">
+          {`Remembers the tables built from this file${earlier.length ? ` and your last ${earlier.length === 1 ? "request" : `${earlier.length} requests`} here` : ""}, so you can say "the table just produced".`}
+          {earlier.length > 0 && (
+            <button type="button" className="ml-1.5 underline" onClick={() => onHistory({ documentId, items: [] })}>
+              Forget my earlier requests
+            </button>
+          )}
+        </p>
         <ul className="list-disc space-y-0.5 pl-5 text-[11px] text-muted">
           <li>Name what to measure (the rows) and, after &quot;by&quot;, who to compare (the columns).</li>
           <li>Limit the people in plain terms: &quot;aged 24 to 36&quot;, &quot;women only&quot;, &quot;in Gauteng&quot;.</li>
@@ -77,17 +107,27 @@ export default function CrosstabAsk({
       {error && <p className="text-danger">{error}</p>}
       {plan && (
         <div className="space-y-2 rounded border border-border bg-white p-2">
-          <p className="text-foreground">{plan.summary}</p>
+          <p className="text-foreground" data-testid="crosstab-ask-summary">{plan.summary}</p>
           <dl className="grid grid-cols-[5rem_1fr] gap-y-1">
+            {plan.basedOn && (
+              <>
+                <dt className="text-muted">Starts from</dt>
+                <dd data-testid="crosstab-ask-based-on">{plan.basedOn.label}</dd>
+              </>
+            )}
             <dt className="text-muted">Rows</dt>
-            <dd>{plan.rows.length ? plan.rows.map((r) => r.label).join("; ") : "none (describing the columns on their own)"}</dd>
+            <dd data-testid="crosstab-ask-rows">
+              {plan.rows.length
+                ? plan.rows.map((r) => (plan.averageOnly.includes(r.key) ? `${r.label} (average)` : plan.means.includes(r.key) ? `${r.label} (mean, then answers)` : r.label)).join("; ")
+                : "none (describing the columns on their own)"}
+            </dd>
             <dt className="text-muted">Columns</dt>
-            <dd>{plan.columns.length ? plan.columns.map((c) => c.label).join("; ") : "everyone (no split)"}</dd>
+            <dd data-testid="crosstab-ask-columns">{plan.columns.length ? plan.columns.map((c) => c.label).join("; ") : "everyone (no split)"}</dd>
             <dt className="text-muted">Filters</dt>
             <dd>{plan.filters.length ? plan.filters.map((f) => filterText(f, dict)).join("; ") : "none"}</dd>
           </dl>
           {plan.unclear.length > 0 && (
-            <ul className="list-disc space-y-0.5 pl-5 text-amber-700">
+            <ul className="list-disc space-y-0.5 pl-5 text-amber-700" data-testid="crosstab-ask-check">
               {plan.unclear.map((u, i) => (
                 <li key={i}>{u}</li>
               ))}

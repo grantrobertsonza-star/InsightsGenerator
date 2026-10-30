@@ -18,6 +18,7 @@ import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type 
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
+vi.mock("@/lib/analysisPlan", async () => await import("../analysisPlan"));
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/deckSlides", async () => await import("../deckSlides"));
 vi.mock("@/lib/sourceAttribution", async () => await import("../sourceAttribution"));

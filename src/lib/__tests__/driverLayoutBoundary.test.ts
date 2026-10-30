@@ -7,6 +7,8 @@ vi.mock("../dataSetup", () => ({
 vi.mock("../crosstabs", () => ({loadDocumentFile:async()=>({storage_path:"synthetic",source_filename:"flipped.csv",selected_sheet:null}),overlayFor:async()=>null}));
 vi.mock("../parseStatsFile", () => ({runStatsTool:async (_action:string,_path:string,_name:string,args:Record<string,unknown>)=>{state.calls.push(args);throw new Error("Controlled engine boundary reached");}}));
 vi.mock("../db",()=>({withTenant:vi.fn()}));
+// GT1000-F01: the run now records the corrections in effect; no database in this boundary test.
+vi.mock("../variableOverrides",()=>({loadVariableOverrides:async()=>({})}));
 vi.mock("../findingProvenance",()=>({recordHumanReview:vi.fn()}));
 beforeEach(()=>{state.fail=false;state.calls=[];});
 describe("driver saved layout boundary",()=>{

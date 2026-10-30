@@ -9,6 +9,10 @@ import { PYTHON } from "./helpers/pythonEngine";
 //   the same with two "Don't know" (99) answers -> still 6.5 (don't know is not a point)
 // Controls that must stay without a mean: a 9-point numbered scale, a numbered list of named
 // categories, and a 0 to 10 question the file declares nominal.
+// Unlabelled codes (Grant, 2026-10-22: a spreadsheet's 0 to 10 ratings got no mean): the codes are
+// read as the numbered list when there are no value labels, so answers 0..10 plus 10 and 8 have the
+// mean 73 / 13; an unlabelled column with fewer than 10 distinct codes (1..9, or a 0 to 10 scale on
+// which only 7 values were given) gets none.
 // Skipped, with the reason printed, when python3 with pandas/openpyxl/pyreadstat is unavailable.
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
@@ -56,6 +60,9 @@ cases = {
   "numbered_names": run(book([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], [(k, f"{k}. Region {chr(64 + k)}") for k in range(1, 13)]), "f.xlsx"),
   "declared_nominal": run(sav(ANSWERS, bare, "nominal"), "f.sav"),
   "declared_scale_sav": run(sav(ANSWERS, bare, "scale"), "f.sav"),
+  "unlabelled_0_10": run(book(list(range(11)) + [10, 8], None), "f.xlsx"),
+  "unlabelled_few_codes": run(book(ANSWERS, None), "f.xlsx"),
+  "unlabelled_1_9": run(book(list(range(1, 10)) + [9], None), "f.xlsx"),
 }
 print(json.dumps(cases))
 `;
@@ -95,5 +102,10 @@ describe.skipIf(!PYTHON_OK)("numbered rating scales of 10+ points get a mean (IM
     expect(cases.bare_1_9.mean).toBeNull();
     expect(cases.numbered_names.mean).toBeNull();
     expect(cases.declared_nominal.mean).toBeNull();
+  });
+  it("an unlabelled column of whole-number codes with 10 or more values is read as a numbered scale", () => {
+    expect(cases.unlabelled_0_10.mean).toBeCloseTo(73 / 13, 2); // the engine reports the mean to 3 decimals
+    expect(cases.unlabelled_few_codes.mean).toBeNull();
+    expect(cases.unlabelled_1_9.mean).toBeNull();
   });
 });

@@ -1,0 +1,7040 @@
+[
+{
+"name": "respondent_id",
+"label": "Unique synthetic respondent ID",
+"questionId": "SYS",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "wave",
+"label": "Wave",
+"questionId": "SYS",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "February 2026",
+"2": "June 2026",
+"3": "October 2026"
+}
+},
+{
+"name": "fieldwork_date",
+"label": "Interview date",
+"questionId": "SYS",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "synthetic",
+"label": "Synthetic record flag",
+"questionId": "SYS",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Synthetic demonstration"
+}
+},
+{
+"name": "weight",
+"label": "Relative synthetic analysis weight",
+"questionId": "SYS",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": true,
+"text": false
+},
+{
+"name": "age",
+"label": "Age in years",
+"questionId": "S1",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "age_band",
+"label": "Age group",
+"questionId": "S1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "18–24",
+"2": "25–34",
+"3": "35–49",
+"4": "50–69"
+}
+},
+{
+"name": "choice_role",
+"label": "Category choice responsibility",
+"questionId": "S2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Sole",
+"2": "Shared"
+}
+},
+{
+"name": "last_acquired",
+"label": "Most recent new SIM or eSIM connection activation",
+"questionId": "S3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Past 90 days",
+"2": "91 days to 12 months",
+"3": "13–36 months",
+"4": "More than 36 months",
+"5": "Never"
+}
+},
+{
+"name": "next_acquire",
+"label": "Expected next category start",
+"questionId": "S4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Within 12 months",
+"2": "13–36 months",
+"3": "Later",
+"4": "No plans or do not know"
+}
+},
+{
+"name": "gender",
+"label": "Gender",
+"questionId": "D1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Man",
+"2": "Woman",
+"3": "Another identity",
+"4": "Prefer not to say"
+}
+},
+{
+"name": "province",
+"label": "Province",
+"questionId": "D2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Gauteng",
+"2": "KwaZulu-Natal",
+"3": "Western Cape",
+"4": "Eastern Cape",
+"5": "Limpopo",
+"6": "Mpumalanga",
+"7": "North West",
+"8": "Free State",
+"9": "Northern Cape"
+}
+},
+{
+"name": "settlement",
+"label": "Settlement",
+"questionId": "D3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Metro or city",
+"2": "Town",
+"3": "Rural area"
+}
+},
+{
+"name": "income",
+"label": "Monthly household income before tax",
+"questionId": "D4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Below R15,000",
+"2": "R15,000–R29,999",
+"3": "R30,000–R49,999",
+"4": "R50,000–R79,999",
+"5": "R80,000 or more",
+"99": "Prefer not to say"
+}
+},
+{
+"name": "life_stage",
+"label": "Household life stage",
+"questionId": "D5",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Single without children",
+"2": "Couple without children",
+"3": "Dependent children",
+"4": "Other arrangement"
+}
+},
+{
+"name": "decision_style",
+"label": "Category decision style",
+"questionId": "C1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Preferred brand first",
+"2": "Brief comparison",
+"3": "Extensive comparison"
+}
+},
+{
+"name": "topmind",
+"label": "First spontaneously recalled brand",
+"questionId": "A1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "MTN",
+"2": "Telkom Mobile",
+"3": "Cell C",
+"4": "FNB Connect",
+"5": "Capitec Connect",
+"6": "Standard Bank Connect",
+"7": "Melon Mobile",
+"8": "Vodacom",
+"9": "Afrihost Air Mobile",
+"10": "Mr Price Mobile",
+"96": "Other",
+"98": "None"
+}
+},
+{
+"name": "awareness_verbatim",
+"label": "Awareness verbatim",
+"questionId": "A1/A2",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "cep_order",
+"label": "Cep order",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "brand_order",
+"label": "Brand order",
+"questionId": "A3",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "attribute_order",
+"label": "Attribute order",
+"questionId": "I1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "advertising_verbatim",
+"label": "Advertising verbatim",
+"questionId": "AD1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "cep_verbatim_c01",
+"label": "Brands recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c01",
+"label": "Needing reliable signal where I live",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c01",
+"label": "Other brand recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c02",
+"label": "Brands recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c02",
+"label": "Reducing monthly airtime and data costs",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c02",
+"label": "Other brand recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c03",
+"label": "Brands recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c03",
+"label": "Starting a new job or course",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c03",
+"label": "Other brand recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c04",
+"label": "Brands recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c04",
+"label": "Replacing an unsatisfactory mobile provider",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c04",
+"label": "Other brand recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c05",
+"label": "Brands recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c05",
+"label": "Buying a new smartphone",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c05",
+"label": "Other brand recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c06",
+"label": "Brands recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c06",
+"label": "Staying connected with family",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c06",
+"label": "Other brand recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c07",
+"label": "Brands recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c07",
+"label": "Working or studying online",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c07",
+"label": "Other brand recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c08",
+"label": "Brands recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c08",
+"label": "Streaming video or music on the move",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c08",
+"label": "Other brand recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c09",
+"label": "Brands recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c09",
+"label": "Travelling within South Africa",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c09",
+"label": "Other brand recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c10",
+"label": "Brands recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c10",
+"label": "Travelling internationally",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c10",
+"label": "Other brand recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c11",
+"label": "Brands recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c11",
+"label": "Running out of data unexpectedly",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c11",
+"label": "Other brand recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c12",
+"label": "Brands recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c12",
+"label": "Adding a second SIM or data connection",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c12",
+"label": "Other brand recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "relevant_none",
+"label": "No relevant situation",
+"questionId": "M2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b01",
+"label": "Spontaneous awareness MTN",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b02",
+"label": "Spontaneous awareness Telkom Mobile",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b03",
+"label": "Spontaneous awareness Cell C",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b04",
+"label": "Spontaneous awareness FNB Connect",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b05",
+"label": "Spontaneous awareness Capitec Connect",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b06",
+"label": "Spontaneous awareness Standard Bank Connect",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b07",
+"label": "Spontaneous awareness Melon Mobile",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b08",
+"label": "Spontaneous awareness Vodacom",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b09",
+"label": "Spontaneous awareness Afrihost Air Mobile",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b10",
+"label": "Spontaneous awareness Mr Price Mobile",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b01",
+"label": "Prompted resolved recognition MTN",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b02",
+"label": "Prompted resolved recognition Telkom Mobile",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b03",
+"label": "Prompted resolved recognition Cell C",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b04",
+"label": "Prompted resolved recognition FNB Connect",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b05",
+"label": "Prompted resolved recognition Capitec Connect",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b06",
+"label": "Prompted resolved recognition Standard Bank Connect",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b07",
+"label": "Prompted resolved recognition Melon Mobile",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b08",
+"label": "Prompted resolved recognition Vodacom",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b09",
+"label": "Prompted resolved recognition Afrihost Air Mobile",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b10",
+"label": "Prompted resolved recognition Mr Price Mobile",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b01",
+"label": "Consideration MTN",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b02",
+"label": "Consideration Telkom Mobile",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b03",
+"label": "Consideration Cell C",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b04",
+"label": "Consideration FNB Connect",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b05",
+"label": "Consideration Capitec Connect",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b06",
+"label": "Consideration Standard Bank Connect",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b07",
+"label": "Consideration Melon Mobile",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b08",
+"label": "Consideration Vodacom",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b09",
+"label": "Consideration Afrihost Air Mobile",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b10",
+"label": "Consideration Mr Price Mobile",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b01",
+"label": "Serious shortlist MTN",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b02",
+"label": "Serious shortlist Telkom Mobile",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b03",
+"label": "Serious shortlist Cell C",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b04",
+"label": "Serious shortlist FNB Connect",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b05",
+"label": "Serious shortlist Capitec Connect",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b06",
+"label": "Serious shortlist Standard Bank Connect",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b07",
+"label": "Serious shortlist Melon Mobile",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b08",
+"label": "Serious shortlist Vodacom",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b09",
+"label": "Serious shortlist Afrihost Air Mobile",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b10",
+"label": "Serious shortlist Mr Price Mobile",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b01",
+"label": "First choice MTN",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b02",
+"label": "First choice Telkom Mobile",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b03",
+"label": "First choice Cell C",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b04",
+"label": "First choice FNB Connect",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b05",
+"label": "First choice Capitec Connect",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b06",
+"label": "First choice Standard Bank Connect",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b07",
+"label": "First choice Melon Mobile",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b08",
+"label": "First choice Vodacom",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b09",
+"label": "First choice Afrihost Air Mobile",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b10",
+"label": "First choice Mr Price Mobile",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b01",
+"label": "Current category relationship MTN",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b02",
+"label": "Current category relationship Telkom Mobile",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b03",
+"label": "Current category relationship Cell C",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b04",
+"label": "Current category relationship FNB Connect",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b05",
+"label": "Current category relationship Capitec Connect",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b06",
+"label": "Current category relationship Standard Bank Connect",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b07",
+"label": "Current category relationship Melon Mobile",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b08",
+"label": "Current category relationship Vodacom",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b09",
+"label": "Current category relationship Afrihost Air Mobile",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b10",
+"label": "Current category relationship Mr Price Mobile",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_b01",
+"label": "Past 90 days category start MTN",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started90",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_b02",
+"label": "Past 90 days category start Telkom Mobile",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started90",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_b03",
+"label": "Past 90 days category start Cell C",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started90",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_b04",
+"label": "Past 90 days category start FNB Connect",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started90",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_b05",
+"label": "Past 90 days category start Capitec Connect",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started90",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_b06",
+"label": "Past 90 days category start Standard Bank Connect",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started90",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_b07",
+"label": "Past 90 days category start Melon Mobile",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started90",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_b08",
+"label": "Past 90 days category start Vodacom",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started90",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_b09",
+"label": "Past 90 days category start Afrihost Air Mobile",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started90",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_b10",
+"label": "Past 90 days category start Mr Price Mobile",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started90",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b01",
+"label": "Recent start with prior same-brand relationship MTN",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b02",
+"label": "Recent start with prior same-brand relationship Telkom Mobile",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b03",
+"label": "Recent start with prior same-brand relationship Cell C",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b04",
+"label": "Recent start with prior same-brand relationship FNB Connect",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b05",
+"label": "Recent start with prior same-brand relationship Capitec Connect",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b06",
+"label": "Recent start with prior same-brand relationship Standard Bank Connect",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b07",
+"label": "Recent start with prior same-brand relationship Melon Mobile",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b08",
+"label": "Recent start with prior same-brand relationship Vodacom",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b09",
+"label": "Recent start with prior same-brand relationship Afrihost Air Mobile",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b10",
+"label": "Recent start with prior same-brand relationship Mr Price Mobile",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b01",
+"label": "Unprompted advertising recall after exposure MTN",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b02",
+"label": "Unprompted advertising recall after exposure Telkom Mobile",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b03",
+"label": "Unprompted advertising recall after exposure Cell C",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b04",
+"label": "Unprompted advertising recall after exposure FNB Connect",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b05",
+"label": "Unprompted advertising recall after exposure Capitec Connect",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b06",
+"label": "Unprompted advertising recall after exposure Standard Bank Connect",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b07",
+"label": "Unprompted advertising recall after exposure Melon Mobile",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b08",
+"label": "Unprompted advertising recall after exposure Vodacom",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b09",
+"label": "Unprompted advertising recall after exposure Afrihost Air Mobile",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b10",
+"label": "Unprompted advertising recall after exposure Mr Price Mobile",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b01",
+"label": "Prompted advertising recall Yes all sample MTN",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b02",
+"label": "Prompted advertising recall Yes all sample Telkom Mobile",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b03",
+"label": "Prompted advertising recall Yes all sample Cell C",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b04",
+"label": "Prompted advertising recall Yes all sample FNB Connect",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b05",
+"label": "Prompted advertising recall Yes all sample Capitec Connect",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b06",
+"label": "Prompted advertising recall Yes all sample Standard Bank Connect",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b07",
+"label": "Prompted advertising recall Yes all sample Melon Mobile",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b08",
+"label": "Prompted advertising recall Yes all sample Vodacom",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b09",
+"label": "Prompted advertising recall Yes all sample Afrihost Air Mobile",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b10",
+"label": "Prompted advertising recall Yes all sample Mr Price Mobile",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_none",
+"label": "No tracked or other selection for aware",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_none",
+"label": "No tracked or other selection for consider",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_none",
+"label": "No tracked or other selection for shortlist",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_none",
+"label": "No tracked or other selection for current",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_none",
+"label": "No tracked or other selection for started90",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_other",
+"label": "Other brand current",
+"questionId": "O1/O3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started90_other",
+"label": "Other brand started90",
+"questionId": "O1/O3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "first_choice",
+"label": "First choice brand",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "MTN",
+"2": "Telkom Mobile",
+"3": "Cell C",
+"4": "FNB Connect",
+"5": "Capitec Connect",
+"6": "Standard Bank Connect",
+"7": "Melon Mobile",
+"8": "Vodacom",
+"9": "Afrihost Air Mobile",
+"10": "Mr Price Mobile",
+"98": "No first choice yet"
+}
+},
+{
+"name": "main_brand",
+"label": "Main category provider",
+"questionId": "O2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "MTN",
+"2": "Telkom Mobile",
+"3": "Cell C",
+"4": "FNB Connect",
+"5": "Capitec Connect",
+"6": "Standard Bank Connect",
+"7": "Melon Mobile",
+"8": "Vodacom",
+"9": "Afrihost Air Mobile",
+"10": "Mr Price Mobile",
+"96": "Other"
+}
+},
+{
+"name": "start_channel",
+"label": "Most recent start channel",
+"questionId": "O5",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Provider retail store",
+"2": "Provider mobile app",
+"3": "Provider website",
+"4": "Supermarket or retail partner",
+"5": "Bank branch app or channel",
+"6": "Telephone or call centre",
+"7": "Other"
+}
+},
+{
+"name": "start_type",
+"label": "Type of most recent category start",
+"questionId": "O6",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "First personal SIM or eSIM",
+"2": "Additional SIM while retaining another provider",
+"3": "Switch or port from another provider"
+}
+},
+{
+"name": "journey_j01",
+"label": "Provider website or app",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j02",
+"label": "Network or price comparison",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j03",
+"label": "Store visit",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j04",
+"label": "Checking coverage information",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j05",
+"label": "Online reviews",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j06",
+"label": "Friends or family",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j07",
+"label": "Comparing bundles and expiry rules",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b01",
+"label": "Brand opinion MTN",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b01",
+"label": "Previously used same brand MTN",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b01",
+"label": "Prompted advertising recall MTN",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b01",
+"label": "Word of mouth MTN",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b01",
+"label": "MTN recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b01",
+"label": "MTN recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b01",
+"label": "MTN recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b01",
+"label": "MTN recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b01",
+"label": "MTN recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b01",
+"label": "MTN recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b01",
+"label": "MTN recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b01",
+"label": "MTN recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b01",
+"label": "MTN recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b01",
+"label": "MTN recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b01",
+"label": "MTN recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b01",
+"label": "MTN recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b01",
+"label": "Number of CEP links MTN",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b01",
+"label": "At least one CEP link MTN",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b01",
+"label": "MTN associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b01",
+"label": "MTN associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b01",
+"label": "MTN associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b01",
+"label": "MTN associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b01",
+"label": "MTN associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b01",
+"label": "MTN associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b01",
+"label": "MTN associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b01",
+"label": "MTN associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b01",
+"label": "MTN associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b01",
+"label": "MTN associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b02",
+"label": "Brand opinion Telkom Mobile",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b02",
+"label": "Previously used same brand Telkom Mobile",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b02",
+"label": "Prompted advertising recall Telkom Mobile",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b02",
+"label": "Word of mouth Telkom Mobile",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b02",
+"label": "Telkom Mobile recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b02",
+"label": "Telkom Mobile recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b02",
+"label": "Telkom Mobile recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b02",
+"label": "Telkom Mobile recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b02",
+"label": "Telkom Mobile recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b02",
+"label": "Telkom Mobile recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b02",
+"label": "Telkom Mobile recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b02",
+"label": "Telkom Mobile recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b02",
+"label": "Telkom Mobile recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b02",
+"label": "Telkom Mobile recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b02",
+"label": "Telkom Mobile recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b02",
+"label": "Telkom Mobile recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b02",
+"label": "Number of CEP links Telkom Mobile",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b02",
+"label": "At least one CEP link Telkom Mobile",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b02",
+"label": "Telkom Mobile associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b02",
+"label": "Telkom Mobile associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b02",
+"label": "Telkom Mobile associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b02",
+"label": "Telkom Mobile associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b02",
+"label": "Telkom Mobile associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b02",
+"label": "Telkom Mobile associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b02",
+"label": "Telkom Mobile associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b02",
+"label": "Telkom Mobile associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b02",
+"label": "Telkom Mobile associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b02",
+"label": "Telkom Mobile associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b03",
+"label": "Brand opinion Cell C",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b03",
+"label": "Previously used same brand Cell C",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b03",
+"label": "Prompted advertising recall Cell C",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b03",
+"label": "Word of mouth Cell C",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b03",
+"label": "Cell C recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b03",
+"label": "Cell C recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b03",
+"label": "Cell C recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b03",
+"label": "Cell C recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b03",
+"label": "Cell C recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b03",
+"label": "Cell C recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b03",
+"label": "Cell C recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b03",
+"label": "Cell C recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b03",
+"label": "Cell C recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b03",
+"label": "Cell C recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b03",
+"label": "Cell C recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b03",
+"label": "Cell C recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b03",
+"label": "Number of CEP links Cell C",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b03",
+"label": "At least one CEP link Cell C",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b03",
+"label": "Cell C associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b03",
+"label": "Cell C associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b03",
+"label": "Cell C associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b03",
+"label": "Cell C associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b03",
+"label": "Cell C associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b03",
+"label": "Cell C associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b03",
+"label": "Cell C associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b03",
+"label": "Cell C associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b03",
+"label": "Cell C associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b03",
+"label": "Cell C associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b04",
+"label": "Brand opinion FNB Connect",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b04",
+"label": "Previously used same brand FNB Connect",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b04",
+"label": "Prompted advertising recall FNB Connect",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b04",
+"label": "Word of mouth FNB Connect",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b04",
+"label": "FNB Connect recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b04",
+"label": "FNB Connect recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b04",
+"label": "FNB Connect recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b04",
+"label": "FNB Connect recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b04",
+"label": "FNB Connect recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b04",
+"label": "FNB Connect recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b04",
+"label": "FNB Connect recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b04",
+"label": "FNB Connect recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b04",
+"label": "FNB Connect recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b04",
+"label": "FNB Connect recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b04",
+"label": "FNB Connect recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b04",
+"label": "FNB Connect recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b04",
+"label": "Number of CEP links FNB Connect",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b04",
+"label": "At least one CEP link FNB Connect",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b04",
+"label": "FNB Connect associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b04",
+"label": "FNB Connect associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b04",
+"label": "FNB Connect associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b04",
+"label": "FNB Connect associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b04",
+"label": "FNB Connect associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b04",
+"label": "FNB Connect associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b04",
+"label": "FNB Connect associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b04",
+"label": "FNB Connect associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b04",
+"label": "FNB Connect associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b04",
+"label": "FNB Connect associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b05",
+"label": "Brand opinion Capitec Connect",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b05",
+"label": "Previously used same brand Capitec Connect",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b05",
+"label": "Prompted advertising recall Capitec Connect",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b05",
+"label": "Word of mouth Capitec Connect",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b05",
+"label": "Capitec Connect recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b05",
+"label": "Capitec Connect recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b05",
+"label": "Capitec Connect recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b05",
+"label": "Capitec Connect recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b05",
+"label": "Capitec Connect recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b05",
+"label": "Capitec Connect recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b05",
+"label": "Capitec Connect recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b05",
+"label": "Capitec Connect recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b05",
+"label": "Capitec Connect recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b05",
+"label": "Capitec Connect recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b05",
+"label": "Capitec Connect recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b05",
+"label": "Capitec Connect recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b05",
+"label": "Number of CEP links Capitec Connect",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b05",
+"label": "At least one CEP link Capitec Connect",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b05",
+"label": "Capitec Connect associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b05",
+"label": "Capitec Connect associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b05",
+"label": "Capitec Connect associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b05",
+"label": "Capitec Connect associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b05",
+"label": "Capitec Connect associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b05",
+"label": "Capitec Connect associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b05",
+"label": "Capitec Connect associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b05",
+"label": "Capitec Connect associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b05",
+"label": "Capitec Connect associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b05",
+"label": "Capitec Connect associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b06",
+"label": "Brand opinion Standard Bank Connect",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b06",
+"label": "Previously used same brand Standard Bank Connect",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b06",
+"label": "Prompted advertising recall Standard Bank Connect",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b06",
+"label": "Word of mouth Standard Bank Connect",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b06",
+"label": "Standard Bank Connect recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b06",
+"label": "Standard Bank Connect recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b06",
+"label": "Standard Bank Connect recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b06",
+"label": "Standard Bank Connect recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b06",
+"label": "Standard Bank Connect recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b06",
+"label": "Standard Bank Connect recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b06",
+"label": "Standard Bank Connect recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b06",
+"label": "Standard Bank Connect recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b06",
+"label": "Standard Bank Connect recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b06",
+"label": "Standard Bank Connect recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b06",
+"label": "Standard Bank Connect recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b06",
+"label": "Standard Bank Connect recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b06",
+"label": "Number of CEP links Standard Bank Connect",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b06",
+"label": "At least one CEP link Standard Bank Connect",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b06",
+"label": "Standard Bank Connect associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b06",
+"label": "Standard Bank Connect associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b06",
+"label": "Standard Bank Connect associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b06",
+"label": "Standard Bank Connect associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b06",
+"label": "Standard Bank Connect associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b06",
+"label": "Standard Bank Connect associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b06",
+"label": "Standard Bank Connect associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b06",
+"label": "Standard Bank Connect associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b06",
+"label": "Standard Bank Connect associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b06",
+"label": "Standard Bank Connect associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b07",
+"label": "Brand opinion Melon Mobile",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b07",
+"label": "Previously used same brand Melon Mobile",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b07",
+"label": "Prompted advertising recall Melon Mobile",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b07",
+"label": "Word of mouth Melon Mobile",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b07",
+"label": "Melon Mobile recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b07",
+"label": "Melon Mobile recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b07",
+"label": "Melon Mobile recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b07",
+"label": "Melon Mobile recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b07",
+"label": "Melon Mobile recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b07",
+"label": "Melon Mobile recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b07",
+"label": "Melon Mobile recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b07",
+"label": "Melon Mobile recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b07",
+"label": "Melon Mobile recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b07",
+"label": "Melon Mobile recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b07",
+"label": "Melon Mobile recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b07",
+"label": "Melon Mobile recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b07",
+"label": "Number of CEP links Melon Mobile",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b07",
+"label": "At least one CEP link Melon Mobile",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b07",
+"label": "Melon Mobile associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b07",
+"label": "Melon Mobile associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b07",
+"label": "Melon Mobile associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b07",
+"label": "Melon Mobile associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b07",
+"label": "Melon Mobile associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b07",
+"label": "Melon Mobile associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b07",
+"label": "Melon Mobile associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b07",
+"label": "Melon Mobile associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b07",
+"label": "Melon Mobile associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b07",
+"label": "Melon Mobile associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b08",
+"label": "Brand opinion Vodacom",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b08",
+"label": "Previously used same brand Vodacom",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b08",
+"label": "Prompted advertising recall Vodacom",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b08",
+"label": "Word of mouth Vodacom",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b08",
+"label": "Vodacom recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b08",
+"label": "Vodacom recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b08",
+"label": "Vodacom recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b08",
+"label": "Vodacom recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b08",
+"label": "Vodacom recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b08",
+"label": "Vodacom recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b08",
+"label": "Vodacom recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b08",
+"label": "Vodacom recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b08",
+"label": "Vodacom recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b08",
+"label": "Vodacom recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b08",
+"label": "Vodacom recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b08",
+"label": "Vodacom recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b08",
+"label": "Number of CEP links Vodacom",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b08",
+"label": "At least one CEP link Vodacom",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b08",
+"label": "Vodacom associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b08",
+"label": "Vodacom associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b08",
+"label": "Vodacom associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b08",
+"label": "Vodacom associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b08",
+"label": "Vodacom associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b08",
+"label": "Vodacom associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b08",
+"label": "Vodacom associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b08",
+"label": "Vodacom associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b08",
+"label": "Vodacom associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b08",
+"label": "Vodacom associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b09",
+"label": "Brand opinion Afrihost Air Mobile",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b09",
+"label": "Previously used same brand Afrihost Air Mobile",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b09",
+"label": "Prompted advertising recall Afrihost Air Mobile",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b09",
+"label": "Word of mouth Afrihost Air Mobile",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b09",
+"label": "Afrihost Air Mobile recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b09",
+"label": "Afrihost Air Mobile recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b09",
+"label": "Afrihost Air Mobile recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b09",
+"label": "Afrihost Air Mobile recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b09",
+"label": "Afrihost Air Mobile recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b09",
+"label": "Afrihost Air Mobile recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b09",
+"label": "Afrihost Air Mobile recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b09",
+"label": "Afrihost Air Mobile recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b09",
+"label": "Afrihost Air Mobile recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b09",
+"label": "Afrihost Air Mobile recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b09",
+"label": "Afrihost Air Mobile recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b09",
+"label": "Afrihost Air Mobile recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b09",
+"label": "Number of CEP links Afrihost Air Mobile",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b09",
+"label": "At least one CEP link Afrihost Air Mobile",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b09",
+"label": "Afrihost Air Mobile associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b09",
+"label": "Afrihost Air Mobile associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b09",
+"label": "Afrihost Air Mobile associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b09",
+"label": "Afrihost Air Mobile associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b09",
+"label": "Afrihost Air Mobile associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b09",
+"label": "Afrihost Air Mobile associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b09",
+"label": "Afrihost Air Mobile associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b09",
+"label": "Afrihost Air Mobile associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b09",
+"label": "Afrihost Air Mobile associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b09",
+"label": "Afrihost Air Mobile associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b10",
+"label": "Brand opinion Mr Price Mobile",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b10",
+"label": "Previously used same brand Mr Price Mobile",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b10",
+"label": "Prompted advertising recall Mr Price Mobile",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b10",
+"label": "Word of mouth Mr Price Mobile",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b10",
+"label": "Mr Price Mobile recalled for Needing reliable signal where I live",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b10",
+"label": "Mr Price Mobile recalled for Reducing monthly airtime and data costs",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b10",
+"label": "Mr Price Mobile recalled for Starting a new job or course",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b10",
+"label": "Mr Price Mobile recalled for Replacing an unsatisfactory mobile provider",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b10",
+"label": "Mr Price Mobile recalled for Buying a new smartphone",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b10",
+"label": "Mr Price Mobile recalled for Staying connected with family",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b10",
+"label": "Mr Price Mobile recalled for Working or studying online",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b10",
+"label": "Mr Price Mobile recalled for Streaming video or music on the move",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b10",
+"label": "Mr Price Mobile recalled for Travelling within South Africa",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b10",
+"label": "Mr Price Mobile recalled for Travelling internationally",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b10",
+"label": "Mr Price Mobile recalled for Running out of data unexpectedly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b10",
+"label": "Mr Price Mobile recalled for Adding a second SIM or data connection",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b10",
+"label": "Number of CEP links Mr Price Mobile",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b10",
+"label": "At least one CEP link Mr Price Mobile",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b10",
+"label": "Mr Price Mobile associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b10",
+"label": "Mr Price Mobile associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b10",
+"label": "Mr Price Mobile associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b10",
+"label": "Mr Price Mobile associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b10",
+"label": "Mr Price Mobile associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b10",
+"label": "Mr Price Mobile associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b10",
+"label": "Mr Price Mobile associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b10",
+"label": "Mr Price Mobile associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b10",
+"label": "Mr Price Mobile associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b10",
+"label": "Mr Price Mobile associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a01",
+"label": "No brand associated with Has reliable coverage",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a01",
+"label": "Do not know for Has reliable coverage",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a02",
+"label": "No brand associated with Offers affordable data",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a02",
+"label": "Do not know for Offers affordable data",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a03",
+"label": "No brand associated with Offers affordable calls",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a03",
+"label": "Do not know for Offers affordable calls",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a04",
+"label": "No brand associated with Has fast mobile data",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a04",
+"label": "Do not know for Has fast mobile data",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a05",
+"label": "No brand associated with Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a05",
+"label": "Do not know for Makes costs and expiry rules clear",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a06",
+"label": "No brand associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a06",
+"label": "Do not know for Provides helpful service",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a07",
+"label": "No brand associated with Makes self service easy",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a07",
+"label": "Do not know for Makes self service easy",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a08",
+"label": "No brand associated with Offers flexible packages",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a08",
+"label": "Do not know for Offers flexible packages",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a09",
+"label": "No brand associated with Makes switching simple",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a09",
+"label": "Do not know for Makes switching simple",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a10",
+"label": "No brand associated with Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a10",
+"label": "Do not know for Has useful rewards or extras",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m01",
+"label": "YouTube",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m02",
+"label": "Facebook",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m03",
+"label": "Instagram",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m04",
+"label": "TikTok",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m05",
+"label": "X",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m06",
+"label": "LinkedIn",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m07",
+"label": "Broadcast television or DStv",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m08",
+"label": "Radio",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m09",
+"label": "Video streaming",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m10",
+"label": "Audio streaming or podcasts",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m11",
+"label": "Online news or category websites",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m12",
+"label": "AI chatbots",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_none",
+"label": "No listed media used",
+"questionId": "P1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "nps_main",
+"label": "Recommendation likelihood of main brand",
+"questionId": "I2",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "0",
+"1": "1",
+"2": "2",
+"3": "3",
+"4": "4",
+"5": "5",
+"6": "6",
+"7": "7",
+"8": "8",
+"9": "9",
+"10": "10",
+"99": "Do not know"
+}
+},
+{
+"name": "n_aware",
+"label": "Recognised brand repertoire",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "n_consider",
+"label": "Considered brand repertoire",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "n_started90",
+"label": "Acquired brand repertoire",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "category_active",
+"label": "Current in-scope category relationship",
+"questionId": "S5",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "product_p01",
+"label": "Prepaid",
+"questionId": "X1",
+"questionType": "multiple_response",
+"group": "current_products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "product_p02",
+"label": "Contract",
+"questionId": "X1",
+"questionType": "multiple_response",
+"group": "current_products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "product_p03",
+"label": "Hybrid or top up",
+"questionId": "X1",
+"questionType": "multiple_response",
+"group": "current_products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "product_p04",
+"label": "Data only mobile",
+"questionId": "X1",
+"questionType": "multiple_response",
+"group": "current_products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "experience_event",
+"label": "Main-provider experience event in past 12 months",
+"questionId": "X2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "experience_resolution",
+"label": "Resolution of most recent experience event",
+"questionId": "X3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Fully",
+"2": "Partly",
+"3": "Not resolved",
+"9": "In progress"
+}
+},
+{
+"name": "topups30",
+"label": "Number of top ups in past 30 days",
+"questionId": "X4",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+}
+]

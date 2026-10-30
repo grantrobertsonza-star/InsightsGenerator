@@ -1,5 +1,6 @@
 "use client";
 
+import { EARLIER_METHOD_TEXT } from "@/lib/tableMethod";
 import type { FindingCodingCounts } from "@/lib/codingAnalysis";
 import {
   Fragment,
@@ -22,7 +23,8 @@ import {
 } from "@/lib/findingActions";
 import type { WordingEditState } from "@/lib/findingWording";
 import { getDocumentPreviewUrl } from "@/lib/previewActions";
-import type { ParsedTable } from "@/lib/parseTable";
+import type { PreviewTable } from "@/lib/parseTable";
+import { cellText } from "@/lib/rowCells";
 import {
   EyeIcon,
   CheckIcon,
@@ -35,7 +37,19 @@ import { buildChartForThemeGroup } from "@/lib/findingsChartData";
 import { classifyFindingDiscovery } from "@/lib/discoveryClassification";
 import { BASIS_LABEL, findingBasis, provenanceNotes } from "@/lib/findingBasis";
 import FindingsChart from "./FindingsChart";
+import {
+  EVIDENCE_KINDS,
+  EVIDENCE_KIND_LABEL,
+  evidenceKindOf,
+  findingNeedsAttention,
+  NO_THEME_KEY,
+  themeKeyOf,
+  themeLabelOf,
+  type EvidenceKind,
+  type FindingAttention,
+} from "@/lib/evidenceOverview";
 import { createContext, useContext } from "react";
+import { attemptResult } from "./actionFailure";
 
 const SelectionContext = createContext<{ selectedId: string | null; select: (id: string) => void }>({
   selectedId: null,
@@ -56,6 +70,8 @@ type Finding = {
   theme: string | null;
   status: "pending" | "accepted" | "rejected";
   source_filename: string | null;
+  /** Its data file's wave label, when the file is a wave of a tracker (Import data). */
+  source_wave?: string | null;
   source_page: number | null;
   quote_verified: boolean | null;
   source_document_id: string | null;
@@ -83,13 +99,20 @@ type Finding = {
   // no source table at all. Never touches finding_text - a visibility signal only, rendered in
   // SourceInfo below.
   designFreshness: "current" | "stale" | "unknown" | null;
+  /** Batch 47: "earlier" when this finding's calculated table was built with an earlier table method
+   * (tableMethod.ts); null when there is no calculated table behind it or the page did not read it. */
+  methodFreshness?: "current" | "earlier" | null;
+  methodReason?: string | null;
+  /** CE-6 route (analysisPlan.ts): planned, discovered or stated; absent where the page did not read it. */
+  route?: "planned" | "discovered" | "stated" | "unknown";
+  routeText?: string;
 };
 
 type Viewer =
   | { kind: "pdf"; url: string; page: number | null; title: string }
   | {
       kind: "table";
-      table: ParsedTable;
+      table: PreviewTable;
       title: string;
       highlightRowIndices: number[];
     };
@@ -208,7 +231,7 @@ function DocumentPreviewPanel({
                             : "text-foreground"
                         }`}
                       >
-                        {row[header] ?? ""}
+                        {cellText(row[header])}
                       </td>
                     ))}
                   </tr>
@@ -261,18 +284,31 @@ function ThemeCell({
   const [isPending, startTransition] = useTransition();
   const [isAdding, setIsAdding] = useState(false);
   const [newTheme, setNewTheme] = useState("");
+  // TR500-F02/F03: a refused or failed save is shown here, and a new theme's form stays open with
+  // what was typed; the select keeps showing the saved theme.
+  const [error, setError] = useState<string | null>(null);
+  const errorLine = error && (
+    <p role="alert" className="mt-1 text-xs text-rose-700" data-testid="finding-theme-error">
+      {error}
+    </p>
+  );
 
   if (isAdding) {
     return (
+      <div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           const value = newTheme.trim();
           if (!value) return;
-          startTransition(() => setFindingTheme(runId, finding.id, value));
-          onThemeAdded(value);
-          setIsAdding(false);
-          setNewTheme("");
+          startTransition(async () => {
+            const failure = await attemptResult(() => setFindingTheme(runId, finding.id, value));
+            setError(failure);
+            if (failure) return;
+            onThemeAdded(value);
+            setIsAdding(false);
+            setNewTheme("");
+          });
         }}
         className="flex gap-1"
       >
@@ -281,26 +317,35 @@ function ThemeCell({
           value={newTheme}
           onChange={(e) => setNewTheme(e.target.value)}
           placeholder="New theme name"
+          disabled={isPending}
           className="min-w-0 flex-1 rounded-md border border-border px-2 py-1 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
         <button
           type="submit"
+          disabled={isPending}
           className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-white hover:bg-primary-hover"
         >
-          Save
+          {isPending ? "Saving..." : "Save"}
         </button>
         <button
           type="button"
-          onClick={() => setIsAdding(false)}
+          disabled={isPending}
+          onClick={() => {
+            setIsAdding(false);
+            setError(null);
+          }}
           className="rounded-md border border-border px-2 py-1 text-xs font-medium text-muted hover:text-foreground"
         >
           Cancel
         </button>
       </form>
+      {errorLine}
+      </div>
     );
   }
 
   return (
+    <div>
     <select
       value={finding.theme ?? ""}
       disabled={isPending}
@@ -309,9 +354,8 @@ function ThemeCell({
           setIsAdding(true);
           return;
         }
-        startTransition(() =>
-          setFindingTheme(runId, finding.id, e.target.value),
-        );
+        const value = e.target.value;
+        startTransition(async () => setError(await attemptResult(() => setFindingTheme(runId, finding.id, value))));
       }}
       className={`${selectClass} w-full`}
     >
@@ -323,6 +367,8 @@ function ThemeCell({
       ))}
       <option value={NEW_THEME_VALUE}>+ Add new theme...</option>
     </select>
+    {errorLine}
+    </div>
   );
 }
 
@@ -452,6 +498,13 @@ function CodingBadges({
   );
 }
 
+const ROUTE_BADGE: Record<NonNullable<Finding["route"]>, { text: string; title: string; cls: string }> = {
+  planned: { text: "Planned", title: "From a table in the approved analysis plan.", cls: "bg-green-50 text-green-800 ring-green-200" },
+  discovered: { text: "Discovered", title: "Computed or coded outside the analysis plan.", cls: "bg-slate-50 text-slate-600 ring-slate-200" },
+  stated: { text: "Stated", title: "A claim the report or transcript itself makes.", cls: "bg-slate-50 text-slate-600 ring-slate-200" },
+  unknown: { text: "Route unknown", title: "Whether this came from the analysis plan could not be read.", cls: "bg-amber-50 text-amber-800 ring-amber-200" },
+};
+
 function DiscoveryBadges({
   finding,
 }: {
@@ -463,6 +516,8 @@ function DiscoveryBadges({
     | "contradicts_report"
     | "pattern_type"
     | "stated_stats"
+    | "route"
+    | "routeText"
   >;
 }) {
   const discovery = classifyFindingDiscovery({
@@ -472,8 +527,14 @@ function DiscoveryBadges({
   });
   const base =
     "inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset";
+  const route = finding.route ? ROUTE_BADGE[finding.route] : null;
   return (
     <>
+      {route && (
+        <span title={finding.routeText ?? route.title} data-testid="finding-route" data-route={finding.route} className={`${base} ${route.cls}`}>
+          {route.text}
+        </span>
+      )}
       {finding.origin === "generated" && discovery.type === "net_new" && (
         <span
           title={
@@ -583,18 +644,20 @@ function KindControl({
   isPending: boolean;
   startTransition: TransitionStartFunction;
 }) {
+  // TR500-F02/F03: a refused or failed save is shown here; the select keeps the saved kind.
+  const [error, setError] = useState<string | null>(null);
   if (finding.origin === "generated") {
     return <span className="text-xs text-muted">&mdash;</span>;
   }
   return (
+    <div>
     <select
       value={finding.finding_kind ?? ""}
       disabled={isPending}
-      onChange={(e) =>
-        startTransition(() => {
-          setFindingKind(runId, finding.id, e.target.value as FindingKind);
-        })
-      }
+      onChange={(e) => {
+        const kind = e.target.value as FindingKind;
+        startTransition(async () => setError(await attemptResult(() => setFindingKind(runId, finding.id, kind))));
+      }}
       className={selectClass}
     >
       {!finding.finding_kind && <option value="">Not set</option>}
@@ -604,6 +667,12 @@ function KindControl({
         </option>
       ))}
     </select>
+    {error && (
+      <p role="alert" className="mt-1 text-xs text-rose-700" data-testid="finding-kind-error">
+        {error}
+      </p>
+    )}
+    </div>
   );
 }
 
@@ -635,6 +704,7 @@ function SourceInfo({
   return (
     <div className="text-xs text-muted">
       <div className="truncate">{finding.source_filename ?? "—"}</div>
+      {finding.source_wave && <div data-testid="finding-wave">{finding.source_wave}</div>}
       {finding.source_page != null && <div>page {finding.source_page}</div>}
       {(finding.source_document_id || finding.source_table_id) && (
         <button
@@ -645,6 +715,11 @@ function SourceInfo({
           <EyeIcon className="h-3 w-3" />
           {viewerLoadingId === finding.id ? "Opening..." : "View source"}
         </button>
+      )}
+      {finding.methodFreshness === "earlier" && (
+        <div data-testid="finding-method-earlier" title={`This finding's table was ${finding.methodReason ?? EARLIER_METHOD_TEXT}. The finding's wording and review are unchanged.`} className="mt-1 flex items-center gap-1 text-amber-700">
+          <span className="font-medium">Table built with an earlier method</span>
+        </div>
       )}
       {finding.designFreshness === "stale" && (
         <div
@@ -851,12 +926,29 @@ function WordingField({ runId, finding }: { runId: string; finding: Finding }) {
 function NoteField({ runId, finding }: { runId: string; finding: Finding }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(finding.researcher_note ?? "");
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
 
+  // TR500-F02: the editor closes only once the note is saved. A refusal (the finding is gone, the
+  // note is not text) or a failure (the server or connection) keeps the editor open with the draft
+  // and says what happened beside it; Save tries again with the same draft.
   function save() {
+    if (draft.trim() === (finding.researcher_note ?? "")) {
+      setIsEditing(false);
+      setError(null);
+      return;
+    }
+    startSaving(async () => {
+      const failure = await attemptResult(() => setFindingNote(runId, finding.id, draft));
+      setError(failure);
+      if (!failure) setIsEditing(false);
+    });
+  }
+
+  function cancel() {
+    setDraft(finding.researcher_note ?? "");
+    setError(null);
     setIsEditing(false);
-    if (draft.trim() === (finding.researcher_note ?? "")) return;
-    startSaving(() => setFindingNote(runId, finding.id, draft));
   }
 
   if (!isEditing) {
@@ -885,29 +977,29 @@ function NoteField({ runId, finding }: { runId: string; finding: Finding }) {
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            setDraft(finding.researcher_note ?? "");
-            setIsEditing(false);
-          }
+          if (e.key === "Escape" && !isSaving) cancel();
         }}
         placeholder="e.g. watch this against Q2 tracking"
         rows={2}
         disabled={isSaving}
+        aria-label="Note"
         className="w-full rounded-md border border-border px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary"
       />
+      {error && (
+        <p role="alert" className="text-xs text-rose-700" data-testid="finding-note-error">
+          {`${error.replace(/\.$/, "")}. Your note is still here.`}
+        </p>
+      )}
       <div className="flex gap-1.5">
         <button
           onClick={save}
           disabled={isSaving}
           className="rounded-md border border-primary/30 bg-primary-light px-2 py-0.5 text-xs font-medium text-primary transition hover:border-primary/60"
         >
-          Save
+          {isSaving ? "Saving..." : "Save"}
         </button>
         <button
-          onClick={() => {
-            setDraft(finding.researcher_note ?? "");
-            setIsEditing(false);
-          }}
+          onClick={cancel}
           disabled={isSaving}
           className="rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted transition hover:text-foreground"
         >
@@ -916,6 +1008,17 @@ function NoteField({ runId, finding }: { runId: string; finding: Finding }) {
       </div>
     </div>
   );
+}
+
+// The latest status request for each finding (single or bulk), shared by every place a finding's
+// buttons are shown, so a failed request undoes its optimistic status only while no newer click on
+// that finding has been made (TR500-F02/F03): an earlier response never overwrites newer intent.
+const statusRequests = new Map<string, number>();
+let statusRequestCounter = 0;
+function claimStatusRequest(findingIds: string[]): (findingId: string) => boolean {
+  const n = ++statusRequestCounter;
+  for (const id of findingIds) statusRequests.set(id, n);
+  return (findingId) => statusRequests.get(findingId) === n;
 }
 
 function ReviewButtons({
@@ -931,12 +1034,22 @@ function ReviewButtons({
   startTransition: TransitionStartFunction;
   onOptimisticStatus: (findingId: string, status: Finding["status"]) => void;
 }) {
+  const [error, setError] = useState<string | null>(null);
   function setStatus(status: "accepted" | "rejected") {
+    const previous = finding.status;
+    const stillLatest = claimStatusRequest([finding.id]);
     onOptimisticStatus(finding.id, status);
-    startTransition(() => setFindingStatus(runId, finding.id, status));
+    startTransition(async () => {
+      const failure = await attemptResult(() => setFindingStatus(runId, finding.id, status));
+      if (!stillLatest(finding.id)) return;
+      // Not saved: the buttons go back to what they showed before this click, with the reason.
+      if (failure) onOptimisticStatus(finding.id, previous);
+      setError(failure);
+    });
   }
 
   return (
+    <div className="flex flex-col gap-1">
     <div className="flex gap-1.5">
       <button
         disabled={isPending}
@@ -965,11 +1078,16 @@ function ReviewButtons({
         Reject
       </button>
     </div>
+    {error && (
+      <p role="alert" className="max-w-xs text-xs text-rose-700" data-testid="finding-status-error">
+        {error}
+      </p>
+    )}
+    </div>
   );
 }
 
 const ALL = "__all__";
-const NO_THEME_LABEL = "No theme";
 
 // A small, muted palette used to color-code theme groups so related cards
 // are easy to spot at a glance. Picked deterministically from the theme
@@ -1026,9 +1144,10 @@ function hashThemeName(value: string): number {
   return hash;
 }
 
-function colorFor(theme: string) {
-  if (theme === NO_THEME_LABEL) return NEUTRAL_THEME_COLOR;
-  return THEME_PALETTE[hashThemeName(theme) % THEME_PALETTE.length];
+/** A theme's colour, by its key (themeKeyOf); findings with no theme are neutral. */
+function colorFor(themeKey: string) {
+  if (themeKey === NO_THEME_KEY) return NEUTRAL_THEME_COLOR;
+  return THEME_PALETTE[hashThemeName(themeLabelOf(themeKey)) % THEME_PALETTE.length];
 }
 
 // Reach summary for a coded (transcript) theme finding: a ring for the share
@@ -1421,15 +1540,41 @@ function ThemeRollupLine({
   );
 }
 
+/** What the overview asks to see (FindingsWorkspace): a starting filter, which stays editable here. */
+export type FindingsFilter = {
+  /** A theme key (lib/evidenceOverview.themeKeyOf), not the stored text. */
+  theme?: string;
+  status?: "pending" | "accepted" | "rejected";
+  evidence?: EvidenceKind;
+  attention?: FindingAttention;
+};
+export type { FindingAttention };
+const ATTENTION_LABEL: Record<FindingAttention, string> = {
+  contradictions: "Contradicts or is contradicted by a report",
+  designChanged: "Survey design changed since the table was built",
+  designUnknown: "Survey design could not be checked",
+  quoteNotFound: "Report quote not found in the source",
+};
+// The same test the overview counts with (lib/evidenceOverview.findingNeedsAttention), so a figure
+// there opens exactly the findings it counted.
+const needsAttention = findingNeedsAttention;
+
 export default function FindingsTable({
   runId,
   findings: findingsProp,
   wordingEdits,
+  filterRequest,
 }: {
   runId: string;
   findings: Finding[];
   /** FND-001 probe B. Absent: editing unavailable, nothing shown as edited. */
   wordingEdits?: WordingEdits;
+  /**
+   * Where the overview sent the researcher. Each new request (a higher `n`) replaces the filters;
+   * between requests the filters are the researcher's own. Applied without remounting, so an
+   * unsaved note or wording edit in the list is never lost by opening a figure.
+   */
+  filterRequest?: { filter: FindingsFilter; n: number };
 }) {
   const [isPending, startTransition] = useTransition();
   const [extraThemes, setExtraThemes] = useState<string[]>([]);
@@ -1508,27 +1653,56 @@ export default function FindingsTable({
     });
   }
 
-  function acceptAllVisible(findingIds: string[]) {
-    setManyOptimisticStatuses(findingIds, "accepted");
-    startTransition(() =>
-      setManyFindingStatuses(runId, findingIds, "accepted"),
-    );
+  // A bulk change is all or nothing on the server (TR500-F03): when it is refused or fails, every
+  // finding it showed as changed goes back to what it showed before, unless clicked again since.
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  function setAllVisible(findingIds: string[], status: "accepted" | "rejected") {
+    const previous = new Map(findings.filter((f) => findingIds.includes(f.id)).map((f) => [f.id, f.status]));
+    const stillLatest = claimStatusRequest(findingIds);
+    setManyOptimisticStatuses(findingIds, status);
+    startTransition(async () => {
+      const failure = await attemptResult(() => setManyFindingStatuses(runId, findingIds, status));
+      setBulkError(failure);
+      if (!failure) return;
+      setStatusOverrides((prev) => {
+        const next = { ...prev };
+        for (const [id, was] of previous) if (stillLatest(id)) next[id] = was;
+        return next;
+      });
+    });
   }
-
-  function rejectAllVisible(findingIds: string[]) {
-    setManyOptimisticStatuses(findingIds, "rejected");
-    startTransition(() =>
-      setManyFindingStatuses(runId, findingIds, "rejected"),
-    );
-  }
+  const acceptAllVisible = (findingIds: string[]) => setAllVisible(findingIds, "accepted");
+  const rejectAllVisible = (findingIds: string[]) => setAllVisible(findingIds, "rejected");
 
   const [sourceFilter, setSourceFilter] = useState(ALL);
   const [themeFilter, setThemeFilter] = useState(ALL);
+  // Theme tiles (Grant, 2026-10-21): a project can have hundreds of themes, so the tiles show the
+  // most common first, a search narrows them, and "Show all" lists the rest.
+  const [themeQuery, setThemeQuery] = useState("");
+  const [showAllThemes, setShowAllThemes] = useState(false);
   // Which main theme has its sub-theme cards open ("__all" opens every one).
   const [openMainTheme, setOpenMainTheme] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState(ALL);
-  const [statusFilter, setStatusFilter] = useState(ALL);
+  const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [dataTypeFilter, setDataTypeFilter] = useState(ALL);
+  const [evidenceFilter, setEvidenceFilter] = useState<string>(ALL);
+  const [attentionFilter, setAttentionFilter] = useState<FindingAttention | null>(null);
+  // A new request from the overview resets every filter to what it asks for, during render (React's
+  // pattern for state that follows a prop), so the list shows the right findings on its first paint.
+  const [appliedRequest, setAppliedRequest] = useState<number | null>(null);
+  if (filterRequest && filterRequest.n !== appliedRequest) {
+    setAppliedRequest(filterRequest.n);
+    const f = filterRequest.filter;
+    // The overview counts every finding, so the list starts on All, not a chart or stated-only tab.
+    setActiveTab("all");
+    setSourceFilter(ALL);
+    setKindFilter(ALL);
+    setDataTypeFilter(ALL);
+    setThemeFilter(f.theme ?? ALL);
+    setStatusFilter(f.status ?? ALL);
+    setEvidenceFilter(f.evidence ?? ALL);
+    setAttentionFilter(f.attention ?? null);
+  }
 
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [viewerLoadingId, setViewerLoadingId] = useState<string | null>(null);
@@ -1574,7 +1748,7 @@ export default function FindingsTable({
   const chartEligibleThemeNames = (() => {
     const byTheme = new Map<string, Finding[]>();
     for (const finding of findings) {
-      const key = finding.theme ?? NO_THEME_LABEL;
+      const key = themeKeyOf(finding.theme);
       if (!byTheme.has(key)) byTheme.set(key, []);
       byTheme.get(key)!.push(finding);
     }
@@ -1588,7 +1762,7 @@ export default function FindingsTable({
   const visibleFindings =
     activeTab === "charts"
       ? findings.filter((f) =>
-          chartEligibleThemeNames.has(f.theme ?? NO_THEME_LABEL),
+          chartEligibleThemeNames.has(themeKeyOf(f.theme)),
         )
       : activeTab === "stated"
         ? findings.filter((f) => f.origin === "stated" || f.origin === "coded")
@@ -1603,6 +1777,15 @@ export default function FindingsTable({
     ]),
   ).sort();
 
+  // The theme filter's choices are theme keys (themeKeyOf), so "Trust" and " Trust " are one choice
+  // and the overview's theme links select one of them; "No theme" appears when any finding has none.
+  const themeFilterKeys = Array.from(
+    new Set([...visibleFindings.map((f) => themeKeyOf(f.theme)), ...extraThemes.map((t) => themeKeyOf(t))]),
+  )
+    .filter((k) => k !== NO_THEME_KEY)
+    .sort((a, b) => themeLabelOf(a).localeCompare(themeLabelOf(b)));
+  const anyWithoutTheme = visibleFindings.some((f) => themeKeyOf(f.theme) === NO_THEME_KEY);
+
   const sources = Array.from(
     new Set(
       visibleFindings
@@ -1614,11 +1797,15 @@ export default function FindingsTable({
   const filteredFindings = visibleFindings.filter((finding) => {
     if (sourceFilter !== ALL && finding.source_filename !== sourceFilter)
       return false;
-    if (themeFilter !== ALL && finding.theme !== themeFilter) return false;
+    // Filtered by theme key (OV-03), the overview's own rule: surrounding spaces ignored, and blank
+    // or missing themes together under NO_THEME.
+    if (themeFilter !== ALL && themeKeyOf(finding.theme) !== themeFilter) return false;
     if (kindFilter !== ALL && finding.finding_kind !== kindFilter) return false;
     if (statusFilter !== ALL && finding.status !== statusFilter) return false;
     if (dataTypeFilter !== ALL && finding.data_type !== dataTypeFilter)
       return false;
+    if (evidenceFilter !== ALL && evidenceKindOf(finding) !== evidenceFilter) return false;
+    if (attentionFilter && !needsAttention(finding, attentionFilter)) return false;
     return true;
   });
 
@@ -1626,7 +1813,9 @@ export default function FindingsTable({
     sourceFilter !== ALL ||
     themeFilter !== ALL ||
     kindFilter !== ALL ||
-    statusFilter !== ALL;
+    statusFilter !== ALL ||
+    evidenceFilter !== ALL ||
+    attentionFilter !== null;
 
   // Findings flagged as probable duplicates of each other get pulled out into
   // their own review section rather than showing up (twice) in the normal
@@ -1658,23 +1847,26 @@ export default function FindingsTable({
   const groupedByTheme = (() => {
     const groups = new Map<string, Finding[]>();
     for (const finding of themeEligibleFindings) {
-      const key = finding.theme ?? NO_THEME_LABEL;
+      // Grouped by theme key (SEC-01), so "Trust" and " Trust " are one group and a theme named
+      // "No theme" is never merged with findings that have none.
+      const key = themeKeyOf(finding.theme);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(finding);
     }
-    const orderedKeys = [...themes, NO_THEME_LABEL].filter((key) =>
+    const orderedKeys = [...themeFilterKeys, NO_THEME_KEY].filter((key) =>
       groups.has(key),
     );
-    const builtAll = orderedKeys.map((theme) => ({
-      theme,
-      findings: groups.get(theme)!,
+    const builtAll = orderedKeys.map((key) => ({
+      key,
+      theme: themeLabelOf(key),
+      findings: groups.get(key)!,
     }));
     // Themes that gather several findings (the high-level themes) come
     // first, each with its sub-themes beneath; findings that stand alone
     // follow, together, at the end. The sort is stable.
     const built = [
-      ...builtAll.filter((g) => g.theme !== NO_THEME_LABEL && g.findings.length > 1),
-      ...builtAll.filter((g) => g.theme === NO_THEME_LABEL || g.findings.length <= 1),
+      ...builtAll.filter((g) => g.key !== NO_THEME_KEY && g.findings.length > 1),
+      ...builtAll.filter((g) => g.key === NO_THEME_KEY || g.findings.length <= 1),
     ];
     if (!sortByReach) return built;
     // Highest share of participants first: the figure inside each card's
@@ -1695,6 +1887,7 @@ export default function FindingsTable({
     };
     return built
       .map((group) => ({
+        key: group.key,
         theme: group.theme,
         findings: [...group.findings].sort((x, y) => reachOf(y) - reachOf(x)),
       }))
@@ -1716,7 +1909,7 @@ export default function FindingsTable({
   // place of the heading that would otherwise sit above just one card.
   type ThemeGroup = (typeof groupedByTheme)[number];
   type RenderBlock =
-    | { kind: "group"; theme: string; findings: ThemeGroup["findings"] }
+    | { kind: "group"; key: string; theme: string; findings: ThemeGroup["findings"] }
     | { kind: "single-run"; groups: ThemeGroup[] };
   const renderBlocks = (() => {
     const blocks: RenderBlock[] = [];
@@ -1734,6 +1927,7 @@ export default function FindingsTable({
         flush();
         blocks.push({
           kind: "group",
+          key: group.key,
           theme: group.theme,
           findings: group.findings,
         });
@@ -1760,6 +1954,8 @@ export default function FindingsTable({
     if (statusFilter !== ALL && finding.status !== statusFilter) return false;
     if (dataTypeFilter !== ALL && finding.data_type !== dataTypeFilter)
       return false;
+    if (evidenceFilter !== ALL && evidenceKindOf(finding) !== evidenceFilter) return false;
+    if (attentionFilter && !needsAttention(finding, attentionFilter)) return false;
     return true;
   });
   const pillDuplicateCount = pillEligibleFindings.filter(
@@ -1769,17 +1965,28 @@ export default function FindingsTable({
     const counts = new Map<string, number>();
     for (const finding of pillEligibleFindings) {
       if (finding.duplicate_group_id) continue;
-      const key = finding.theme ?? NO_THEME_LABEL;
+      // Counted by theme key (SEC-01), the key each pill filters on, so a pill opens what it counts.
+      const key = themeKeyOf(finding.theme);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return counts;
   })();
   const pillThemeOrder = (() => {
-    const all = [...themes, NO_THEME_LABEL].filter(
+    const all = [...themeFilterKeys, NO_THEME_KEY].filter(
       (key) => (themeCounts.get(key) ?? 0) > 0,
     );
-    const multi = (k: string) => k !== NO_THEME_LABEL && (themeCounts.get(k) ?? 0) > 1;
+    const multi = (k: string) => k !== NO_THEME_KEY && (themeCounts.get(k) ?? 0) > 1;
     return [...all.filter(multi), ...all.filter((k) => !multi(k))];
+  })();
+  const THEME_TILES_SHOWN = 15;
+  const themeTiles = (() => {
+    const q = themeQuery.trim().toLowerCase();
+    const byCount = [...pillThemeOrder].sort((a, b) => (themeCounts.get(b) ?? 0) - (themeCounts.get(a) ?? 0) || themeLabelOf(a).localeCompare(themeLabelOf(b)));
+    const matching = q ? byCount.filter((k) => themeLabelOf(k).toLowerCase().includes(q)) : byCount;
+    const shown = showAllThemes || q ? matching : matching.slice(0, THEME_TILES_SHOWN);
+    // The chosen theme stays visible even when it is not among the most common.
+    if (themeFilter !== ALL && !shown.includes(themeFilter) && pillThemeOrder.includes(themeFilter)) shown.unshift(themeFilter);
+    return { shown, matching: matching.length };
   })();
 
   function scrollToDuplicates() {
@@ -1798,24 +2005,24 @@ export default function FindingsTable({
   }
 
   const chartableFindingsCount = findings.filter((f) =>
-    chartEligibleThemeNames.has(f.theme ?? NO_THEME_LABEL),
+    chartEligibleThemeNames.has(themeKeyOf(f.theme)),
   ).length;
   const statedFindingsCount = findings.filter(
     (f) => f.origin === "stated" || f.origin === "coded",
   ).length;
 
   const renderGroup = (block: Extract<RenderBlock, { kind: "group" }>) => (
-                <div key={block.theme}>
+                <div key={block.key}>
                   <div className="mb-3 flex items-center gap-2">
                     <span
-                      className={`h-2.5 w-2.5 rounded-full ${colorFor(block.theme).dot}`}
+                      className={`h-2.5 w-2.5 rounded-full ${colorFor(block.key).dot}`}
                       aria-hidden
                     />
                     <h3 className="text-sm font-semibold text-foreground">
                       {block.theme}
                     </h3>
                     <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colorFor(block.theme).badge}`}
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colorFor(block.key).badge}`}
                     >
                       {block.findings.length}
                     </span>
@@ -1835,10 +2042,10 @@ export default function FindingsTable({
                     {(() => {
                       const chartSpec = buildChartForThemeGroup(block.findings);
                       if (!chartSpec) return null;
-                      const open = chartOpenThemes.has(block.theme);
+                      const open = chartOpenThemes.has(block.key);
                       return (
                         <button
-                          onClick={() => toggleChartForTheme(block.theme)}
+                          onClick={() => toggleChartForTheme(block.key)}
                           className={`ml-1 flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium transition ${
                             open
                               ? "border-primary text-primary"
@@ -1852,7 +2059,7 @@ export default function FindingsTable({
                     })()}
                   </div>
                   {(() => {
-                    if (!chartOpenThemes.has(block.theme)) return null;
+                    if (!chartOpenThemes.has(block.key)) return null;
                     const chartSpec = buildChartForThemeGroup(block.findings);
                     if (!chartSpec) return null;
                     return (
@@ -1863,7 +2070,7 @@ export default function FindingsTable({
                   })()}
                   {(() => {
                     const cardsGrid = (
-                      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
                         {block.findings.map((finding) => (
                           <FindingCard
                             key={finding.id}
@@ -1875,7 +2082,7 @@ export default function FindingsTable({
                             viewerLoadingId={viewerLoadingId}
                             openPreview={openPreview}
                             cardBorderClass="border-border"
-                            borderLeftClass={colorFor(block.theme).borderLeft}
+                            borderLeftClass={colorFor(block.key).borderLeft}
                           />
                         ))}
                       </div>
@@ -1885,7 +2092,7 @@ export default function FindingsTable({
                     // 2026-10-05 decision) -- still there, one click away,
                     // rather than removed. With the chart closed (the
                     // default), nothing changes from before this feature.
-                    if (!chartOpenThemes.has(block.theme)) {
+                    if (!chartOpenThemes.has(block.key)) {
                       const hasRoll = block.findings.some(
                         (f) => f.coding_counts?.themeRollup,
                       );
@@ -1921,12 +2128,19 @@ export default function FindingsTable({
         below and editing is off until the page reloads successfully.
       </p>
     )}
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)_24rem]">
-      <aside className="flex flex-col gap-4 rounded-xl border-2 border-sky-200 bg-sky-50 p-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
-        <div className="text-sm font-semibold text-foreground">Filters</div>
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+      {/* The filters lie across the top (Grant, 2026-10-21), so the list and the detail get the width; folded,
+          they stay mounted with their choices. */}
+      <details open className="group rounded-xl border-2 border-sky-200 bg-sky-50 lg:col-span-2" data-testid="findings-filters-band">
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-t-xl px-3 py-2.5 text-sm font-semibold text-foreground group-open:border-b-2 group-open:border-sky-200 group-open:bg-sky-100">
+          Filters
+          <span className="ml-auto rounded-md border border-sky-300 bg-white px-2.5 py-1 text-xs font-medium text-sky-800"><span className="group-open:hidden">Show filters</span><span className="hidden group-open:inline">Hide filters</span></span>
+        </summary>
+        <div className="grid items-start gap-4 p-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr))] lg:max-h-[45vh] lg:overflow-y-auto">
         <div className="flex flex-col gap-1.5">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">How it was drawn</div>
-        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
+        {/* Wraps inside its column (UI-R500-01: at 320px "From numbers" ran past the page). */}
+        <div role="group" aria-label="How it was drawn" data-testid="findings-evidence-type" className="inline-flex max-w-full flex-wrap items-center gap-0.5 self-start rounded-lg border border-border bg-white p-0.5">
           {(
             [
               [ALL, "All evidence"],
@@ -1936,6 +2150,8 @@ export default function FindingsTable({
           ).map(([value, label]) => (
             <button
               key={value}
+              type="button"
+              aria-pressed={dataTypeFilter === value}
               onClick={() => setDataTypeFilter(value)}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 dataTypeFilter === value
@@ -1968,11 +2184,12 @@ export default function FindingsTable({
             className={`${selectClass} w-full`}
           >
             <option value={ALL}>All themes</option>
-            {themes.map((theme) => (
-              <option key={theme} value={theme}>
-                {theme}
+            {themeFilterKeys.map((key) => (
+              <option key={key} value={key}>
+                {themeLabelOf(key)}
               </option>
             ))}
+            {(anyWithoutTheme || themeFilter === NO_THEME_KEY) && <option value={NO_THEME_KEY}>{themeLabelOf(NO_THEME_KEY)}</option>}
           </select>
           <select
             value={kindFilter}
@@ -1996,33 +2213,79 @@ export default function FindingsTable({
             <option value="accepted">Accepted</option>
             <option value="rejected">Rejected</option>
           </select>
-          <span className="text-xs text-muted">
+          <select
+            value={evidenceFilter}
+            onChange={(e) => setEvidenceFilter(e.target.value)}
+            aria-label="Evidence source"
+            className={`${selectClass} w-full`}
+          >
+            <option value={ALL}>All evidence sources</option>
+            {EVIDENCE_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {EVIDENCE_KIND_LABEL[kind]}
+              </option>
+            ))}
+          </select>
+          {attentionFilter && (
+            <button
+              type="button"
+              onClick={() => setAttentionFilter(null)}
+              data-testid="findings-attention-filter"
+              className="flex items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-left text-xs font-medium text-amber-900"
+            >
+              <span>{ATTENTION_LABEL[attentionFilter]}</span>
+              <span aria-label="Clear this filter">×</span>
+            </button>
+          )}
+          <span className="text-xs text-muted" data-testid="findings-showing">
             Showing {filteredFindings.length} of {visibleFindings.length}
           </span>
         </div>
         {(pillThemeOrder.length > 0 ||
           pillDuplicateCount > 0 ||
           filtersActive) && (
-          <div className="flex flex-col gap-1.5">
-            {filtersActive && (
+          <div className="flex min-w-0 flex-col gap-2 [grid-column:1/-1]" data-testid="theme-tiles">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                {`Themes (${pillThemeOrder.length})`}
+              </span>
+              {pillThemeOrder.length > THEME_TILES_SHOWN && (
+                <input
+                  type="search"
+                  value={themeQuery}
+                  onChange={(e) => setThemeQuery(e.target.value)}
+                  placeholder="Find a theme"
+                  aria-label="Find a theme"
+                  data-testid="theme-search"
+                  className="w-56 max-w-full rounded-lg border border-border bg-white px-2.5 py-1 text-xs"
+                />
+              )}
+              {filtersActive && (
               <button
                 onClick={() => {
                   setSourceFilter(ALL);
                   setThemeFilter(ALL);
                   setKindFilter(ALL);
                   setStatusFilter(ALL);
+                  setEvidenceFilter(ALL);
+                  setAttentionFilter(null);
                 }}
-                className="flex items-center justify-center rounded-lg border border-primary/30 bg-primary-light px-2.5 py-1.5 text-xs font-medium text-primary transition hover:border-primary/60"
+                className="flex items-center justify-center rounded-lg border border-primary/30 bg-primary-light px-2.5 py-1 text-xs font-medium text-primary transition hover:border-primary/60"
               >
                 Clear filters
               </button>
-            )}
-            {pillThemeOrder.map((theme) => {
-              const isActive = themeFilter === theme;
+              )}
+            </div>
+            <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(100%,13rem),1fr))]">
+            {themeTiles.shown.map((key) => {
+              // A pill counts, filters and is keyed by the theme key; its label is only for reading.
+              const isActive = themeFilter === key;
               return (
                 <button
-                  key={theme}
-                  onClick={() => setThemeFilter(isActive ? ALL : theme)}
+                  key={key}
+                  data-testid="theme-pill"
+                  data-theme-key={key}
+                  onClick={() => setThemeFilter(isActive ? ALL : key)}
                   className={`flex items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium leading-none transition ${
                     isActive
                       ? "border-primary bg-primary-light text-primary"
@@ -2031,13 +2294,13 @@ export default function FindingsTable({
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${colorFor(theme).dot}`}
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${colorFor(key).dot}`}
                       aria-hidden
                     />
-                    <span className="truncate">{theme}</span>
+                    <span className="truncate" title={themeLabelOf(key)}>{themeLabelOf(key)}</span>
                   </span>
-                  <span className="shrink-0 text-muted">
-                    {themeCounts.get(theme) ?? 0}
+                  <span className="shrink-0 text-muted" data-testid="theme-pill-count">
+                    {themeCounts.get(key) ?? 0}
                   </span>
                 </button>
               );
@@ -2059,11 +2322,31 @@ export default function FindingsTable({
                 </span>
               </button>
             )}
+            </div>
+            {!themeQuery.trim() && themeTiles.matching > THEME_TILES_SHOWN && (
+              <button
+                type="button"
+                onClick={() => setShowAllThemes((v) => !v)}
+                data-testid="theme-show-all"
+                className="self-start text-xs font-semibold text-primary hover:underline"
+              >
+                {showAllThemes ? "Show the most common only" : `Show all ${themeTiles.matching} themes`}
+              </button>
+            )}
+            {themeQuery.trim() && themeTiles.matching === 0 && <p className="text-xs text-muted">No theme matches.</p>}
           </div>
         )}
-      </aside>
+        </div>
+      </details>
       <div ref={topRef} className="min-w-0">
-        <div className="mb-3 inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
+        {bulkError && (
+          <p role="alert" className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800" data-testid="findings-bulk-error">
+            {`The bulk change was not saved: ${bulkError.replace(/\.$/, "")}.`}
+          </p>
+        )}
+        {/* Wraps rather than running past a narrow column (UI-GT500-01: at 375px the unwrapped strip
+            widened the whole page); every category keeps its full name and count. */}
+        <div data-testid="findings-category-strip" className="mb-3 inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
           {(
             [
               ["all", "All findings", findings.length],
@@ -2169,25 +2452,25 @@ export default function FindingsTable({
           // its own "show comparisons" disclosure opens, so the expanded
           // card grid underneath has room rather than being squeezed into
           // one grid column.
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(420px,1fr))] items-start gap-5">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,420px),1fr))] items-start gap-5">
             {groupedByTheme.map((group) => {
               const chartSpec = buildChartForThemeGroup(group.findings);
               if (!chartSpec) return null; // defensive only; visibleFindings already guarantees this
               return (
                 <div
-                  key={group.theme}
+                  key={group.key}
                   className="rounded-xl border border-border bg-slate-50/60 p-3 has-[details[open]]:col-span-full"
                 >
                   <div className="mb-3 flex items-center gap-2">
                     <span
-                      className={`h-2.5 w-2.5 rounded-full ${colorFor(group.theme).dot}`}
+                      className={`h-2.5 w-2.5 rounded-full ${colorFor(group.key).dot}`}
                       aria-hidden
                     />
                     <h3 className="text-sm font-semibold text-foreground">
                       {group.theme}
                     </h3>
                     <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colorFor(group.theme).badge}`}
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colorFor(group.key).badge}`}
                     >
                       {group.findings.length}
                     </span>
@@ -2220,7 +2503,7 @@ export default function FindingsTable({
                       Show the {group.findings.length} individual comparisons
                       behind this chart
                     </summary>
-                    <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
                       {group.findings.map((finding) => (
                         <FindingCard
                           key={finding.id}
@@ -2232,7 +2515,7 @@ export default function FindingsTable({
                           viewerLoadingId={viewerLoadingId}
                           openPreview={openPreview}
                           cardBorderClass="border-border"
-                          borderLeftClass={colorFor(group.theme).borderLeft}
+                          borderLeftClass={colorFor(group.key).borderLeft}
                         />
                       ))}
                     </div>
@@ -2266,20 +2549,20 @@ export default function FindingsTable({
                       : "Show all sub-themes"}
                   </button>
                 </div>
-                <div className="grid grid-flow-row-dense grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+                <div className="grid grid-flow-row-dense grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-3">
                   {mainThemeBlocks.map((block) => {
                     const isOpen =
-                      openMainTheme === "__all" || openMainTheme === block.theme;
+                      openMainTheme === "__all" || openMainTheme === block.key;
                     return (
-                      <Fragment key={block.theme}>
+                      <Fragment key={block.key}>
                         <ThemeSummaryCard
                           theme={block.theme}
                           findings={block.findings}
-                          dotClass={colorFor(block.theme).dot}
+                          dotClass={colorFor(block.key).dot}
                           active={isOpen}
                           onClick={() =>
                             setOpenMainTheme(
-                              openMainTheme === block.theme ? null : block.theme,
+                              openMainTheme === block.key ? null : block.key,
                             )
                           }
                         />
@@ -2316,7 +2599,7 @@ export default function FindingsTable({
                     </span>
                   </div>
                 )}
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
                   {block.groups.map((group) =>
                     group.findings.map((finding) => (
                       <FindingCard
@@ -2329,10 +2612,10 @@ export default function FindingsTable({
                         viewerLoadingId={viewerLoadingId}
                         openPreview={openPreview}
                         cardBorderClass="border-border"
-                        borderLeftClass={colorFor(group.theme).borderLeft}
+                        borderLeftClass={colorFor(group.key).borderLeft}
                         themeLabel={{
                           theme: group.theme,
-                          dotClass: colorFor(group.theme).dot,
+                          dotClass: colorFor(group.key).dot,
                         }}
                       />
                     )),
@@ -2366,7 +2649,7 @@ export default function FindingsTable({
                     ({ groupId, findings: groupFindings }) => (
                       <div
                         key={groupId}
-                        className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/30 p-3"
+                        className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/30 p-3"
                       >
                         {groupFindings.map((finding) => (
                           <FindingCard

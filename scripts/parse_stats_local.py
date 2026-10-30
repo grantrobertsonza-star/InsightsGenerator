@@ -4,7 +4,7 @@ plain `next dev`. Reuses that file's convert() so results are identical.
 
 Usage: python scripts/parse_stats_local.py <input> <source_filename> <output.json> [action] [args.json]
 
-action is convert (default), dictionary, categories, columns or crosstab.
+action is convert (default), table, indicators, dictionary, categories, columns, crosstab, respondent_quality, codebook, instrument_sheet or value_labels.
 """
 import importlib.util
 import json
@@ -32,15 +32,30 @@ def main() -> int:
     if action == "dictionary":
         result = mod.dictionary(data, source_filename, args)
     elif action == "categories":
-        result = mod.categories(data, source_filename, args["variable"], args.get("overlay"), args.get("layout"), args.get("selectedSheet"))
+        result = mod.categories(data, source_filename, args["variable"], args.get("overlay"), args.get("layout"), args.get("selectedSheet"), args.get("headerRowsSkipped"))
     elif action == "columns":
         result = mod.driver_columns(data, source_filename, args)
+    elif action == "instrument_sheet":
+        result = mod.instrument_sheet(data, source_filename, args)
+    elif action == "value_labels":
+        result = mod.value_labels(data, source_filename, args)
+    elif action == "codebook":
+        result = mod.codebook_items(data, source_filename, args)
+    elif action == "respondent_quality":
+        result = mod.respondent_quality(data, source_filename, args)
     elif action == "crosstab":
         result = mod.crosstab(data, source_filename, args)
-    else:
+    elif action == "table":
+        result = mod.read_table(data, source_filename, args)
+    elif action == "indicators":
+        result = mod.indicator_observations(data, source_filename, args)
+    elif action == "convert":
         result = mod.convert(data, source_filename)
+    else:
+        # An action this runner does not know is refused, never run as another one.
+        raise ValueError(f"The statistics runner does not know the action {action!r}.")
     with open(out, "w", encoding="utf-8") as f:
-        json.dump(result, f)
+        json.dump(result, f, allow_nan=False)
     return 0
 
 

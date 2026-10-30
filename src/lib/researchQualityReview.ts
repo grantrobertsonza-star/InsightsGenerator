@@ -16,8 +16,11 @@
 // tools besides the one structured answer. A task's answer is published only by the lease that
 // claimed it. Attempts are bounded per task and per review. Grant's decision (2026-10-16): no
 // monetary cap; the estimate is shown before the explicit start and actual cost is recorded.
+import { findPrecisionChecks } from "./marginOfError";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
-import { estimateCostUsd, logApiUsage } from "./apiUsage";
+import { costOfUsage, logApiUsage } from "./apiUsage";
+import { cachedSystem, cachedUserThen } from "./promptCache";
 import {
   CRITERIA,
   assessmentGroups,
@@ -28,6 +31,7 @@ import {
   referenceCatalogue,
   referencePassagesFor,
   selectCriteria,
+  criteriaForKind,
   sha256,
   validateExtraction,
   normaliseToolAnswer,
@@ -61,6 +65,10 @@ import { readSourceSnapshot } from "./researchQualitySources";
 import { withTenant } from "./db";
 import {
   DEFAULT_LIMITS,
+  KIND_LIMITS,
+  REVIEW_KINDS,
+  REVIEW_KIND_LABEL,
+  type ReviewKind,
   REVIEW_MODES,
   ResearchQualityError,
   SOURCE_ROLES,
@@ -80,6 +88,8 @@ const TASK_ATTEMPTS = 2;
 
 export type StartReviewInput = {
   requestKey: string;
+  /** Set for every review started from the screen since 2026-10-19; absent only on the older API. */
+  kind?: ReviewKind;
   mode: ReviewMode;
   studyType: StudyType;
   purpose: string;
@@ -88,11 +98,40 @@ export type StartReviewInput = {
   objectives: ReviewObjective[];
 };
 
+/**
+ * A kind review: one brief, one proposal, or one proposal and one brief. The document roles follow
+ * from the kind and the order given; mode, study type, purpose, decisions and objectives are not
+ * asked for (the module judges how well the document is written, not the evidence behind a decision).
+ */
+function validateKindInput(r: Partial<StartReviewInput>, kind: ReviewKind): StartReviewInput {
+  const docs = Array.isArray(r.sources) ? r.sources : [];
+  const want = kind === "proposal_vs_brief" ? 2 : 1;
+  if (docs.length !== want || docs.some((d) => !d || typeof d.documentId !== "string")) {
+    throw new ResearchQualityError(kind === "proposal_vs_brief" ? "Choose one proposal and one brief." : `Choose one document for a ${REVIEW_KIND_LABEL[kind].toLowerCase()}.`);
+  }
+  if (want === 2 && docs[0].documentId === docs[1].documentId) throw new ResearchQualityError("Choose two different documents: the proposal and the brief.");
+  const roles: SourceRole[][] = kind === "brief" ? [["brief"]] : kind === "proposal" ? [["proposal"]] : [["proposal"], ["brief"]];
+  return {
+    requestKey: r.requestKey as string,
+    kind,
+    mode: "improve_planned",
+    studyType: "unclear",
+    purpose: "",
+    sources: docs.map((d, i) => ({ documentId: d.documentId, roles: roles[i] })),
+    decisions: [],
+    objectives: [],
+  };
+}
+
 /** Server-side validation of the start form: enums, sizes, ownership checked later per document. */
 export function validateStartInput(raw: unknown): StartReviewInput {
   const r = raw as Partial<StartReviewInput> | null;
   if (!r || typeof r !== "object") throw new ResearchQualityError("Nothing to review.");
   if (typeof r.requestKey !== "string" || !/^[A-Za-z0-9_-]{8,80}$/.test(r.requestKey)) throw new ResearchQualityError("Invalid request key.");
+  if (r.kind !== undefined) {
+    if (!REVIEW_KINDS.includes(r.kind as ReviewKind)) throw new ResearchQualityError("Choose a brief review, a proposal review or a comparison.");
+    return validateKindInput(r, r.kind as ReviewKind);
+  }
   if (!REVIEW_MODES.includes(r.mode as ReviewMode)) throw new ResearchQualityError("Choose whether this is a planned study or a documented one.");
   if (!STUDY_TYPES.includes(r.studyType as StudyType)) throw new ResearchQualityError("Choose the study type, or 'not sure'.");
   const purpose = typeof r.purpose === "string" ? r.purpose.trim() : "";
@@ -121,20 +160,24 @@ export function validateStartInput(raw: unknown): StartReviewInput {
  * reason, before anything is created.
  */
 export async function prepareReview(tenantId: string, runId: string, input: StartReviewInput, actor: { userId: string | null; email: string | null }): Promise<{ reviewId: string; created: boolean }> {
+  const limits = input.kind ? KIND_LIMITS : DEFAULT_LIMITS;
   const sources: ReviewManifest["sources"] = [];
   let total = 0;
   let truncated = false;
+  // The text each source is assessed on, for the calculated margin-of-error check below.
+  const assessedText = new Map<string, string>();
   for (const s of input.sources) {
     const doc = await loadOwnedDocument(tenantId, runId, s.documentId);
     const { sourceId } = await saveSourceRoles(tenantId, runId, s.documentId, s.roles, null);
     const snap = await readSourceSnapshot(doc);
     const { versionId } = await recordSourceVersion(tenantId, runId, sourceId, s.documentId, snap);
-    const remaining = Math.max(0, DEFAULT_LIMITS.maxCharsTotal - total);
-    const ranges = chunkRanges(snap.canonicalText.length, Math.min(DEFAULT_LIMITS.maxCharsPerDocument, remaining));
+    const remaining = Math.max(0, limits.maxCharsTotal - total);
+    const ranges = chunkRanges(snap.canonicalText.length, Math.min(limits.maxCharsPerDocument, remaining));
     const assessed = ranges.reduce((n, r) => n + (r.end - r.start), 0);
     if (assessed < snap.canonicalText.length) truncated = true;
     total += assessed;
     sources.push({ sourceId, sourceVersionId: versionId, documentId: s.documentId, filename: snap.filename, roles: s.roles, canonicalSha256: snap.canonicalSha256, charCount: snap.canonicalText.length, assessedRanges: ranges });
+    assessedText.set(versionId, ranges.map((r) => snap.canonicalText.slice(r.start, r.end)).join("\n"));
   }
   const clarifications = await withTenant(tenantId, async (client) =>
     (
@@ -145,10 +188,14 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
     ).rows,
   );
   const roles = [...new Set(sources.flatMap((s) => s.roles))];
-  const criteria = selectCriteria(input.mode, input.studyType, roles, sources.length);
+  const all = selectCriteria(input.mode, input.studyType, roles, sources.length);
+  // A kind review records and runs only its own criteria; the older API keeps the full selection.
+  const own = input.kind ? new Set(criteriaForKind(input.kind)) : null;
+  const criteria = own ? all.filter((c) => own.has(c.criterionId)) : all;
   const groups = assessmentGroups(criteria);
   const cat = referenceCatalogue();
   const manifest: ReviewManifest = {
+    ...(input.kind ? { kind: input.kind } : {}),
     sources,
     mode: input.mode,
     studyType: input.studyType,
@@ -160,10 +207,18 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
     criteria,
     referencePassages: [],
     referenceCatalogue: { release: cat.release, kind: cat.kind, hash: cat.hash },
-    limits: DEFAULT_LIMITS,
+    limits,
     checklistRelease: null,
   };
-  const checklistReady = await checklistAvailable(tenantId);
+  // RQC-6: beside the model's "Sample size and precision" rating, code checks every stated margin of
+  // error against the sample size stated with it (marginOfError.ts), on the same text the review
+  // assesses. Done once here and frozen with the review, so it never changes after the fact.
+  if (criteria.some((c) => c.criterionId === "RQ-PROP-SAMPLE-SIZE")) {
+    manifest.precisionChecks = sources.map((src) => ({ sourceVersionId: src.sourceVersionId, filename: src.filename, checks: findPrecisionChecks(assessedText.get(src.sourceVersionId) ?? "") }));
+  }
+  // Element checklists belong to the older multi-document review; a kind review is rated on its
+  // dashboard's criteria only.
+  const checklistReady = !input.kind && (await checklistAvailable(tenantId));
   if (checklistReady) manifest.checklistRelease = { release: CHECKLISTS.release, hash: CHECKLISTS.hash };
   const extractTasks: NewTask[] = sources.flatMap((s, si) =>
     s.assessedRanges.map((range, ci) => ({
@@ -201,7 +256,7 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
     : [];
   // Bounded attempts: each task may run at most TASK_ATTEMPTS times (the first run plus one explicit
   // retry), and the review's reserved attempts may not exceed the configured maximum.
-  if ((extractTasks.length + assessTasks.length + checklistTasks.length) * TASK_ATTEMPTS > DEFAULT_LIMITS.maxAttempts) {
+  if ((extractTasks.length + assessTasks.length + checklistTasks.length) * TASK_ATTEMPTS > limits.maxAttempts) {
     throw new ResearchQualityError("This selection needs more model calls than one review allows. Select fewer or shorter documents.");
   }
   return createReview(tenantId, runId, {
@@ -227,24 +282,38 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
 
 type ModelAnswer = { input: unknown; usage: { input: number; output: number; cost: number } };
 
-async function callTool(tenantId: string, runId: string, agent: string, system: string, user: string, tool: { name: string; description: string; input_schema: Record<string, unknown> }, maxTokens: number): Promise<ModelAnswer> {
+/**
+ * One structured model call. `user` is a string, or `{ shared, rest }` when the opening part is
+ * repeated by the other calls of the same review step (the assessment groups share the facts; a
+ * document's checklists share its facts): the system prompt and that shared part are cached
+ * (promptCache.ts), so the second and later calls read them at a tenth of the price. The model sees
+ * the same text either way. The task's recorded cost includes cache writes and reads (costOfUsage).
+ */
+async function callTool(tenantId: string, runId: string, agent: string, system: string, user: string | { shared: string; rest: string }, tool: { name: string; description: string; input_schema: Record<string, unknown> }, maxTokens: number): Promise<ModelAnswer> {
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: maxTokens,
-    system,
+    system: cachedSystem(system),
     tool_choice: { type: "tool", name: tool.name },
     tools: [tool as never],
-    messages: [{ role: "user", content: user }],
+    messages: [typeof user === "string" ? { role: "user", content: user } : cachedUserThen(user.shared, user.rest)],
   });
-  const u = response.usage as { input_tokens: number; output_tokens: number };
+  const u = response.usage as { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number | null; cache_read_input_tokens?: number | null };
   await logApiUsage(tenantId, runId, agent, response.usage);
-  const usage = { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cost: estimateCostUsd(u.input_tokens ?? 0, u.output_tokens ?? 0) };
+  const cacheWrite = u.cache_creation_input_tokens ?? 0;
+  const cacheRead = u.cache_read_input_tokens ?? 0;
+  // `input` stays the total input the model read, as before caching, so recorded token counts compare.
+  const usage = { input: (u.input_tokens ?? 0) + cacheWrite + cacheRead, output: u.output_tokens ?? 0, cost: costOfUsage({ input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheWrite, cacheRead }) };
   // An answer cut off at the length limit is incomplete even when it parses; it is refused with
   // that reason rather than validated as if it were whole.
   if (response.stop_reason === "max_tokens") throw Object.assign(new Error(`the answer was cut off at the ${maxTokens}-token limit`), { usage });
-  const block = response.content.find((b) => b.type === "tool_use") as { input?: unknown } | undefined;
-  if (!block || block.input === undefined) throw Object.assign(new Error("the model gave no structured answer"), { usage });
-  return { input: block.input, usage };
+  // EC10K-F02: a refused, other-stop or other-tool answer is refused too, not only a cut-off one.
+  try {
+    return { input: finishedToolInput(response, tool.name, "The research quality reading"), usage };
+  } catch (error) {
+    if (!(error instanceof UnfinishedModelResultError)) throw error;
+    throw Object.assign(new Error(!response.content.some((b) => b.type === "tool_use") ? "the model gave no structured answer" : error.message), { usage });
+  }
 }
 
 // Output budgets. Up to 60 facts with quotes of up to 400 characters, plus statements, can exceed
@@ -393,6 +462,21 @@ async function runExtraction(tenantId: string, runId: string, review: { manifest
     );
     usage = answer.usage;
     const validated = validateExtraction(answer.input, { text: pinned.text, range: input.range, segments: pinned.segments, sourceId: src.sourceId, sourceVersionId: src.sourceVersionId });
+    // Codex RQ-F01: every proposed quote rejected (not found in the document, or an invalid topic,
+    // phase or selection) leaves no verified fact. Publishing that as a successful, empty reading
+    // made the review complete and rated the document Absent on everything. It is a failed reading
+    // of this passage instead: the step fails visibly and Retry failed steps reads it again. Only an
+    // answer that proposed nothing and said so (nothing_found) is a reading that found nothing.
+    if (validated.facts.length === 0 && validated.dropped > 0) {
+      throw Object.assign(
+        new Error(
+          `none of the ${validated.dropped === 1 ? "1 passage" : `${validated.dropped} passages`} the model quoted from ${src.filename} ` +
+            `(characters ${input.range.start} to ${input.range.end}) could be found in the document, so nothing was taken from this part. ` +
+            "It is not read as having no content",
+        ),
+        { usage },
+      );
+    }
     await publishExtraction(tenantId, task.id, lease, validated, usage);
   } catch (error) {
     usage = (error as { usage?: typeof usage }).usage ?? usage;
@@ -447,16 +531,20 @@ async function runChecklist(tenantId: string, runId: string, manifest: ReviewMan
   let usage = { input: 0, output: 0, cost: 0 };
   try {
     if (!checklist || !src) throw new Error("the checklist or its document is not in this review");
-    const payload = {
+    // The document and its facts are the same for each of its checklists, so they come first and
+    // are cached; the checklist and its elements follow.
+    const shared = {
       document: { name: src.filename, roles: src.roles, read: sourceRead[sourceIndex] },
+      facts: ownFacts.map((f) => ({ id: f.factId, topic: f.topic, phase: f.phase, quote: f.exactQuote })),
+      brief_facts: briefFacts.map((f) => ({ id: f.factId, topic: f.topic, quote: f.exactQuote })),
+    };
+    const rest = {
       checklist: { id: checklist.checklistId, label: checklist.label },
       elements: checklist.sections.flatMap((sec) =>
         sec.elements.map((e) => ({ element_id: e.elementId, section: sec.label, element: e.label, present_when: e.present, partial_when: e.partial, ...(e.compare === "brief_if_present" ? { compare_with_brief: true } : {}) })),
       ),
-      facts: ownFacts.map((f) => ({ id: f.factId, topic: f.topic, phase: f.phase, quote: f.exactQuote })),
-      brief_facts: briefFacts.map((f) => ({ id: f.factId, topic: f.topic, quote: f.exactQuote })),
     };
-    const answer = await callTool(tenantId, runId, "research_quality_checklist", CHECKLIST_SYSTEM, JSON.stringify(payload), CHECKLIST_TOOL, CHECKLIST_MAX_TOKENS);
+    const answer = await callTool(tenantId, runId, "research_quality_checklist", CHECKLIST_SYSTEM, { shared: `Shared input (the document and its facts):\n${JSON.stringify(shared)}`, rest: `This checklist:\n${JSON.stringify(rest)}` }, CHECKLIST_TOOL, CHECKLIST_MAX_TOKENS);
     usage = answer.usage;
     const elements = validateChecklistAnswer(normaliseToolAnswer(answer.input, "elements"), checklist, { ownFacts, briefFacts, fullyRead: sourceRead[sourceIndex] === "fully" });
     await publishChecklist(tenantId, task.id, lease, { checklistId, elements }, usage);
@@ -468,18 +556,32 @@ async function runChecklist(tenantId: string, runId: string, manifest: ReviewMan
 
 type SourceRead = "fully" | "partly" | "could not be read";
 
-async function runAssessment(tenantId: string, runId: string, reviewId: string, manifest: ReviewManifest, task: TaskRow, facts: DocumentedFact[], coverageComplete: boolean, sourceRead: SourceRead[]): Promise<void> {
+/** Source ids whose succeeded extraction steps left out quotes that could not be verified (Codex RQ-F01). */
+function unverifiedSources(extractTasks: TaskRow[], manifest: ReviewManifest): string[] {
+  const ids = new Set<string>();
+  for (const t of extractTasks) {
+    if (t.status !== "succeeded") continue;
+    const dropped = Number((t.validation as { droppedUnverifiableQuotes?: unknown } | null)?.droppedUnverifiableQuotes ?? 0);
+    const src = manifest.sources[(t.result?.input as { sourceIndex: number }).sourceIndex];
+    if (dropped > 0 && src) ids.add(src.sourceId);
+  }
+  return [...ids].sort();
+}
+
+async function runAssessment(tenantId: string, runId: string, reviewId: string, manifest: ReviewManifest, task: TaskRow, facts: DocumentedFact[], coverageComplete: boolean, sourceRead: SourceRead[], unverifiedSourceIds: string[]): Promise<void> {
   const criteriaIds = (task.result?.input as { criteria: string[] }).criteria;
   const criteria = criteriaIds.map((id) => CRITERIA.criteria.find((c) => c.criterionId === id)).filter(Boolean) as Criterion[];
   const passages = referencePassagesFor(criteriaIds, manifest.studyType, facts);
   const briefPresent = manifest.sources.some((s) => s.roles.includes("brief"));
-  const input = { criteria: criteriaIds, factIds: facts.map((f) => f.factId), factsHash: sha256(canonicalJson(facts)), passages: passages.map((p) => `${p.referenceId}:${p.passageId}`), coverageComplete };
+  const input = { criteria: criteriaIds, factIds: facts.map((f) => f.factId), factsHash: sha256(canonicalJson(facts)), passages: passages.map((p) => `${p.referenceId}:${p.passageId}`), coverageComplete, unverifiedSourceIds };
   await updateTaskInput(tenantId, task.id, input, sha256(canonicalJson(input)));
   const lease = await claimTask(tenantId, task.id);
   if (!lease) return;
   let usage = { input: 0, output: 0, cost: 0 };
   try {
-    const payload = {
+    // The context, sources, facts and clarifications are the same for every criteria group of this
+    // review, so they come first and are cached; the group's criteria and passages follow.
+    const shared = {
       context: {
         mode: manifest.mode,
         study_type: manifest.studyType,
@@ -491,6 +593,8 @@ async function runAssessment(tenantId: string, runId: string, reviewId: string, 
       sources: manifest.sources.map((s, i) => ({ source: s.filename, roles: s.roles, read: sourceRead[i] })),
       facts: facts.map((f) => ({ id: f.factId, source: manifest.sources.find((s) => s.sourceVersionId === f.sourceVersionId)?.filename, topic: f.topic, phase: f.phase, selection: f.selection, quote: f.exactQuote })),
       researcher_clarifications: manifest.clarifications.map((c) => ({ id: c.entryId, text: c.text })),
+    };
+    const rest = {
       criteria: criteria.map((c) => ({
         id: c.criterionId,
         question: c.assessmentQuestion,
@@ -501,13 +605,13 @@ async function runAssessment(tenantId: string, runId: string, reviewId: string, 
       })),
       reference_passages: passages.map((p) => ({ reference_id: p.referenceId, passage_id: p.passageId, text: p.text })),
     };
-    const answer = await callTool(tenantId, runId, "research_quality_assess", ASSESS_SYSTEM, JSON.stringify(payload), ASSESS_TOOL, ASSESS_MAX_TOKENS);
+    const answer = await callTool(tenantId, runId, "research_quality_assess", ASSESS_SYSTEM, { shared: `Shared input (the review's context, sources, facts and clarifications):\n${JSON.stringify(shared)}`, rest: `This criteria group:\n${JSON.stringify(rest)}` }, ASSESS_TOOL, ASSESS_MAX_TOKENS);
     usage = answer.usage;
     const answerObj = normaliseToolAnswer(answer.input, "observations");
     const raw = (answerObj as { observations?: unknown } | null)?.observations;
     if (!Array.isArray(raw)) throw new Error(`the assessment answer is not in the required shape (${describeShape(answerObj, ["observations"])})`);
     if (raw.length === 0) throw new Error("the assessment returned no observations");
-    const validated = (raw as RawObservation[]).map((o) => validateObservation(o, { criteria, facts, manifest, passages, coverageComplete, briefPresent }));
+    const validated = (raw as RawObservation[]).map((o) => validateObservation(o, { criteria, facts, manifest, passages, coverageComplete, briefPresent, unverifiedSourceIds, sourceRead: Object.fromEntries(manifest.sources.map((src, i) => [src.sourceId, sourceRead[i]])) }));
     const covered = new Set(validated.map((v) => v.criterionId));
     const notAssessed = criteriaIds.filter((id) => !covered.has(id));
     const observations = validated.map((p) => {
@@ -567,12 +671,15 @@ async function runReviewSteps(tenantId: string, runId: string, reviewId: string)
   const extractAll = tasks.filter((t) => t.stage === "extract");
   const extractionComplete = extractAll.every((t) => t.status === "succeeded");
   const truncated = manifest.sources.some((s) => s.assessedRanges.reduce((n, r) => n + (r.end - r.start), 0) < s.charCount);
-  const coverageComplete = extractionComplete && !truncated;
+  // Codex RQ-F01: a source whose successful extraction still left out unverifiable quotes was not
+  // fully read: the left-out passages may have stated what an absence rating would deny.
+  const unverifiedSourceIds = unverifiedSources(extractAll, manifest);
+  const coverageComplete = extractionComplete && !truncated && unverifiedSourceIds.length === 0;
   const sourceRead: SourceRead[] = manifest.sources.map((src, i) => {
     const mine = extractAll.filter((t) => (t.result?.input as { sourceIndex: number }).sourceIndex === i);
     if (mine.every((t) => t.status !== "succeeded")) return "could not be read";
     const whole = src.assessedRanges.reduce((n, r) => n + (r.end - r.start), 0) >= src.charCount;
-    return mine.every((t) => t.status === "succeeded") && whole ? "fully" : "partly";
+    return mine.every((t) => t.status === "succeeded") && whole && !unverifiedSourceIds.includes(src.sourceId) ? "fully" : "partly";
   });
   // With nothing read at all there is nothing to assess: the review fails visibly instead of
   // reporting every criterion as undocumented.
@@ -580,7 +687,7 @@ async function runReviewSteps(tenantId: string, runId: string, reviewId: string)
     // Assessments and checklists both read the settled facts and do not depend on each other.
     const next = tasks.filter((t) => (t.stage === "assess" || t.stage === "checklist") && t.status === "pending");
     await runPool(next, manifest.limits.concurrency, (t) =>
-      t.stage === "assess" ? runAssessment(tenantId, runId, reviewId, manifest, t, facts, coverageComplete, sourceRead) : runChecklist(tenantId, runId, manifest, t, facts, sourceRead),
+      t.stage === "assess" ? runAssessment(tenantId, runId, reviewId, manifest, t, facts, coverageComplete, sourceRead, unverifiedSourceIds) : runChecklist(tenantId, runId, manifest, t, facts, sourceRead),
     );
   }
   await finishReview(tenantId, reviewId, facts.length, coverageComplete);

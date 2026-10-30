@@ -20,12 +20,22 @@ import { archiveAndReplaceFindings } from "../findingArchive";
 // REP-IN-002: the archive first asks whether migration 0094's provenance columns exist. That
 // lookup is answered here (absent by default) and kept out of `calls`, so the assertions below
 // still see exactly the archive's own statements, in order.
-function createMockClient(provenanceAvailable = false) {
+// DI-F07: the history note column (migration 0114) is asked about too; present by default, so the
+// archive's own statements are the same five. `notedRow` answers the pre-0114 "is any of these noted"
+// probe.
+function createMockClient(provenanceAvailable = false, noteAvailable = true, notedRow = false) {
   const calls: { text: string; params: unknown[] }[] = [];
   const client = {
     query: vi.fn(async (text: string, params: unknown[] = []) => {
+      if (/information_schema\.columns/.test(text) && /researcher_note/.test(text)) {
+        return { rows: [{ n: noteAvailable ? 1 : 0 }] };
+      }
       if (/information_schema\.columns/.test(text)) {
         return { rows: [{ n: provenanceAvailable ? 10 : 0 }] };
+      }
+      if (/btrim\(researcher_note\)/.test(text)) {
+        calls.push({ text, params });
+        return { rows: notedRow ? [{ "?column?": 1 }] : [] };
       }
       calls.push({ text, params });
       return { rows: [] };
@@ -194,5 +204,35 @@ describe("archiveAndReplaceFindings", () => {
       archiveReason: "manual_reextract",
     });
     expect(vi.mocked(client.query)).not.toHaveBeenCalled();
+  });
+
+  it("DI-F07: the history copy keeps the researcher note once migration 0114 exists", async () => {
+    const { client, calls } = createMockClient(false, true);
+    await archiveAndReplaceFindings(client, { documentColumn: "source_document_id", documentId: "doc-1", onlyRejected: false, archiveReason: "manual_reextract" });
+    expect(calls[0].text).toMatch(/extraction_caveats, researcher_note\s*\)/);
+    expect(calls[0].text).toMatch(/select [\s\S]*extraction_caveats, researcher_note\s+from findings/);
+  });
+
+  it("DI-F07: before 0114, a noted finding is refused before anything is archived or deleted", async () => {
+    // The column check is cached once found, so a fresh module sees it missing.
+    vi.resetModules();
+    const { archiveAndReplaceFindings } = await import("../findingArchive");
+    const { client, calls } = createMockClient(false, false, true);
+    await expect(
+      archiveAndReplaceFindings(client, { documentColumn: "source_document_id", documentId: "doc-1", onlyRejected: false, archiveReason: "manual_reextract" }),
+    ).rejects.toThrow(/migration 0114/);
+    expect(calls.map((c) => c.text).some((t) => /insert into|delete from/i.test(t))).toBe(false);
+  });
+
+  it("DI-F07: before 0114, findings without a note are archived as before, without the note column", async () => {
+    // The column check is cached once found, so a fresh module sees it missing.
+    vi.resetModules();
+    const { archiveAndReplaceFindings } = await import("../findingArchive");
+    const { client, calls } = createMockClient(false, false, false);
+    await archiveAndReplaceFindings(client, { documentColumn: "source_document_id", documentId: "doc-1", onlyRejected: false, archiveReason: "manual_reextract" });
+    expect(calls[0].text).toMatch(/btrim\(researcher_note\)/);
+    expect(calls[1].text).toMatch(/insert into finding_history/i);
+    expect(calls[1].text).not.toMatch(/researcher_note/);
+    expect(calls[calls.length - 1].text).toMatch(/delete from findings/i);
   });
 });

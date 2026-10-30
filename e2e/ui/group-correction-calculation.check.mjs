@@ -11,10 +11,12 @@
 //      marked as possibly outdated.
 // Real browser on the disposable stack; the stored correction is checked in the database.
 import { expect, test } from "@playwright/test";
+import { openCrosstabs } from "./helpers/crosstabs.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { openSource } from "./helpers/sources.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -43,6 +45,8 @@ test("a saved group correction computes as corrected, and clearing it computes t
     const openImport = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });
       await page.getByRole("button", { name: /^Import data/ }).first().click();
+      // The data file's Variables tab (Grant's Sources layout, 2026-10-20).
+      await openSource(page, path.basename(GOLDEN), "Variables");
     };
     const reveal = async (control) => {
       await expect(control).toBeAttached({ timeout: 60_000 });
@@ -83,10 +87,7 @@ test("a saved group correction computes as corrected, and clearing it computes t
     // The adapter's picker selects single variables by their "Row" toggle; a multiple-response set
     // offers "Row (all)", so the set table is built with the same workspace steps here.
     await page.goto(run.url, { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: /^Analytics/ }).first().click();
-    await page.getByRole("button", { name: /^Crosstabs/ }).click();
-    const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-    await expect(dialog.getByRole("button", { name: /Add table to set/ })).toBeVisible({ timeout: 60_000 });
+    const dialog = await openCrosstabs(page);
     await dialog.getByPlaceholder("Search name or label").fill("Reasons");
     const setRow = dialog.locator('div.grid:has(> span[title="Reasons"])').first();
     await expect(setRow).toContainText("multiple response, 3 items");
@@ -96,7 +97,23 @@ test("a saved group correction computes as corrected, and clearing it computes t
     await expect(setTable).toBeVisible({ timeout: 60_000 });
     const shareText = await setTable.locator("tr", { hasText: "Convenience" }).first().innerText();
     const shares = [...shareText.matchAll(/(\d+(?:\.\d+)?)%/g)].map((m) => Number(m[1]));
-    await expect(dialog.getByRole("button", { name: /^▸ Convenience, all respondents.*may be outdated/ })).toBeVisible();
+    const toggle = dialog.getByRole("button", { name: /^▸ Convenience, all respondents.*may be outdated/ });
+    await expect(toggle).toBeVisible();
+    // Codex IR-08: at the default 1280px viewport the title and its "may be outdated" label had
+    // collapsed to 0px beside the table's action buttons. They must keep a usable width, here and
+    // with the variable pane dragged to its widest (the narrowest results pane).
+    const usable = async () => {
+      expect((await toggle.boundingBox())?.width ?? 0, "table title toggle width").toBeGreaterThanOrEqual(200);
+      expect((await toggle.getByText("may be outdated").boundingBox())?.width ?? 0, "outdated label width").toBeGreaterThan(40);
+    };
+    await usable();
+    const divider = page.getByRole("separator").first();
+    if (await divider.isVisible()) {
+      await divider.focus();
+      await page.keyboard.press("End");
+      await usable();
+      await page.keyboard.press("Home");
+    }
     testInfo.annotations.push({ type: "set-row", description: shareText.replace(/\s+/g, " ") });
     expect(shares.some((v) => Math.abs(v - reference.expectedValue) <= tol), `set Convenience share ${shares} vs reference ${reference.expectedValue}`).toBe(true);
   } finally {

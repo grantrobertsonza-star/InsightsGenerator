@@ -93,6 +93,12 @@ test("journey: upload to every export, numbers against the reference, screen and
       await page.goto(run.url, { waitUntil: "networkidle" });
       const read = async (section, selector, attrs) => {
         await page.getByRole("button", { name: new RegExp(`^${section}(\\s*\\d+)?$`) }).first().click();
+        // Findings and Insights open on an overview; the cards are in the review tab.
+        const tabId = { Findings: "findings-tab-review", Insights: "insights-tab-review", Recommendations: "rec-tab-review", "Insights report": "report-tab-narrative" }[section];
+        if (tabId) {
+          const t = page.getByTestId(tabId);
+          if (await t.count()) await t.click();
+        }
         await page.waitForTimeout(500);
         return page.locator(selector).evaluateAll((els, attrs) => els.map((e) => ({ ...Object.fromEntries(attrs.map((a) => [a, e.getAttribute(a)])), text: (e.innerText || "").replace(/\s+/g, " ").trim().slice(0, 400) })), attrs);
       };
@@ -166,7 +172,7 @@ test("journey: upload to every export, numbers against the reference, screen and
         expect.soft(yes?.[col("Male")], "export: Purchase Yes, Male").toBeCloseTo(0.6, 3);
         expect.soft(yes?.[col("Total")], "export: Purchase Yes, Total").toBeCloseTo(0.5, 3);
         expect.soft(text, "export: chi-square for Purchase by Gender").toMatch(/chi-square 8, df 1/);
-        expect.soft(text, "export: the test note names the method applied").toMatch(/two-proportion z-test with unpooled standard errors/);
+        expect.soft(text, "export: the test note names the method applied").toMatch(/two-proportion z-test, shares pooled under the null hypothesis/);
       }
       const accepted = route.includes("scope=accepted");
       if (route.startsWith("findings/")) {

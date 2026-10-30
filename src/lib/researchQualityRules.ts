@@ -4,9 +4,10 @@
 // A model may suggest; only this code decides which criteria apply, which references may be
 // cited, which quotes are real and which observation a judgement belongs to.
 import { createHash } from "node:crypto";
-import criteriaRelease from "../research-quality/criteria/RQC-2.json";
+import criteriaRelease from "../research-quality/criteria/RQC-6.json";
 import productionReferences from "../research-quality/references/RQR-1.json";
 import syntheticReferences from "../research-quality/references/RQR-T1.json";
+import { DASHBOARDS } from "./researchQualityDashboard";
 import {
   CRITERION_SCORES,
   SCORE_LABEL,
@@ -24,6 +25,7 @@ import {
   type CriterionScore,
   type ReferencePassage,
   type ReviewManifest,
+  type ReviewKind,
   type ReviewMode,
   type Segment,
   type SourceRole,
@@ -48,7 +50,10 @@ export function canonicalJson(value: unknown): string {
 }
 export const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
+// `criteria` keeps retired entries so reviews made under an earlier release still show their
+// questions and groups; selectCriteria never offers a retired criterion to a new review.
 export const CRITERIA = { release: criteriaRelease.release, hash: sha256(canonicalJson(criteriaRelease)), criteria: criteriaRelease.criteria };
+const isRetired = (c: Criterion) => typeof (c as { retired?: unknown }).retired === "string";
 
 /**
  * The reference catalogue in force. Production unless RESEARCH_QUALITY_REFERENCE_CATALOGUE is
@@ -79,7 +84,7 @@ export function selectCriteria(mode: ReviewMode, studyType: StudyType, roles: So
   const has = (r: SourceRole) => roles.includes(r);
   const documentedDesign = has("methodology") || has("report");
   const instrument = has("questionnaire") || has("discussion_guide");
-  return CRITERIA.criteria.map((c) => {
+  return CRITERIA.criteria.filter((c) => !isRetired(c)).map((c) => {
     const base = { criterionId: c.criterionId, version: c.version };
     const sel = (status: CriterionSelection["status"], reason: string) => ({ ...base, status, reason });
     if (!c.applicability.modes.includes(mode)) return sel("excluded", `applies only when reviewing a documented study`);
@@ -104,6 +109,8 @@ export function selectCriteria(mode: ReviewMode, studyType: StudyType, roles: So
         return instrument ? sel("selected", "a questionnaire or guide is selected") : sel("excluded", "no questionnaire or guide selected; added when one is");
       case "two-or-more-sources":
         return sourceCount >= 2 ? sel("selected", "two or more documents to compare") : sel("excluded", "only one document: nothing to compare");
+      case "proposal-and-brief":
+        return has("proposal") && has("brief") ? sel("selected", "a proposal and a brief are selected") : sel("excluded", "needs both a proposal and a brief");
       case "plan-and-execution":
         return (has("proposal") || has("brief")) && (has("report") || has("fieldwork") || has("methodology"))
           ? sel("selected", "both a plan and an account of what was done are selected")
@@ -118,6 +125,17 @@ export function selectCriteria(mode: ReviewMode, studyType: StudyType, roles: So
         return sel("unresolved", `no applicability rule ${c.applicability.ruleId}`);
     }
   });
+}
+
+/**
+ * The criteria a review of one kind runs: exactly its dashboard's (Grant 2026-10-19). A kind review
+ * records only these in its manifest, so nothing else is assessed, shown or exported.
+ */
+export function criteriaForKind(kind: ReviewKind): string[] {
+  const dashboardId = kind === "proposal_vs_brief" ? "comparison" : kind;
+  const d = DASHBOARDS.find((x) => x.dashboardId === dashboardId);
+  if (!d) throw new Error(`no dashboard for review kind ${kind}`);
+  return d.categories ? d.categories.flatMap((c) => c.criteria) : d.criteria;
 }
 
 /** The criteria grouped into the assessment tasks the review runs (one model call per group). */
@@ -375,6 +393,10 @@ export function validateObservation(
     passages: ReferencePassage[];
     coverageComplete: boolean;
     briefPresent?: boolean;
+    /** Codex RQ-F01: source ids whose extraction left out quotes that could not be verified. */
+    unverifiedSourceIds?: string[];
+    /** Codex RQ-F02: how far each source was read ("fully", "partly", "could not be read"), by source id. */
+    sourceRead?: Record<string, "fully" | "partly" | "could not be read">;
   },
 ): ObservationPayload {
   const criterion = ctx.criteria.find((c) => c.criterionId === raw.criterion_id);
@@ -391,14 +413,63 @@ export function validateObservation(
   if (!(DOCUMENTATION_STATES as readonly string[]).includes(documentation)) throw new Error(`invalid documentation state ${documentation}`);
   if (!(METHODOLOGY_STATES as readonly string[]).includes(methodology)) throw new Error(`invalid methodology state ${methodology}`);
   const basis = cited.length > 0 ? "documented_facts" : "absence_in_assessed_scope";
-  if (basis === "documented_facts" && documentation === "not_documented") {
+  // Codex RQ-F02: a proposal-against-brief comparison (group "comparison", RQ-CMP-*) needs the words
+  // of both documents: its required evidence is always one item from the brief and one from the
+  // proposal (RQC-6). A rating resting on one side cannot say how the other compares, so it is not
+  // rated: when either document could not be read, and when the cited quotes come from one
+  // document only. The one exception is a genuine gap: quotes from the brief only, the model saying
+  // the proposal does not cover it, and the proposal read in full; that is Absent. Absence with no
+  // quotes at all keeps the ordinary absence rules below. (Other criteria marked
+  // `comparison: "brief_if_present"` compare with a brief only when there is one, and are not
+  // affected.)
+  let comparisonGap = false;
+  if (criterion.group === "comparison" && ctx.sourceRead) {
+    const withRole = (role: string) => ctx.manifest.sources.filter((s) => s.roles.includes(role as never));
+    const proposals = withRole("proposal");
+    const briefs = withRole("brief");
+    if (proposals.length > 0 && briefs.length > 0) {
+      const readOf = (sources: typeof proposals) =>
+        sources.every((s) => ctx.sourceRead![s.sourceId] === "fully") ? "fully" : sources.some((s) => ctx.sourceRead![s.sourceId] && ctx.sourceRead![s.sourceId] !== "could not be read") ? "partly" : "unread";
+      const fromSide = (sources: typeof proposals) => cited.some((f) => sources.some((s) => s.sourceVersionId === f.sourceVersionId));
+      const unread = [readOf(proposals) === "unread" ? "proposal" : null, readOf(briefs) === "unread" ? "brief" : null].filter(Boolean);
+      const citedProposal = fromSide(proposals);
+      const citedBrief = fromSide(briefs);
+      if (unread.length > 0) {
+        documentation = "not_assessed";
+        notes.push(`The ${unread.join(" and the ")} could not be read, so this comparison is not rated.`);
+      } else if (cited.length > 0 && !(citedProposal && citedBrief)) {
+        if (citedBrief && documentation === "not_documented" && readOf(proposals) === "fully") {
+          comparisonGap = true;
+          notes.push("The brief states this and the proposal, read in full, does not: scored Absent.");
+        } else {
+          documentation = "not_assessed";
+          notes.push(`A comparison needs quotes from both the proposal and the brief; this one cited only the ${citedProposal ? "proposal" : "brief"}, so it is not rated.`);
+        }
+      }
+    }
+  }
+  if (basis === "documented_facts" && documentation === "not_documented" && !comparisonGap) {
     documentation = "partial";
     notes.push("Facts were cited, so 'not documented' was recorded as 'partial'.");
   }
   if (basis === "absence_in_assessed_scope" && (documentation === "documented" || documentation === "partial" || documentation === "conflicting")) {
     throw new Error("observation claims documented content without citing any fact");
   }
-  if ((documentation === "not_documented" || documentation === "unavailable") && methodology === "concern") {
+  // Codex RQ-F01: an absence cannot be confirmed in a document some of whose proposed quotes were
+  // left out as unverifiable: those passages may have covered this criterion. The rating is "not
+  // assessed" (not rated, never Absent 0), as a checklist element is in a document not read in full.
+  // Only sources whose roles this criterion applies to count; a criterion that names no roles is
+  // affected by any such source.
+  const criterionRoles = new Set(criterion.applicability.roles);
+  const unverifiedRelevant = (ctx.unverifiedSourceIds ?? []).some((id) => {
+    const src = ctx.manifest.sources.find((s) => s.sourceId === id);
+    return !!src && (criterionRoles.size === 0 || src.roles.some((r) => criterionRoles.has(r)));
+  });
+  if (basis === "absence_in_assessed_scope" && documentation === "not_documented" && unverifiedRelevant) {
+    documentation = "not_assessed";
+    notes.push("Some passages the model quoted from the documents could not be found in them and were left out, so this absence cannot be confirmed: not rated.");
+  }
+  if ((documentation === "not_documented" || documentation === "unavailable" || documentation === "not_assessed") && methodology === "concern") {
     methodology = "cannot_assess";
     notes.push("Missing documentation is not evidence of a poor method: methodology recorded as 'cannot assess'.");
   }

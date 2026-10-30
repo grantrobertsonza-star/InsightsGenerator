@@ -7,6 +7,8 @@ import {
   type QualityStatus,
 } from "@/lib/dataQuality";
 import type { QuestionType, VariableOverrides } from "@/lib/variableOverrides";
+import { ChecksFold } from "./ImportQualityChecks";
+import ReadFileAgainButton from "./ReadFileAgainButton";
 
 export type ImportQualityTable = {
   /** Cached workbook preview could not be reconciled with its authoritative sheet. */
@@ -61,6 +63,9 @@ export type ImportQualityTable = {
    * value rather than guess at a format neither side can reproduce identically) - this
    * is a block with a recovery instruction, not a warning over a value that still works. */
   unsupportedIdentifierColumns?: string[];
+  /** How the file was read (document_tables.read_provenance): a CSV/TSV read as Windows-1252 or UTF-16
+   * text rather than UTF-8, and the variables holding calendar dates (stored as ISO dates). */
+  readNotes?: { encoding: string | null; dateColumns: string[]; naCodeColumns?: string[]; titleRows?: string[] };
   /** IMP-015: variables whose label sheets disagree about what a code (or the variable) means.
    * The engine shows such codes with every competing label instead of choosing one. */
   labelConflicts?: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[];
@@ -68,9 +73,37 @@ export type ImportQualityTable = {
   unmatchedLabelVariables?: string[];
 };
 
-/** IMP-015: what the import screen says about a workbook's label sheets. Conflicting definitions are shown,
- * never silently resolved; label-sheet names matching no data column are listed. Renders nothing when both are empty. */
+/** IMP-015: the alert for a workbook's conflicting label definitions. Conflicts are shown, never
+ * silently resolved. Label-sheet names matching no data column are the "Value labels" row of the
+ * checks table (ValueLabelsRow). Renders nothing when there is no conflict. */
 export function LabelDiagnosticsNotice({
+  conflicts,
+}: {
+  conflicts: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[];
+}) {
+  if (conflicts.length === 0) return null;
+  const vars = Array.from(new Set(conflicts.map((c) => c.variable)));
+  return (
+    <p role="alert" data-testid="label-conflicts" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+      <strong>Conflicting labels.</strong> This workbook&rsquo;s label sheets disagree about what{" "}
+      {vars.length === 1 ? "the variable " : "the variables "}
+      <strong>{vars.slice(0, 8).map((v) => `"${v}"`).join(", ")}</strong>
+      {vars.length > 8 ? ` and ${vars.length - 8} more` : ""}{" "}
+      {"mean. No label was chosen: each conflicting code is shown with all of its labels, for example "}
+      <em>1 [conflicting labels: &ldquo;Yes&rdquo; / &ldquo;No&rdquo;]</em>, in every table, chart and export, and the
+      counts are unaffected. <strong>To resolve:</strong> correct the label sheets in the workbook so each code has one
+      meaning, then re-upload the file. Tables or findings calculated before this check may still show one of
+      the labels; recalculate them after re-uploading.
+    </p>
+  );
+}
+
+/**
+ * The label sheets in the checks table (Grant, 2026-10-22: the long sentence listing names was hard to
+ * read). Counts come from the same lists the engine reports; every unmatched name is in the fold, none
+ * dropped. It is a note, not a check: it does not change the table's status or the tab's count.
+ */
+export function ValueLabelsRow({
   conflicts,
   unmatched,
 }: {
@@ -78,43 +111,91 @@ export function LabelDiagnosticsNotice({
   unmatched: string[];
 }) {
   if (conflicts.length === 0 && unmatched.length === 0) return null;
+  const conflicting = new Set(conflicts.map((c) => c.variable)).size;
   return (
-    <>
-      {conflicts.length > 0 ? (
-        <p role="alert" data-testid="label-conflicts" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          <strong>Conflicting labels.</strong> This workbook&rsquo;s label sheets disagree about what{" "}
-          {(() => {
-            const vars = Array.from(new Set(conflicts.map((c) => c.variable)));
-            return (
-              <>
-                {vars.length === 1 ? "the variable " : "the variables "}
-                <strong>{vars.slice(0, 8).map((v) => `"${v}"`).join(", ")}</strong>
-                {vars.length > 8 ? ` and ${vars.length - 8} more` : ""}
-              </>
-            );
-          })()}{" "}
-          {"mean. No label was chosen: each conflicting code is shown with all of its labels, for example "}
-          <em>1 [conflicting labels: &ldquo;Yes&rdquo; / &ldquo;No&rdquo;]</em>, in every table, chart and export, and the
-          counts are unaffected. <strong>To resolve:</strong> correct the label sheets in the workbook so each code has one
-          meaning, then re-upload the file. Tables or findings calculated before this check may still show one of
-          the labels; recalculate them after re-uploading.
-        </p>
-      ) : null}
-      {unmatched.length > 0 ? (
-        <p data-testid="unmatched-label-variables" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-          The label sheets describe {unmatched.length === 1 ? "a variable" : "variables"} that the data does
-          not contain, so {unmatched.length === 1 ? "its labels are" : "their labels are"} not applied:{" "}
-          <strong>{unmatched.slice(0, 8).map((v) => `"${v}"`).join(", ")}</strong>
-          {unmatched.length > 8 ? ` and ${unmatched.length - 8} more` : ""}. Check
-          for a renamed or misspelt column.
-        </p>
-      ) : null}
-    </>
+    <tr className="border-b border-border last:border-0" data-testid="value-labels-row">
+      <td className="px-3 py-2 align-top font-medium text-foreground">Value labels</td>
+      <td className="px-3 py-2 align-top text-muted">
+        {conflicting > 0 && <p>{`${conflicting} ${conflicting === 1 ? "variable has" : "variables have"} conflicting labels (see the note above).`}</p>}
+        {unmatched.length > 0 && (
+          <details data-testid="unmatched-label-variables">
+            <summary className="cursor-pointer">
+              {`${unmatched.length} ${unmatched.length === 1 ? "variable" : "variables"} in the label sheets ${unmatched.length === 1 ? "is" : "are"} not in the data, so ${unmatched.length === 1 ? "its labels are" : "their labels are"} not applied. Check for a renamed or misspelt column.`}
+            </summary>
+            <ul className="mt-1 max-h-48 list-disc overflow-y-auto pl-5">
+              {unmatched.map((v) => (
+                <li key={v} className="break-all">
+                  {v}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </td>
+      <td className="px-3 py-2 text-right align-top">
+        <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">Note</span>
+      </td>
+    </tr>
   );
 }
 
-export function ImportPreviewRecovery({ error }: { error: string }) {
-  return <p role="alert" data-testid="import-preview-recovery" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{error}</p>;
+const ENCODING_NAME: Record<string, string> = { "windows-1252": "Windows-1252 (Western European)", "utf-16": "UTF-16" };
+
+/** How the file was read, where that is worth knowing before trusting text and dates. */
+function ReadNotes({ notes }: { notes?: { encoding: string | null; dateColumns: string[]; naCodeColumns?: string[]; titleRows?: string[] } }) {
+  if (!notes) return null;
+  const legacy = notes.encoding && notes.encoding !== "utf-8" ? ENCODING_NAME[notes.encoding] ?? notes.encoding : null;
+  const dates = notes.dateColumns;
+  const naCodes = notes.naCodeColumns ?? [];
+  const titles = notes.titleRows ?? [];
+  if (!legacy && dates.length === 0 && naCodes.length === 0 && titles.length === 0) return null;
+  return (
+    <div data-testid="read-notes" className="space-y-1 rounded-lg border border-border bg-slate-50 px-3 py-2 text-xs text-muted">
+      {legacy && (
+        <p data-testid="read-encoding">
+          This file is not UTF-8 text, so it was read as <strong>{legacy}</strong>. If accented or non-Latin letters look
+          wrong in the preview, save the file as &ldquo;CSV UTF-8&rdquo; and upload it again.
+        </p>
+      )}
+      {dates.length > 0 && (
+        <p data-testid="read-dates">
+          {dates.length === 1 ? "The variable " : "The variables "}
+          <strong>{dates.slice(0, 6).map((c) => `"${c}"`).join(", ")}</strong>
+          {dates.length > 6 ? ` and ${dates.length - 6} more` : ""}{" "}
+          {dates.length === 1 ? "holds" : "hold"} dates, read as calendar dates (year-month-day, with the time of day where
+          the cell has one) in the preview and in every calculation. No time zone is applied.
+        </p>
+      )}
+      {titles.length > 0 && (
+        <p data-testid="read-title-rows">
+          {titles.length === 1 ? "The first row" : `The first ${titles.length} rows`} above the header
+          {titles.some((t) => t) ? <> (<strong>{titles.filter((t) => t).slice(0, 3).map((t) => `"${t.slice(0, 80)}"`).join(", ")}</strong>)</> : ""}{" "}
+          {titles.length === 1 ? "was read as a title and left out" : "were read as a title and left out"}: the header is the
+          first row holding two or more names. If a row left out holds data, delete the title rows from the file and upload it again.
+        </p>
+      )}
+      {naCodes.length > 0 && (
+        <p data-testid="read-na-codes" className="text-amber-800">
+          {naCodes.length === 1 ? "The variable " : "The variables "}
+          <strong>{naCodes.slice(0, 6).map((c) => `"${c}"`).join(", ")}</strong>
+          {naCodes.length > 6 ? ` and ${naCodes.length - 6} more` : ""}{" "}
+          {naCodes.length === 1 ? "holds" : "hold"} short codes, and cells reading &ldquo;NA&rdquo; were read as missing. If
+          &ldquo;NA&rdquo; is a code here (Namibia&rsquo;s country code, for example), those cases are not counted: change
+          the cells to another code, or to &ldquo;Namibia&rdquo;, and upload the file again.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A withheld stored preview (importPreviewIdentity.ts), with "Read the file again" where `reread` names the file. */
+export function ImportPreviewRecovery({ error, reread }: { error: string; reread?: { runId: string; documentId: string } }) {
+  return (
+    <div role="alert" data-testid="import-preview-recovery" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+      <p>{error}</p>
+      {reread && <ReadFileAgainButton runId={reread.runId} documentId={reread.documentId} />}
+    </div>
+  );
 }
 
 export const typeLabel: Record<VariableType, string> = {
@@ -166,12 +247,26 @@ function Stat({ value, label }: { value: string | number; label: string }) {
  * is counted straight from the stored rows, nothing is judged by a model,
  * and nothing is blocked: a Problem flag is a prompt to look, not a gate.
  */
+/**
+ * A table's heading. Inside a selected source's tab (withinSource) the file's name is already in the
+ * header above (Grant, 2026-10-20), so only the table's own name is given, and none for a file's only
+ * unnamed table.
+ */
+export function tableHeading(table: ImportQualityTable, withinSource: boolean): string | null {
+  const part = table.label ? table.label : table.tableIndex > 0 ? `table ${table.tableIndex + 1}` : null;
+  if (withinSource) return part ? part.charAt(0).toUpperCase() + part.slice(1) : null;
+  return `${table.documentName}${part ? `: ${part}` : ""}`;
+}
+
 export default function ImportQualityPanel({
   tables,
   hasReportOnly,
+  withinSource = false,
 }: {
   tables: ImportQualityTable[];
   hasReportOnly: boolean;
+  /** Shown in a selected source's tab: no file name and no box of its own. */
+  withinSource?: boolean;
 }) {
   if (tables.length === 0) {
     return (
@@ -201,26 +296,24 @@ export default function ImportQualityPanel({
             table.ingestionType,
             table.stated ?? [],
           );
-        const title = `${table.documentName}${table.label ? `: ${table.label}` : table.tableIndex > 0 ? `: table ${table.tableIndex + 1}` : ""}`;
+        const title = tableHeading(table, withinSource);
         const caseLabel = q.kind === "raw" ? "Cases" : "Rows";
         const variableLabel = q.kind === "raw" ? "Variables" : "Columns";
         return (
           <div
             key={table.id}
             data-testid="import-quality-table"
-            className="space-y-3 rounded-xl border border-border bg-white p-4"
+            className={withinSource ? "space-y-3" : "space-y-3 rounded-xl border border-border bg-white p-4"}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
-                <div
-                  className="truncate text-sm font-medium text-foreground"
-                  title={title}
-                >
-                  {title}
-                </div>
-                <div className="text-xs text-muted">
-                  {q.kind === "raw" ? "Case-level data" : "Aggregated table"}
-                </div>
+                {title && (
+                  <div className="truncate text-sm font-medium text-foreground" title={title}>
+                    {title}
+                  </div>
+                )}
+                {!withinSource && <div className="text-xs text-muted">{q.kind === "raw" ? "Case-level data" : "Aggregated table"}</div>}
+                {withinSource && !title && <div className="text-xs font-medium text-foreground">Overall</div>}
               </div>
               <StatusPill status={q.status} />
             </div>
@@ -244,7 +337,9 @@ export default function ImportQualityPanel({
                 kept variables, since that check needs the full row-by-row data in memory, not summaries.
               </p>
             ) : null}
-            <LabelDiagnosticsNotice conflicts={table.labelConflicts ?? []} unmatched={table.unmatchedLabelVariables ?? []} />
+            {/* Conflicting labels stay an alert above; label-sheet names with no data column are a
+                "Value labels" row in the checks table, with the full list in a fold (Grant, 2026-10-22). */}
+            <LabelDiagnosticsNotice conflicts={table.labelConflicts ?? []} />
             {table.unsupportedIdentifierColumns && table.unsupportedIdentifierColumns.length > 0 ? (
               <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 {table.unsupportedIdentifierColumns.length === 1 ? "The identifier column " : "The identifier columns "}
@@ -259,6 +354,7 @@ export default function ImportQualityPanel({
                 Cases blanked out this way won&rsquo;t match or group correctly until that&rsquo;s done.
               </p>
             ) : null}
+            <ReadNotes notes={table.readNotes} />
             <div className="grid grid-cols-2 gap-2 @lg:grid-cols-4">
               <Stat value={q.cases.toLocaleString()} label={caseLabel} />
               <Stat
@@ -285,36 +381,6 @@ export default function ImportQualityPanel({
                     : "Of all cells empty"
                 }
               />
-            </div>
-
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[520px] text-left text-xs">
-                <thead>
-                  <tr className="border-b border-border bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                    <th className="w-56 px-3 py-2">Check</th>
-                    <th className="px-3 py-2">Result</th>
-                    <th className="w-24 px-3 py-2 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {q.checks.map((check) => (
-                    <tr
-                      key={check.id}
-                      className="border-b border-border last:border-0"
-                    >
-                      <td className="px-3 py-2 align-middle font-medium text-foreground">
-                        {check.label}
-                      </td>
-                      <td className="px-3 py-2 align-middle text-muted">
-                        {check.detail}
-                      </td>
-                      <td className="px-3 py-2 text-right align-middle">
-                        <StatusPill status={check.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
 
             <div>
@@ -344,6 +410,39 @@ export default function ImportQualityPanel({
                 question was measured. Hover a type for the rule used.
               </p>
             </div>
+
+            <ChecksFold statuses={q.checks.map((check) => check.status)}>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-left text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    <th className="w-56 px-3 py-2">Check</th>
+                    <th className="px-3 py-2">Result</th>
+                    <th className="w-24 px-3 py-2 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {q.checks.map((check) => (
+                    <tr
+                      key={check.id}
+                      className="border-b border-border last:border-0"
+                    >
+                      <td className="px-3 py-2 align-middle font-medium text-foreground">
+                        {check.label}
+                      </td>
+                      <td className="px-3 py-2 align-middle text-muted">
+                        {check.detail}
+                      </td>
+                      <td className="px-3 py-2 text-right align-middle">
+                        <StatusPill status={check.status} />
+                      </td>
+                    </tr>
+                  ))}
+                  <ValueLabelsRow conflicts={table.labelConflicts ?? []} unmatched={table.unmatchedLabelVariables ?? []} />
+                </tbody>
+              </table>
+            </div>
+            </ChecksFold>
 
           </div>
         );

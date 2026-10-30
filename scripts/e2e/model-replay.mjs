@@ -64,10 +64,13 @@ const handlers = {
   },
   // Research Quality Review assessment: one observation per criterion sent, citing up to two facts.
   record_quality_observations: (content) => {
-    const p = JSON.parse(content);
+    const p = jsonParts(content);
     return {
       observations: p.criteria.map((c, i) => {
-        const cited = p.facts.slice(i % Math.max(1, p.facts.length), (i % Math.max(1, p.facts.length)) + 1).map((f) => f.id);
+        // A proposal-against-brief comparison (RQ-CMP-*) needs the words of both documents (Codex
+        // RQ-F02), so it cites the first fact of each document; other criteria cite one fact.
+        const perSource = [...new Map(p.facts.map((f) => [f.source, f.id])).values()];
+        const cited = c.id.startsWith("RQ-CMP-") ? perSource : p.facts.slice(i % Math.max(1, p.facts.length), (i % Math.max(1, p.facts.length)) + 1).map((f) => f.id);
         return {
           criterion_id: c.id,
           fact_ids: cited,
@@ -90,7 +93,7 @@ const handlers = {
   // Research Quality Review checklist: an element is present when a fact of a matching topic was
   // sent (decision, population, sampling or recruitment), absent otherwise. Judges nothing.
   record_checklist_statuses: (content) => {
-    const p = JSON.parse(content);
+    const p = jsonParts(content);
     const topicFor = (id) => (/DECISION/.test(id) ? "decision" : /POPULATION/.test(id) ? "population" : /SAMPLING|FRAME|SIZE/.test(id) ? "recruitment" : null);
     return {
       elements: p.elements.map((e) => {
@@ -149,6 +152,8 @@ const handlers = {
       priority: "medium",
       assumptions_and_risks: "Assumes the evidence holds.",
       alternatives_considered: "Wait for more evidence.",
+      // CE-2: the first numbered decision, so replayed recommendations record a decision served.
+      decision_indices: [0],
     })),
   }),
   record_narrative: (_content, system) => {
@@ -167,16 +172,48 @@ const handlers = {
   },
 };
 
+/**
+ * The JSON payload of a structured request: a single JSON line, or the JSON lines of a cached shared
+ * part and the rest (Research Quality's assessment and checklist calls), merged into one object.
+ */
+function jsonParts(content) {
+  return Object.assign({}, ...content.split("\n").filter((l) => l.startsWith("{")).map((l) => JSON.parse(l)));
+}
+
 export function createModelReplay(fixturePath) {
   const log = [];
-  const server = http.createServer(async (req, res) => {
+  // A check rewrites the fixture file between its steps; a request that arrives mid-write reads an empty or
+  // partial file. That once threw out of this handler and stopped the whole stack, so every later check
+  // timed out (27 October 2026). The read is retried briefly, and any other unexpected error answers that
+  // one request with a 500 (which the app reports as a failed model call) instead of ending the server.
+  const readFixture = async () => {
+    if (!fixturePath || !existsSync(fixturePath)) return null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return JSON.parse(readFileSync(fixturePath, "utf8"));
+      } catch (error) {
+        if (attempt >= 20) throw error;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    }
+  };
+  const server = http.createServer((req, res) => {
+    handle(req, res).catch((error) => {
+      log.push({ at: new Date().toISOString(), replayError: String(error?.message ?? error) });
+      if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ type: "error", error: { type: "api_error", message: `Replay error: ${error?.message ?? error}` } }));
+    });
+  });
+  async function handle(req, res) {
     const chunks = [];
     for await (const c of req) chunks.push(c);
     const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
     const name = body.tool_choice?.name;
-    const content = (body.messages ?? []).map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content))).join("\n");
-    const system = typeof body.system === "string" ? body.system : JSON.stringify(body.system ?? "");
-    const fixture = fixturePath && existsSync(fixturePath) ? JSON.parse(readFileSync(fixturePath, "utf8")) : null;
+    // Text blocks (a cached prefix and the rest, promptCache.ts) are read as the text they carry.
+    const textOf = (c) => (typeof c === "string" ? c : Array.isArray(c) ? c.map((b) => (b?.type === "text" ? b.text : JSON.stringify(b))).join("\n") : JSON.stringify(c));
+    const content = (body.messages ?? []).map((m) => textOf(m.content)).join("\n");
+    const system = textOf(body.system ?? "");
+    const fixture = await readFixture();
     const override = fixture?.tools?.[name]?.find(rule => content.includes(rule.match));
     if (override?.status) {
       log.push({ at: new Date().toISOString(), tool: name, scripted: true, injectedStatus: override.status });
@@ -192,10 +229,20 @@ export function createModelReplay(fixturePath) {
       // A tool loop with no forced tool (the crosstab planner, for example) gets plain text unless
       // the run's fixture scripts a tool call for it: {"untargeted":[{"match","tool","input"}]},
       // matched against the request messages like the per-tool rules above.
+      // A rule with `text` answers in words instead (the last step of a tool loop such as the
+      // Research assistant's; rules are tried in order, so put the later steps' rules first).
       const call = fixture?.untargeted?.find((rule) => content.includes(rule.match));
-      blocks = call
-        ? [{ type: "tool_use", id: `toolu_replay_${log.length}`, name: call.tool, input: call.input }]
-        : [{ type: "text", text: "Replay: no change made." }];
+      // A rule with `status` answers with that provider error instead (a failed model call).
+      if (call?.status) {
+        log.push({ at: new Date().toISOString(), tool: null, fromFixture: true, injectedStatus: call.status });
+        res.writeHead(call.status, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "Synthetic model failure" } }));
+      }
+      blocks = call?.text
+        ? [{ type: "text", text: call.text }]
+        : call
+          ? [{ type: "tool_use", id: `toolu_replay_${log.length}`, name: call.tool, input: call.input }]
+          : [{ type: "text", text: "Replay: no change made." }];
     }
     log.push({ at: new Date().toISOString(), tool: name ?? (blocks[0].type === "tool_use" ? blocks[0].name : null), promptChars: content.length + system.length, scripted: Boolean(name && handlers[name]), ...(override || (!name && blocks[0].type === "tool_use") ? { fromFixture: true } : {}), answer: blocks[0] });
     res.writeHead(200, { "content-type": "application/json", "request-id": `replay-${log.length}` });
@@ -211,6 +258,6 @@ export function createModelReplay(fixturePath) {
         usage: { input_tokens: 0, output_tokens: 0 },
       }),
     );
-  });
+  }
   return { server, log };
 }

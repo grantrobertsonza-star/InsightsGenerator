@@ -7,10 +7,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 vi.mock("@/lib/recommendationActions", () => ({}));
 vi.mock("@/lib/qualityActions", () => ({}));
 vi.mock("@/components/icons", async () => await import("../../components/icons"));
+vi.mock("@/lib/recommendationDecisions", async () => await import("../recommendationDecisions"));
+vi.mock("@/lib/evidenceTrailActions", () => ({ loadEvidenceTrailAction: async () => ({ ok: false, error: "not in this test" }), loadObjectiveTrailAction: async () => ({ ok: false, error: "not in this test" }) }));
 vi.mock("@/lib/supportStatusShared", async () => await import("../supportStatusShared"));
 vi.mock("@/lib/recommendationQualification", async () => await import("../recommendationQualification"));
 vi.mock("@/lib/figureChecks", async () => await import("../figureChecks"));
 vi.mock("@/lib/numberTrace", async () => await import("../numberTrace"));
+vi.mock("@/lib/recommendationOverview", async () => await import("../recommendationOverview"));
 
 const { MissingRecommendationsNotice, missingRecommendationCount } = await import("../../app/runs/[id]/SynthesizedRecommendationsReview");
 

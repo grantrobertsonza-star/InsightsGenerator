@@ -13,9 +13,9 @@ import {
   changeTurnCode,
   restoreCodebookVersion,
 } from "./codingOverrides";
-import { saveCodeMeta, saveTurnNote, syncFindingThemes } from "./codingMeta";
+import { attachOrphanTurnNote, clearOrphanTurnNote, saveCodeMeta, saveTurnNote, syncFindingThemes } from "./codingMeta";
 import { addMemo, deleteMemo, reuseCodebook } from "./codingMemos";
-import { saveTranscriptSetup, type InterviewStyle } from "./transcriptSetup";
+import { saveTranscriptSetup, withdrawTranscriptSetup, type InterviewStyle } from "./transcriptSetup";
 import {
   applyMajorityCoding,
   addVariableLink,
@@ -34,6 +34,7 @@ import {
   startCalibration,
 } from "./codingAnalysis";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 export type ActionResult =
   { ok: true; message?: string } | { ok: false; error: string };
@@ -60,6 +61,7 @@ export async function setSessionTypeAction(
   sessionType: "individual" | "focus_group",
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     setSessionType(TENANT_ID, runId, documentId, sessionType),
   );
@@ -72,6 +74,7 @@ export async function startCalibrationAction(
   options?: { kind?: "targeted" | "audit"; size?: number },
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     startCalibration(TENANT_ID, documentId, codebookId, options),
   );
@@ -84,6 +87,7 @@ export async function runStabilityCheckAction(
   reruns: number,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     runStabilityCheck(TENANT_ID, runId, documentId, codebookId, reruns),
   );
@@ -95,6 +99,7 @@ export async function applyMajorityCodingAction(
   codebookId: string,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     const message = await applyMajorityCoding(TENANT_ID, runId, documentId, codebookId);
     await syncFindingThemes(TENANT_ID, documentId);
@@ -109,6 +114,7 @@ export async function saveBlindStabilityTurnAction(
   codeIds: string[],
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     saveBlindStabilityTurn(TENANT_ID, codebookId, segmentId, codeIds),
   );
@@ -122,6 +128,7 @@ export async function resolveStabilityTurnAction(
   changes: { codeId: string; action: "add" | "remove" }[],
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     resolveStabilityTurn(
       TENANT_ID,
@@ -139,6 +146,7 @@ export async function resetCalibrationAction(
   codebookId: string,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () => resetCalibration(TENANT_ID, codebookId));
 }
 
@@ -149,6 +157,7 @@ export async function saveCalibrationTurnAction(
   appliedCodeIds: string[],
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     saveCalibrationTurn(TENANT_ID, codebookId, segmentId, appliedCodeIds),
   );
@@ -161,6 +170,7 @@ export async function setCaseMappingAction(
   column: string | null,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     setCaseMapping(TENANT_ID, runId, documentId, tableId, column),
   );
@@ -173,6 +183,7 @@ export async function setRespondentKeyAction(
   caseKey: string,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     setRespondentKey(TENANT_ID, documentId, speakerKey, caseKey),
   );
@@ -184,6 +195,7 @@ export async function proposeLinksAction(
   codebookId: string,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     const { proposed } = await proposeVariableLinks(
       TENANT_ID,
@@ -203,6 +215,7 @@ export async function addLinkAction(
   link: { codeName: string; variable: string; direction: "higher" | "lower" },
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     addVariableLink(TENANT_ID, runId, documentId, link),
   );
@@ -214,6 +227,7 @@ export async function setLinkStatusAction(
   status: "proposed" | "accepted" | "rejected",
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () => setLinkStatus(TENANT_ID, runId, linkIds, status));
 }
 
@@ -223,6 +237,7 @@ export async function searchNegativeCasesAction(
   codebookId: string,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     const r = await searchNegativeCases(
       TENANT_ID,
@@ -244,6 +259,7 @@ export async function setNegativeCaseStatusAction(
   status: "pending" | "confirmed" | "dismissed",
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     setNegativeCaseStatus(TENANT_ID, runId, id, status),
   );
@@ -256,6 +272,7 @@ export async function resegmentTranscriptAction(
   moderators: string[],
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     const result = await resegmentTranscript(
       TENANT_ID,
@@ -267,7 +284,7 @@ export async function resegmentTranscriptAction(
     const n = result.findings.length;
     const persistedNote = result.statusPersisted
       ? ""
-      : " (its completion status could not be saved - a database migration is pending; do not trust this document's status badge until it is applied)";
+      : " (its completion status could not be saved - the document may have been removed, or a database migration is pending; do not trust this document's status badge until it is applied)";
     return `Read the transcript again and re-applied the codebook. ${n} coded finding${n === 1 ? "" : "s"} now.${persistedNote}`;
   });
 }
@@ -279,9 +296,14 @@ export async function saveTranscriptSetupAction(
     sessionType: "individual" | "focus_group";
     mode: SegmentMode;
     style: InterviewStyle | null;
+    wave?: string | null;
   },
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
+  if (setup.wave !== undefined && setup.wave !== null && typeof setup.wave !== "string") {
+    return { ok: false, error: "The wave must be text." } as ActionResult;
+  }
   // No revalidatePath: the setup grid keeps its own state, and re-rendering
   // this whole page for three dropdowns is what made it feel slow.
   try {
@@ -295,12 +317,25 @@ export async function saveTranscriptSetupAction(
   }
 }
 
+/** Undo accept for one transcript: it goes back to "Needs review" and coding skips it until accepted again. */
+export async function withdrawTranscriptSetupAction(runId: string, documentId: string) {
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
+  try {
+    await withdrawTranscriptSetup(TENANT_ID, runId, documentId);
+    return { ok: true } as ActionResult;
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) } as ActionResult;
+  }
+}
+
 export async function checkMeaningSaturationAction(
   runId: string,
   documentId: string,
   codebookId: string,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     const r = await checkMeaningSaturation(
       TENANT_ID,
@@ -324,6 +359,7 @@ export async function changeTurnCodeAction(
   action: "add" | "remove",
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     changeTurnCode(TENANT_ID, runId, documentId, segmentId, codeId, action),
   );
@@ -338,6 +374,7 @@ export async function addResearcherCodeAction(
   segmentId: string | null,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, () =>
     addResearcherCode(
       TENANT_ID,
@@ -357,6 +394,7 @@ export async function restoreCodebookVersionAction(
   codebookId: string,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     const v = await restoreCodebookVersion(
       TENANT_ID,
@@ -374,27 +412,79 @@ export async function saveCodeMetaAction(
   entries: { name: string; theme: string; note: string; keywords: string }[],
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
-    await saveCodeMeta(TENANT_ID, documentId, entries);
+    await saveCodeMeta(TENANT_ID, runId, documentId, entries);
     await syncFindingThemes(TENANT_ID, documentId);
     return "Saved.";
   });
 }
 
+/** A server action's arguments are not checked by their TypeScript types: anything not a string is refused. */
+function requireText(value: unknown, what: string): string {
+  if (typeof value !== "string") throw new Error(`${what} is missing.`);
+  return value;
+}
+
+/**
+ * `turnText` is the turn as the screen showed it; when given, the note is saved only if the turn still
+ * says exactly that (COD5K-F02). Omitted only by callers that have no screen copy of the turn.
+ */
 export async function saveTurnNoteAction(
   runId: string,
   documentId: string,
   segmentIndex: number,
   note: string,
+  turnText?: string,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
-    await saveTurnNote(TENANT_ID, documentId, segmentIndex, note);
+    await saveTurnNote(
+      TENANT_ID,
+      runId,
+      documentId,
+      segmentIndex,
+      requireText(note, "The note"),
+      turnText === undefined ? undefined : requireText(turnText, "The turn's text"),
+    );
+  });
+}
+
+export async function clearOrphanTurnNoteAction(runId: string, documentId: string, ref: string) {
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
+  return guard(runId, async () => {
+    await clearOrphanTurnNote(TENANT_ID, runId, documentId, requireText(ref, "The note"));
+    return "Note removed.";
+  });
+}
+
+export async function attachOrphanTurnNoteAction(
+  runId: string,
+  documentId: string,
+  ref: string,
+  segmentIndex: number,
+  turnText: string,
+) {
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
+  return guard(runId, async () => {
+    await attachOrphanTurnNote(
+      TENANT_ID,
+      runId,
+      documentId,
+      requireText(ref, "The note"),
+      segmentIndex,
+      requireText(turnText, "The turn's text"),
+    );
+    return `Note attached to turn ${segmentIndex + 1}.`;
   });
 }
 
 export async function suggestThemesAction(runId: string, documentId: string) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     const r = await suggestThemes(TENANT_ID, runId, documentId);
     return `Grouped ${r.codes} codes into ${r.themes} themes. Review them, then edit as you see fit.`;
@@ -403,6 +493,7 @@ export async function suggestThemesAction(runId: string, documentId: string) {
 
 export async function integrateThemesAction(runId: string) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     const r = await integrateThemes(TENANT_ID, runId);
     const checks: string[] = [];
@@ -420,6 +511,7 @@ export async function addMemoAction(
   body: string,
 ) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     await addMemo(TENANT_ID, runId, { documentId, codeName, kind, body });
     return "Memo saved.";
@@ -428,6 +520,7 @@ export async function addMemoAction(
 
 export async function deleteMemoAction(runId: string, memoId: string) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     await deleteMemo(TENANT_ID, runId, memoId);
   });
@@ -435,6 +528,7 @@ export async function deleteMemoAction(runId: string, memoId: string) {
 
 export async function reuseCodebookAction(runId: string, targetDocumentId: string, sourceDocumentId: string) {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE } as ActionResult;
   return guard(runId, async () => {
     const r = await reuseCodebook(TENANT_ID, runId, targetDocumentId, sourceDocumentId);
     return `Applied ${r.codes} codes from the other transcript. Review the counts, then adjust the codebook if this transcript needs a code of its own.`;

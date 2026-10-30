@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
+import { beginConfirmation, clearConfirmation, onConfirmationSettled, settleConfirmation, takeMountState, type MountState } from "./remountConfirmation";
 import {
   restoreCodebookVersionAction,
   saveCodeMetaAction,
@@ -119,6 +120,12 @@ function reproductionBadge(run: number | null, total: number | null) {
  * every participant turn as a new version. Re-applying replaces this
  * transcript's coded findings, and one model call is made per batch of turns.
  */
+/** A save that finished after the researcher kept typing: it saved what was submitted, not what is shown. */
+export function savedWithNewerEdits(message: string): string {
+  const done = message === "Saved" ? "Your earlier change was saved." : /[.!?]$/.test(message) ? message : `${message}.`;
+  return `${done} The edits you have made since are not saved yet.`;
+}
+
 export default function CodebookPanel({
   codebook,
   reapply,
@@ -145,6 +152,18 @@ export default function CodebookPanel({
     keywords: c.keywords ?? "",
   }));
   const [drafts, setDrafts] = useState<Draft[]>(initial);
+  // B35-F01: true once the researcher has changed a code in this mount of the panel. A late refusal
+  // of an earlier save (made before a remount) must not put that save's drafts back over newer
+  // wording typed since, so the submitted drafts are restored only onto an untouched panel.
+  const editedSinceMount = useRef(false);
+  // B36-F06: counts edits in this mount, so a save that succeeds after newer typing says the newer
+  // edits are not saved yet rather than a bare "Saved" beside them.
+  const editCount = useRef(0);
+  const editDrafts = (update: (list: Draft[]) => Draft[]) => {
+    editedSinceMount.current = true;
+    editCount.current += 1;
+    setDrafts(update);
+  };
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [viewVersion, setViewVersion] = useState<string>("");
@@ -191,77 +210,110 @@ export default function CodebookPanel({
   ];
   const [saved, setSaved] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  // Saving changes the panel's key, which remounts it. Keep it open and keep
-  // the confirmation message across that remount.
+  // A successful save revalidates the page, which can remount this panel before the save's own
+  // await returns here; remountConfirmation carries the outcome across that remount without ever
+  // showing "Saved" for a save that is pending, refused or abandoned by a reload (R2P-F01).
   const reopenKey = `codebook-reopen-${codebook.documentId}`;
+  type Restore = { version: number; drafts: Draft[] };
+  const mounted = useRef(false);
   useEffect(() => {
-    try {
-      const m = window.sessionStorage.getItem(reopenKey);
-      if (m) {
-        window.sessionStorage.removeItem(reopenKey);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setOpen(true);
-        setSaved(m);
+    mounted.current = true;
+    const apply = (state: MountState<Restore>) => {
+      if (state.kind === "none" || state.kind === "waiting") return;
+      setOpen(true);
+      if (state.kind === "succeeded") {
+        setSaved(editedSinceMount.current ? savedWithNewerEdits(state.message) : state.message);
+        return;
       }
-    } catch {
-      /* storage unavailable */
-    }
+      // Drafts are put back only onto the codebook version they were written against, and only
+      // when nothing has been typed here since: newer wording is never replaced by older.
+      const keepNewer = editedSinceMount.current;
+      if (state.restore.version === codebook.version && !keepNewer) setDrafts(state.restore.drafts);
+      const why =
+        state.kind === "failed"
+          ? state.error
+          : "The page reloaded before your last change was confirmed, so it may not have been saved. Check the codes below and save again if it is missing.";
+      setError(keepNewer ? `${why} Your earlier change was not put back, so the edits you have made since are kept; save them when ready.` : why);
+    };
+    const state = takeMountState<Restore>(reopenKey);
+    let unsubscribe = () => {};
+    if (state.kind === "waiting") {
+      // Still in flight in this page: show the panel open, and the outcome once it is known.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOpen(true);
+      unsubscribe = onConfirmationSettled(reopenKey, state.token, () => apply(takeMountState<Restore>(reopenKey)));
+    } else apply(state);
+    return () => {
+      mounted.current = false;
+      unsubscribe();
+    };
+    // Read once per mount of this document's panel; the version check reads the props of that mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reopenKey]);
-  function rememberReopen(message: string) {
-    try {
-      window.sessionStorage.setItem(reopenKey, message);
-    } catch {
-      /* storage unavailable */
-    }
-  }
-  function forgetReopen() {
-    try {
-      window.sessionStorage.removeItem(reopenKey);
-    } catch {
-      /* storage unavailable */
-    }
+  /** Runs a codebook action, showing its outcome here, or in the panel that replaced this one. */
+  function confirmedAction(
+    run: () => Promise<{ ok: true; message?: string } | { ok: false; error: string }>,
+    success: string,
+    { useServerMessage }: { useServerMessage: boolean },
+  ) {
+    setError(null);
+    setSaved(null);
+    const token = beginConfirmation<Restore>(reopenKey, { version: codebook.version, drafts });
+    const editsAtSubmit = editCount.current;
+    startTransition(async () => {
+      let r: { ok: true; message?: string } | { ok: false; error: string };
+      try {
+        r = await run();
+      } catch (e) {
+        r = { ok: false, error: e instanceof Error ? e.message : "The change could not be sent. Try again." };
+      }
+      if (r.ok) {
+        // Recorded even when shown here: the remount a success causes may still be to come.
+        const message = (useServerMessage && r.message) || success;
+        settleConfirmation<Restore>(reopenKey, token, { ok: true, message });
+        if (mounted.current) setSaved(editCount.current !== editsAtSubmit ? savedWithNewerEdits(message) : message);
+      } else if (mounted.current) {
+        // A refusal does not remount: this panel keeps the drafts and says why.
+        clearConfirmation(reopenKey, token);
+        setError(r.error);
+      } else {
+        settleConfirmation<Restore>(reopenKey, token, { ok: false, error: r.error });
+      }
+    });
   }
   function saveMeta() {
-    setError(null);
-    setSaved(null);
-    rememberReopen("Saved");
-    startTransition(async () => {
-      const r = await saveCodeMetaAction(
-        codebook.runId,
-        codebook.documentId,
-        drafts
-          .filter((d) => d.name.trim())
-          .map((d) => ({
-            name: d.name,
-            theme: d.theme,
-            note: d.note,
-            keywords: d.keywords,
-          })),
-      );
-      if (!r.ok) {
-        forgetReopen();
-        setError(r.error);
-      } else setSaved("Saved");
-    });
+    confirmedAction(
+      () =>
+        saveCodeMetaAction(
+          codebook.runId,
+          codebook.documentId,
+          drafts
+            .filter((d) => d.name.trim())
+            .map((d) => ({
+              name: d.name,
+              theme: d.theme,
+              note: d.note,
+              keywords: d.keywords,
+            })),
+        ),
+      "Saved",
+      { useServerMessage: false },
+    );
   }
   function suggest() {
-    setError(null);
-    setSaved(null);
-    rememberReopen("Themes suggested. Check the Theme box on each code below.");
-    startTransition(async () => {
-      const r = await suggestThemesAction(codebook.runId, codebook.documentId);
-      if (!r.ok) {
-        forgetReopen();
-        setError(r.error);
-      } else setSaved(r.message ?? "Themes suggested");
-    });
+    confirmedAction(
+      () => suggestThemesAction(codebook.runId, codebook.documentId),
+      "Themes suggested. Check the Theme box on each code below.",
+      { useServerMessage: true },
+    );
   }
+
   const valid =
     drafts.length > 0 &&
     drafts.every((d) => d.name.trim() && d.definition.trim());
 
   function update(key: string, patch: Partial<Draft>) {
-    setDrafts((list) =>
+    editDrafts((list) =>
       list.map((d) => (d.key === key ? { ...d, ...patch } : d)),
     );
   }
@@ -413,7 +465,7 @@ export default function CodebookPanel({
                   type="button"
                   disabled={isPending}
                   onClick={() =>
-                    setDrafts((list) => list.filter((x) => x.key !== d.key))
+                    editDrafts((list) => list.filter((x) => x.key !== d.key))
                   }
                   className="rounded-md px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-danger-light hover:text-danger"
                 >
@@ -579,7 +631,7 @@ export default function CodebookPanel({
             type="button"
             disabled={isPending}
             onClick={() =>
-              setDrafts((list) => [
+              editDrafts((list) => [
                 ...list,
                 {
                   key: `new-${Date.now()}-${list.length}`,

@@ -4,10 +4,12 @@
 
 import { isEligible } from "./routingParse";
 import type { StatedRouting } from "./statedRouting";
+import type { TableCell } from "./rowCells";
 
 export type QualityStatus = "pass" | "warn" | "fail";
 
-export type CellValue = string | number | null | undefined;
+/** A stored cell (rowCells.TableCell: a genuine Excel logical cell included) or an absent one. */
+export type CellValue = TableCell | undefined;
 
 // Inferred from the stored values alone: the file does not declare a
 // measurement level, so this is a reading of the data, not a fact about how
@@ -87,6 +89,8 @@ const MISSING_TOKENS = new Set(["na", "n/a", "nan", "null", "#n/a", "."]);
 export function isMissing(value: CellValue): boolean {
   if (value === null || value === undefined) return true;
   if (typeof value === "number") return Number.isNaN(value);
+  // A genuine Excel logical cell (TRUE/FALSE) is an answer, never missing.
+  if (typeof value === "boolean") return false;
   const text = value.trim().toLowerCase();
   return text === "" || MISSING_TOKENS.has(text);
 }

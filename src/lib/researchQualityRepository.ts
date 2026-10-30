@@ -31,7 +31,7 @@
 //     key so a repeated click records once;
 //   - a source version is immutable; re-reading identical text reuses the current version.
 import type { PoolClient } from "pg";
-import { withTenant } from "./db";
+import { withTenant, withTenantRead } from "./db";
 import { ResearchQualityConflictError, ResearchQualityError, ResearchQualitySetupError, type ObservationPayload, type ResearcherEntryKind, type SourceRole } from "./researchQualityTypes";
 import { canonicalJson, sha256 } from "./researchQualityRules";
 import type { SourceSnapshot } from "./researchQualitySources";
@@ -143,34 +143,43 @@ export async function recordSourceVersion(tenantId: string, runId: string, sourc
  */
 export async function purgeSourceText(tenantId: string, runId: string, sourceId: string): Promise<{ versions: number }> {
   if (!isUuid(sourceId)) throw new ResearchQualityError("Unknown source.");
-  return withTenant(tenantId, async (client) => {
-    await assertModuleTables(client);
-    const versions = (await client.query<{ id: string }>(`select id from research_quality_source_versions where source_id = $1 and run_id = $2 and tenant_id = $3 order by id for update`, [sourceId, runId, tenantId])).rows.map((r) => r.id);
-    if (versions.length === 0) {
-      const exists = await client.query(`select 1 from research_quality_sources where id = $1 and run_id = $2 and tenant_id = $3`, [sourceId, runId, tenantId]);
-      if (exists.rowCount !== 1) throw new ResearchQualityError("Unknown source.");
-      return { versions: 0 };
-    }
-    await client.query(`update research_quality_source_versions set canonical_text = '', segments = '[]'::jsonb, purged_at = now() where id = any($1::uuid[])`, [versions]);
-    // Quotes from purged versions are blanked wherever they were copied.
-    await client.query(
-      `update research_quality_observation_versions ov
-          set payload = jsonb_set(ov.payload, '{statements}', coalesce((
-                select jsonb_agg(case when s->>'sourceVersionId' = any($1::text[]) then s || '{"exactQuote": null, "purged": true}'::jsonb else s end)
-                from jsonb_array_elements(ov.payload->'statements') s), '[]'::jsonb))
-        where ov.run_id = $2 and exists (select 1 from jsonb_array_elements(ov.payload->'statements') s where s->>'sourceVersionId' = any($1::text[]))`,
-      [versions, runId],
-    );
-    await client.query(
-      `update research_quality_tasks t
-          set result = jsonb_set(t.result, '{facts}', coalesce((
-                select jsonb_agg(case when f->>'sourceVersionId' = any($1::text[]) then f || '{"exactQuote": null, "statement": null, "purged": true}'::jsonb else f end)
-                from jsonb_array_elements(t.result->'facts') f), '[]'::jsonb))
-        where t.run_id = $2 and t.result ? 'facts'`,
-      [versions, runId],
-    );
-    return { versions: versions.length };
-  });
+  return withTenant(tenantId, async (client) => purgeSourceTextInTransaction(client, tenantId, runId, sourceId));
+}
+
+/**
+ * The purge itself, inside a caller's transaction, so a caller can make it part of a larger change that
+ * commits or rolls back with it (documentBin.eraseRemovedDocument, SYS5B-F03: erasing a file and purging
+ * the Research quality text read from it are one change). Locks the source's versions.
+ */
+export async function purgeSourceTextInTransaction(client: PoolClient, tenantId: string, runId: string, sourceId: string): Promise<{ versions: number }> {
+  if (!isUuid(sourceId)) throw new ResearchQualityError("Unknown source.");
+  await assertModuleTables(client);
+  const versions = (await client.query<{ id: string }>(`select id from research_quality_source_versions where source_id = $1 and run_id = $2 and tenant_id = $3 order by id for update`, [sourceId, runId, tenantId])).rows.map((r) => r.id);
+  if (versions.length === 0) {
+    const exists = await client.query(`select 1 from research_quality_sources where id = $1 and run_id = $2 and tenant_id = $3`, [sourceId, runId, tenantId]);
+    if (exists.rowCount !== 1) throw new ResearchQualityError("Unknown source.");
+    return { versions: 0 };
+  }
+  const purged = await client.query(`update research_quality_source_versions set canonical_text = '', segments = '[]'::jsonb, purged_at = now() where id = any($1::uuid[])`, [versions]);
+  if (purged.rowCount !== versions.length) throw new ResearchQualityError("The source text could not be purged. Try again.");
+  // Quotes from purged versions are blanked wherever they were copied.
+  await client.query(
+    `update research_quality_observation_versions ov
+        set payload = jsonb_set(ov.payload, '{statements}', coalesce((
+              select jsonb_agg(case when s->>'sourceVersionId' = any($1::text[]) then s || '{"exactQuote": null, "purged": true}'::jsonb else s end)
+              from jsonb_array_elements(ov.payload->'statements') s), '[]'::jsonb))
+      where ov.run_id = $2 and exists (select 1 from jsonb_array_elements(ov.payload->'statements') s where s->>'sourceVersionId' = any($1::text[]))`,
+    [versions, runId],
+  );
+  await client.query(
+    `update research_quality_tasks t
+        set result = jsonb_set(t.result, '{facts}', coalesce((
+              select jsonb_agg(case when f->>'sourceVersionId' = any($1::text[]) then f || '{"exactQuote": null, "statement": null, "purged": true}'::jsonb else f end)
+              from jsonb_array_elements(t.result->'facts') f), '[]'::jsonb))
+      where t.run_id = $2 and t.result ? 'facts'`,
+    [versions, runId],
+  );
+  return { versions: versions.length };
 }
 
 // ---------------------------------------------------------------- reviews and tasks
@@ -591,5 +600,22 @@ export async function recordResearcherEntry(
       [tenantId, runId, e.observationId, e.observationVersionId, e.kind, e.body, e.actor.userId, e.actor.email, e.idempotencyKey],
     );
     return { entryId: r.rows[0].id, revision, duplicate: false };
+  });
+}
+
+/**
+ * The Research quality roles recorded for each of a project's documents (recorded at upload as a
+ * brief or a proposal, and changeable in Research quality), for naming a context file in the Import
+ * list. null when the module's tables are not there yet, so "not recorded" is never read as "no role".
+ */
+export async function getDocumentRoles(tenantId: string, runId: string): Promise<Map<string, SourceRole[]> | null> {
+  return withTenantRead(tenantId, async (client) => {
+    const ok = await client.query<{ ok: boolean }>(`select to_regclass('public.research_quality_sources') is not null as ok`);
+    if (!ok.rows[0]?.ok) return null;
+    const r = await client.query<{ document_id: string; roles: SourceRole[] }>(
+      `select document_id, roles from research_quality_sources where run_id = $1 and tenant_id = $2 and document_id is not null`,
+      [runId, tenantId],
+    );
+    return new Map(r.rows.map((x) => [x.document_id, x.roles]));
   });
 }

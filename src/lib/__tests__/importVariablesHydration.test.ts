@@ -21,6 +21,8 @@ vi.mock("@/lib/variableOverrideActions", () => ({
   saveVariableOverrideAction: (...args: unknown[]) => saveMock(...args),
 }));
 vi.mock("@/lib/dataQuality", async () => await import("../dataQuality"));
+// The withheld-preview notice offers "Read the file again" (a server action); not exercised here.
+vi.mock("@/lib/dataSetupActions", () => ({ readDataFileAction: vi.fn() }));
 vi.mock("@/lib/variableOverrideTypes", async () => await import("../variableOverrideTypes"));
 vi.mock("@/lib/statedRouting", () => ({}));
 vi.mock("@/lib/variableOverrides", () => ({}));

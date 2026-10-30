@@ -1,19 +1,22 @@
 // IMP-017 remainder: a file one unit over each supported limit is refused visibly and truthfully,
 // the refusal survives a reload, nothing usable is left half-imported, and the corrected file then
-// imports. Limits come from api/import-limits.json (20,000,000 bytes; 100,000 cases).
+// imports. Limits come from api/import-limits.json (100,000,000 bytes since 2026-10-19; 100,000 cases).
 // Real browser, server, engine and database on the disposable stack, with the local storage
 // stand-in (its complete inventory is checked). Synthetic CSV fixtures generated here.
-//   1. Bytes: a 20,000,001-byte file is refused with the 20 MB limit message; no document row, no
+//   1. Bytes: a file one byte over the limit is refused with the limit message; no document row, no
 //      cleanup record, no stored object; after a reload nothing is listed for it. The corrected
-//      20,000,000-byte file then imports (its document and table exist).
+//      file exactly at the limit then imports (its document and table exist).
 //   2. Cases: a 100,001-case file (well under the byte limit) is refused with the 100,000-case
 //      message; the refusal is still shown after a reload; no table is stored for it. After the
 //      file is deleted, the corrected 100,000-case file imports with 100,000 stored rows.
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { addFiles } from "./helpers/addFiles.mjs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { deleteFirstSource } from "./helpers/sources.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -37,6 +40,7 @@ test("one byte and one case over the limits are refused visibly, stay refused af
   page.on("dialog", (d) => d.accept());
   const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
   await db.connect();
+  let dir = null;
   try {
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
@@ -47,19 +51,23 @@ test("one byte and one case over the limits are refused visibly, stay refused af
     const openImport = async (run) => {
       await page.goto(run.url, { waitUntil: "networkidle" });
       await page.getByRole("button", { name: /^Import data/ }).first().click();
-      await expect(page.locator('input[name="rawTableFiles"]').first()).toBeAttached({ timeout: 60_000 });
+      await expect(page.getByRole("button", { name: "Add files", exact: true })).toBeVisible({ timeout: 60_000 });
     };
+    // Written to disk first: Playwright refuses an in-memory file over 50 MB, and the byte limit is
+    // 100 MB since 2026-10-19.
+    // Removed in finally: each run writes about 200 MB here, and leaving it filled the test machine's disk (29 Oct).
+    dir = mkdtempSync(path.join(tmpdir(), "limits-"));
     const upload = async (name, buffer) => {
-      const form = page.locator("form", { has: page.locator('input[name="rawTableFiles"]') });
-      await form.locator('input[name="rawTableFiles"]').setInputFiles({ name, mimeType: "text/csv", buffer });
-      await form.getByRole("button", { name: "Upload", exact: true }).click();
+      const file = path.join(dir, name);
+      writeFileSync(file, buffer);
+      await addFiles(page, file, "Raw data");
     };
 
     // 1. One byte over.
     const bytesRun = await ui.createRun({ name: `over-bytes-${Date.now()}` });
     await openImport(bytesRun);
     await upload("one-byte-over.csv", csv(limits.maxFileBytes + 1, 1000));
-    await expect(page.getByText(/exceeds the supported 20 MB limit \(20,000,000 bytes\)/).first()).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByText(new RegExp(`exceeds the supported ${Math.round(limits.maxFileBytes / 1e6)} MB limit \\(${limits.maxFileBytes.toLocaleString("en-GB")} bytes\\)`)).first()).toBeVisible({ timeout: 120_000 });
     expect(await docs(bytesRun)).toEqual([]);
     expect(await cleanup(bytesRun)).toBe(0);
     expect(await objects(bytesRun)).toEqual([]);
@@ -78,7 +86,16 @@ test("one byte and one case over the limits are refused visibly, stay refused af
     await openImport(casesRun);
     await expect(caseMessage).toBeVisible({ timeout: 120_000 });
     expect(await tables(casesRun)).toEqual([]);
-    await page.getByRole("button", { name: "Delete document", exact: true }).first().click();
+    // The refused file says so everywhere (Grant, 28 October 2026): its Preview does not claim it is still
+    // being read, and no "Setup: Accepted" chip or Open Crosstabs sits beside "Read failed".
+    const header = page.getByTestId("selected-source");
+    await expect(header.getByTestId("source-processing")).toHaveText("Processing: Read failed");
+    await expect(header.getByTestId("source-acceptance")).toHaveCount(0);
+    await expect(header.getByRole("button", { name: "Open Crosstabs" })).toHaveCount(0);
+    await expect(page.getByTestId("preview-read-failed").filter({ visible: true })).toBeVisible();
+    await expect(page.getByText("Reading the file now.")).toHaveCount(0);
+    if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-case-refused.png") });
+    await deleteFirstSource(page);
     await expect.poll(async () => (await docs(casesRun)).length, { timeout: 60_000 }).toBe(0);
     await openImport(casesRun);
     await upload("at-the-case-limit.csv", csv(500_000, limits.maxCases));
@@ -87,5 +104,6 @@ test("one byte and one case over the limits are refused visibly, stay refused af
     await expect(page.getByText(/exceeds the supported 100,000 case limit/)).toHaveCount(0);
   } finally {
     await db.end();
+    if (dir) rmSync(dir, { recursive: true, force: true });
   }
 });

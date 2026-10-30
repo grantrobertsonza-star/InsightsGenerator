@@ -31,7 +31,7 @@ describe("loadDataSetupWithStatus (overnight queue, package 4, IMP-014)", () => 
 
   it("a document with nothing saved yet is ok:true with defaults - distinct from a failure", async () => {
     vi.mocked(withTenantRead).mockImplementation(async (_tenantId, cb) =>
-      cb({ query: async () => ({ rows: [{ data_setup: null }] }) } as any),
+      cb({ query: async () => ({ rows: [{ data_setup: null }] }) } as never),
     );
     const r = await loadDataSetupWithStatus("tenant-1", "doc-1");
     expect(r.ok).toBe(true);
@@ -41,7 +41,7 @@ describe("loadDataSetupWithStatus (overnight queue, package 4, IMP-014)", () => 
   it("a document with a saved design is read back intact", async () => {
     const saved = { ...DEFAULT_DATA_SETUP, design: { mode: "explicit", psu: "PSU", strata: "STRATA" } };
     vi.mocked(withTenantRead).mockImplementation(async (_tenantId, cb) =>
-      cb({ query: async () => ({ rows: [{ data_setup: saved }] }) } as any),
+      cb({ query: async () => ({ rows: [{ data_setup: saved }] }) } as never),
     );
     const r = await loadDataSetupWithStatus("tenant-1", "doc-1");
     expect(r.ok).toBe(true);
@@ -71,7 +71,7 @@ describe("saveDataSetup compare-and-swap (overnight queue, package 4, IMP-014)",
         throw new Error("unhandled mock query: " + sql);
       },
     };
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(client as never));
     return { calls, get current() { return current; } };
   }
 

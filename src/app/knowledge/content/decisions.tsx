@@ -66,7 +66,7 @@ export default function DecisionsGuide() {
         <li>
           <strong>Synthesis.</strong> The model writes two to four sentences on what the evidence collectively points
           to, hedged, and connected to your business problem or research objective when you gave one. This is saved on
-          the run and shown at the top of the screen as &quot;What the evidence shows&quot;, so you can judge whether a
+          the run and shown on the left of the screen as &quot;What the evidence shows&quot;, so you can judge whether a
           candidate follows from it.
         </li>
         <li>

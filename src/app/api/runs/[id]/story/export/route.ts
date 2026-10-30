@@ -1,6 +1,10 @@
+import { narrativeFreshnessNote } from "@/lib/narrativeFreshness";
+import { insightsNoItemCites, loadObjectiveCoverage, qualifiedConclusion } from "@/lib/objectiveCoverage";
 import { NextResponse } from "next/server";
 import PptxGenJS from "pptxgenjs";
-import { withTenant } from "@/lib/db";
+import { withTenant, withTenantRead } from "@/lib/db";
+import { loadEvidenceTrail, loadTrailContext, unreadableTrail, type EvidenceTrail } from "@/lib/evidenceTrail";
+import { addEvidenceTrailSlides } from "@/lib/evidenceTrailSlides";
 import {
   addTitleSlide,
   addFooter,
@@ -28,7 +32,7 @@ import { exportCaveatLabels } from "@/lib/caveatLabels";
 import { loadInsightSupportOrUnchecked } from "@/lib/supportStatus";
 import { loadSynthesizedInsightSources, sourceLine } from "@/lib/sourceAttribution";
 import { summariseSupport, type InsightSupport, type SupportStatus } from "@/lib/supportStatusShared";
-import { figureCheckLoadErrorNote, loadRunFigureChecksForExport } from "@/lib/figureChecks";
+import { figureCheckLoadErrorNote, joinNotes, loadRunFigureChecksForExport } from "@/lib/figureChecks";
 import { figureCheckNote } from "@/lib/numberTrace";
 import type { DeckPillar } from "@/lib/storyNarrative";
 import { addDiscoverySlides } from "@/lib/discoverySlides";
@@ -37,7 +41,7 @@ import { narrativeFramingQualification } from "@/lib/narrativeSupportSummary";
 import { buildChartImagesByTheme } from "@/lib/exportChartImages";
 import type { ChartableFinding } from "@/lib/findingsChartData";
 import { latestVerdictLateral } from "@/lib/latestVerdict";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
 
 type ConfidenceTier = "strong" | "moderate" | "exploratory" | null;
 type QualityTier = "finding" | "partial" | "qualified" | null;
@@ -162,15 +166,20 @@ export async function GET(
   if (context instanceof Response) return context;
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(TENANT_ID, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
+  // B39-F01: coverage reads its cited insights' support on its own connections, so it is read before
+  // the export's transaction rather than inside it (a connection held while waiting for another).
+  const coverage = await loadObjectiveCoverage(TENANT_ID, runId);
   const result = await withTenant(TENANT_ID, async (client) => {
     const runResult = await client.query<{
       project_name: string | null;
       decision_statement: string | null;
       audience: string | null;
     }>(
-      "select project_name, decision_statement, audience from runs where id = $1",
-      [runId],
+      "select project_name, decision_statement, audience from runs where id = $1 and tenant_id = $2",
+      [runId, TENANT_ID],
     );
 
     const narrativeResult = await client.query<{
@@ -255,59 +264,25 @@ export async function GET(
       [runId],
     );
 
-    // OBJ-REV-012: evidence_digest_degraded (migration 0087) is migration-guarded with a catalog
-    // probe, same technique and same reasoning as page.tsx's own getObjectiveValidations - a
-    // failed SELECT on a pre-migration database would abort the rest of this transaction. Both
-    // export routes used to omit this column entirely, so a degraded conclusion (generated while
-    // direct data-evidence retrieval was failing) reached DOCX/PPTX with no qualification at all,
-    // even though the live app already flags it. Folded into the same `conclusion` string the
-    // existing "inferred" wrapper already builds, rather than a new field, so every renderer that
-    // already prints `conclusion` picks this up with no further change.
-    const evidenceDigestDegradedColExists = await client.query<{ exists: boolean }>(
-      `select exists (
-         select 1 from information_schema.columns
-         where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded'
-       ) as "exists"`,
-    );
-    const objectiveValidationsResult = evidenceDigestDegradedColExists.rows[0]?.exists === true
-      ? await client.query<ExportObjectiveValidation>(
-          `select item_kind, item_text,
-                case when inferred then 'inferred' else status end as status,
-                (case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end)
-                  || (case when evidence_digest_degraded then ' (Evidence check degraded: generated while data-evidence retrieval was failing - may be missing evidence a working check would have cited.)' else '' end) as conclusion,
-                synthesized_insight_ids
-         from objective_validations
-         where run_id = $1
-         order by item_kind, item_order`,
-          [runId],
-        )
-      : await client.query<ExportObjectiveValidation>(
-          `select item_kind, item_text,
-                case when inferred then 'inferred' else status end as status,
-                case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end as conclusion,
-                synthesized_insight_ids
-         from objective_validations
-         where run_id = $1
-         order by item_kind, item_order`,
-          [runId],
-        );
-
-    // An accepted synthesized insight that no objective/decision item's
-    // array references at all -- evidence the project turned up that
-    // nothing it originally asked about was pointing toward. Worth naming
-    // on the deck rather than letting it disappear into a pillar as though
-    // it always belonged there (see objectiveValidator.ts's doc comment).
-    const unmappedInsightsResult = await client.query<{ id: string; headline: string }>(
-      `select si.id, si.headline
-       from synthesized_insights si
-       where si.run_id = $1 and si.review_status = 'accepted'
-         and not exists (
-           select 1 from objective_validations ov
-           where ov.run_id = $1 and ov.inferred = false and si.id = any(ov.synthesized_insight_ids)
-         )
-         and exists (select 1 from objective_validations x where x.run_id = $1 and x.inferred = false)`,
+    // Coverage is read through its one owner (objectiveCoverage.ts). The inferred and degraded
+    // (OBJ-REV-012) qualifications and, CE-1, an out-of-date or unknown check are folded into the
+    // `conclusion` string every renderer already prints, so none of them is dropped on export.
+    const objectiveValidationsResult = {
+      rows: coverage.rows.map((r): ExportObjectiveValidation => ({
+        item_kind: r.item_kind,
+        item_text: r.item_text,
+        status: r.inferred ? "inferred" : r.status,
+        conclusion: qualifiedConclusion(r, coverage.freshness),
+        synthesized_insight_ids: r.synthesized_insight_ids,
+      })),
+    };
+    // An accepted synthesized insight that no stated objective or decision cites: evidence the
+    // project turned up that nothing it asked about points to (see objectiveValidator.ts).
+    const acceptedForCoverage = await client.query<{ id: string; headline: string }>(
+      "select id, headline from synthesized_insights where run_id = $1 and review_status = 'accepted' order by created_at, id",
       [runId],
     );
+    const unmappedInsightsResult = { rows: insightsNoItemCites(coverage.rows, acceptedForCoverage.rows) };
 
     // Same accepted-and-verified scope and chartability columns the docx
     // export's Findings section uses (see story/export-docx/route.ts) --
@@ -326,10 +301,13 @@ export async function GET(
     // The validated / net-new split (see discoveryReport.ts): what this
     // analysis added beyond what the original report said.
     const discovery = await loadDiscoveryReportData(client, runId);
+    // CE-3: a narrative written for an earlier version of the project is qualified in the file too.
+    const narrativeFreshness = narrative ? await narrativeFreshnessNote(client, runId) : null;
 
     return {
       run: runResult.rows[0],
       narrative,
+      narrativeFreshness,
       acceptedInsightsById: new Map(
         (insightsResult?.rows ?? []).map((row) => [row.id, row]),
       ),
@@ -344,6 +322,7 @@ export async function GET(
   const {
     run,
     narrative,
+    narrativeFreshness,
     acceptedInsightsById,
     acceptedRecommendations,
     objectiveValidations,
@@ -423,10 +402,11 @@ export async function GET(
   // was generated, with this qualification on each of those slides whenever any insight it was
   // written from no longer has current support. Same counting rule as the app's support line.
   const citedInsightIds = narrative.pillars.flatMap((pillar) => pillar.insight_ids);
-  const framingNote = narrativeFramingQualification(
+  const supportFramingNote = narrativeFramingQualification(
     citedInsightIds,
     Object.fromEntries(citedInsightIds.filter((id) => acceptedInsightsById.has(id)).map((id) => [id, supportOf(id)])),
   );
+  const framingNote = joinNotes(narrativeFreshness, supportFramingNote) ?? null;
   const recommendations = acceptedRecommendations.filter((rec) => {
     const s = supportOf(rec.synthesized_insight_id);
     if (s.status === "invalid") {
@@ -1095,6 +1075,24 @@ export async function GET(
     );
     addFooter(slide, deckTitle, "Evidence status");
   }
+
+  // The evidence trail of each recommendation in the deck, as the Word report's appendix has it. Read one
+  // recommendation at a time after the deck's own reads, so one unreadable trail is stated on its slide
+  // rather than failing the deck or silently leaving that trail out. Recommendations left out above
+  // (support no longer valid) have no trail here either.
+  const evidenceTrails: EvidenceTrail[] = [];
+  // One context for every trail, read on its own connections (B39-F01); a failed read is stated on each.
+  // EC10K-P01: the served decisions and brief passages of every trail are read once, with the context.
+  const trailContext = recommendations.length > 0 ? await loadTrailContext(TENANT_ID, runId, recommendations.map((r) => r.id)).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))) : null;
+  for (const rec of recommendations) {
+    try {
+      if (trailContext instanceof Error) throw trailContext;
+      evidenceTrails.push(await withTenantRead(TENANT_ID, (client) => loadEvidenceTrail(client, TENANT_ID, runId, rec.id, trailContext!)));
+    } catch (e) {
+      evidenceTrails.push(unreadableTrail(rec.action_text, e instanceof Error ? e.message : String(e)));
+    }
+  }
+  addEvidenceTrailSlides(pptx, evidenceTrails, deckTitle);
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
   const safeName = safeFileStem(

@@ -28,7 +28,7 @@ vi.mock("../contradictionDetector", () => ({ refreshContradictions: vi.fn() }));
 vi.mock("../anthropic", () => ({
   CLAUDE_MODEL: "test-model",
   // Any synthesis pass proposes nothing new: the point is what it does to EXISTING insights.
-  anthropic: { messages: { create: vi.fn(async () => ({ stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", input: { clusters: [] } }] })) } },
+  anthropic: { messages: { create: vi.fn(async () => ({ stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "record_clusters", input: { clusters: [] } }] })) } },
 }));
 
 const TENANT = "00000000-0000-4000-8000-0000000000ee";

@@ -90,9 +90,9 @@ vi.mock("../anthropic", () => ({
       create: vi.fn(async (req: { tool_choice: { name: string }; messages: { content: string }[] }) => {
         state.modelCalls.push({ tool: req.tool_choice.name, content: req.messages[0].content });
         if (req.tool_choice.name === "choose_answer") {
-          return { usage: {}, content: [{ type: "tool_use", input: { choice: state.modelChoice } }] };
+          return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", name: "choose_answer", input: { choice: state.modelChoice } }] };
         }
-        return { usage: {}, content: [{ type: "tool_use", input: { stance: "supports", summary: "judged" } }] };
+        return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", name: "record_stance", input: { stance: "supports", summary: "judged" } }] };
       }),
     },
   },

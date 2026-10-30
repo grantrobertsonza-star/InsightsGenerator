@@ -1,0 +1,31 @@
+{
+ "source": "scripts/reference/nps_group_reference.py (statsmodels WLS, cluster-robust without correction, times G/(G-1))",
+ "clustered": {
+  "A": {
+   "difference": 53.016546309226186,
+   "se": 14.400420999255083
+  },
+  "B": {
+   "difference": -0.038743046472266895,
+   "se": 13.706763797338361
+  },
+  "C": {
+   "difference": -55.34619642249834,
+   "se": 11.569995598676789
+  }
+ },
+ "unclustered": {
+  "A": {
+   "difference": 53.016546309226186,
+   "se": 11.649539631518778
+  },
+  "B": {
+   "difference": -0.038743046472266895,
+   "se": 12.039588171586182
+  },
+  "C": {
+   "difference": -55.34619642249834,
+   "se": 11.304659664825513
+  }
+ }
+}

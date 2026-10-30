@@ -39,3 +39,43 @@ export function parseObjectiveLines(text: string | null): string[] {
     .filter((l) => l.length > 0)
     .filter((l) => !(l.endsWith(":") && l.split(/\s+/).length <= 8));
 }
+
+/**
+ * When two objective lines are the same objective (Grant, 2026-10-21: filling from the same
+ * proposal again added every objective a second time). A re-read of a brief or proposal can come
+ * back with a trailing full stop, different capitals, curly quotes or extra spaces, so the stored
+ * text is compared through this key, never character for character. It is only an identity for
+ * matching; the researcher's wording is stored and shown as written.
+ */
+export function objectiveIdentityKey(line: string): string {
+  return normalizeObjectiveLine(line)
+    .normalize("NFKC")
+    .replace(/[\u2018\u2019\u201A\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u2033]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[\s.;:!,]+$/, "")
+    .trim();
+}
+
+/**
+ * The candidate each Setup line stands for, by the same marker-stripped comparison the edit has
+ * always used (R500-02): the researcher-authored candidate whose wording is the line, earliest
+ * first, each candidate given to at most one line. A Setup editor carries this id, so a save edits
+ * the record it was opened on and nothing else. null is a Setup-only line with no candidate (a
+ * list saved before candidates were kept for Setup lines).
+ */
+export function setupLineCandidateIds(
+  lines: string[],
+  candidates: { id: string; candidate_text: string; source: string }[],
+): (string | null)[] {
+  const used = new Set<string>();
+  return lines.map((line) => {
+    const wanted = normalizeObjectiveLine(line);
+    const match = candidates.find((c) => c.source === "researcher_authored" && !used.has(c.id) && normalizeObjectiveLine(c.candidate_text) === wanted);
+    if (!match) return null;
+    used.add(match.id);
+    return match.id;
+  });
+}

@@ -1,4 +1,6 @@
 import type { CrosstabResult, CrosstabRow } from "./parseStatsFile";
+import { isNonAnswerLabel } from "./nonAnswerLabel";
+import { exactSe, exactTotalPct } from "./crosstabExact";
 
 /**
  * The wide end of the funnel. Most market research is read as frequencies,
@@ -31,7 +33,11 @@ const Z = 1.96;
 const MAX_PER_TABLE = 40;
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
-const DK = /don.?t know|dk\b|refus|not applicable|n\/a|prefer not|unsure|none of the above|other \(/i;
+// Answers left out of a scale's boxes and of the leading answers: non-answers by the engine's rule (isNonAnswerLabel,
+// so "Not sure" counts, as in every base), and "None of the above" and "Other (...)", which are answers but sit outside
+// any ordering of the substantive ones.
+const OUTSIDE_RANKING = /none of the above|other \(/i;
+const notRanked = (label: string) => isNonAnswerLabel(label) || OUTSIDE_RANKING.test(label);
 const NEGATIVE = /\b(dis\w+|unlikely|unsatisfied|poor|bad|never|unimportant|difficult|not at all|not very|low|worst|negative)\b/i;
 const POSITIVE = /\b(agree|satisfied|good|excellent|likely|important|extremely|very|always|often|high|best|positive|easy)\b/i;
 
@@ -56,12 +62,24 @@ export function leadingNumber(label: string): number | null {
  * 0 to 10 scale (promoters 9-10, detractors 0-6, passives 7-8). Shared by the automatic descriptive-findings
  * funnel and the discrete NPS tool in Analytics, so both read the same number off the same table.
  */
+/**
+ * The Net Promoter scale: eleven or more answers, every one a number, including 0 and 10. The one rule for a
+ * 0 to 10 scale: computeNps refuses anything else, and the tracker role recogniser (trackerRoles.ts) offers a
+ * question as "likelihood to recommend (0 to 10)" only when its answer codes pass it (Codex D1-F01: a 1 to 10
+ * or 6 to 10 list was offered). Non-answer codes (98, 99) are left out by the caller before this check.
+ */
+export function isZeroToTenScale(points: (number | null)[]): boolean {
+  return points.length >= 11 && points.every((k) => k !== null) && points.includes(0) && points.includes(10);
+}
+
 export function computeNps(
   answers: CrosstabRow[],
   n0: number,
-  /** Which column to read each row's percentage from. Defaults to the Total column; pass r.pct[i] to read
-   * one banner column instead, so a segmented NPS reuses the exact same promoters/detractors math. */
-  pctOf: (r: CrosstabRow) => number | null = (r) => r.total.pct,
+  /** Which column to read each row's percentage from. Defaults to the Total column; pass exactPct(r, i) to
+   * read one banner column instead, so a segmented NPS reuses the exact same promoters/detractors math.
+   * Read through crosstabExact.ts: the parts are added unrounded and only the results below are rounded
+   * (CT5K-F01), never summed from the one-decimal display shares. */
+  pctOf: (r: CrosstabRow) => number | null = (r) => exactTotalPct(r),
   /** ANA-NPS-003: the matching design-based standard error (percentage points) for whichever column
    * pctOf reads, when the table has one. Defaults to "none available", which keeps the plain SRS
    * variance below as the only option - exactly this function's behaviour before this fix. When
@@ -112,8 +130,7 @@ export function computeNps(
   designExact: boolean;
 } | null {
   const numbered = answers.map((r) => ({ r, k: leadingNumber(r.label) }));
-  const isNps = numbered.length >= 11 && numbered.every((x) => x.k !== null) && numbered.some((x) => x.k === 0) && numbered.some((x) => x.k === 10);
-  if (!isNps) return null;
+  if (!isZeroToTenScale(numbered.map((x) => x.k))) return null;
   const suppressed = numbered.some((x) => pctOf(x.r) == null);
   const pct = (lo: number, hi: number) => numbered.filter((x) => (x.k as number) >= lo && (x.k as number) <= hi).reduce((a, x) => a + (pctOf(x.r) ?? 0), 0);
   const prom = pct(9, 10);
@@ -202,7 +219,8 @@ export function levelFindings(result: CrosstabResult): WideFinding[] {
     for (const r of dataRows.filter((x) => (x.isScore || x.isNet) && x.total.pct !== null && x.total.pct !== undefined)) {
       const n = baseOf(r);
       if (n === null || n < MIN_BASE) continue;
-      const v = round1(r.total.pct as number);
+      const exact = exactTotalPct(r) as number;
+      const v = round1(exact);
       if (r.isScore) {
         out.push({
           text: `${r.label} on ${q.label} is ${v} points (${w}, base ${Math.round(n)}${filterText}).`,
@@ -211,7 +229,7 @@ export function levelFindings(result: CrosstabResult): WideFinding[] {
           stats: { ...common(result, q.label, n), testType: "net_score", answer: r.label, value: v },
         });
       } else if (!r.isMean) {
-        const ci = interval(v, n, singleCol ? r.se?.[0] : null);
+        const ci = interval(exact, n, singleCol ? exactSe(r, 0) : null);
         out.push({
           text: `${r.label} on ${q.label}: ${v}% (95% interval ${ci.lo} to ${ci.hi}; ${w}, base ${Math.round(n)}${filterText}).`,
           theme: q.label,
@@ -249,11 +267,12 @@ export function levelFindings(result: CrosstabResult): WideFinding[] {
       // baseOf(answers[0]) - the FIRST option's base - and gating on it here
       // would let one thin-based option suppress every other option's
       // otherwise valid finding on this same multi question (IMP-013).
-      for (const r of [...answers].sort((a, b) => (b.total.pct ?? 0) - (a.total.pct ?? 0)).slice(0, 3)) {
+      for (const r of [...answers].sort((a, b) => (exactTotalPct(b) ?? 0) - (exactTotalPct(a) ?? 0)).slice(0, 3)) {
         const n = baseOf(r);
         if (n === null || n < MIN_BASE) continue;
-        const v = round1(r.total.pct as number);
-        const ci = interval(v, n, singleCol ? r.se?.[0] : null);
+        const exact = exactTotalPct(r) as number;
+        const v = round1(exact);
+        const ci = interval(exact, n, singleCol ? exactSe(r, 0) : null);
         out.push({
           text: `${v}% of respondents chose "${r.label}" on ${q.label} (95% interval ${ci.lo} to ${ci.hi}; ${w}, base ${Math.round(n)}${filterText}).`,
           theme: q.label,
@@ -277,7 +296,7 @@ export function levelFindings(result: CrosstabResult): WideFinding[] {
     // parseStatsFile.ts's designApplied comment). Otherwise that `se` is a plain SRS/Kish fallback
     // that would make computeNps() mislabel an abandoned or never-requested design as design-based.
     const designApplied = result.notes?.designApplied === true;
-    const nps = computeNps(answers, n0, (r) => r.total.pct, singleCol && designApplied ? (r) => r.se?.[0] ?? null : () => null, contrastSe);
+    const nps = computeNps(answers, n0, (r) => exactTotalPct(r), singleCol && designApplied ? (r) => exactSe(r, 0) : () => null, contrastSe);
     if (nps && !nps.suppressed) {
       out.push({
         text: `Net Promoter Score on ${q.label} is ${nps.nps} (promoters ${nps.promoters}%, passives ${nps.passives}%, detractors ${nps.detractors}%; 95% interval ${nps.lo} to ${nps.hi}; ${w}, base ${Math.round(n0)}${filterText}).`,
@@ -315,7 +334,7 @@ export function levelFindings(result: CrosstabResult): WideFinding[] {
     if (nps) continue; // recognised as an 11-point NPS scale, but suppressed: unavailable, not wrong
 
     // Ordered scale with a readable direction: top-two and bottom-two box.
-    const scale = answers.filter((r) => !DK.test(r.label));
+    const scale = answers.filter((r) => !notRanked(r.label));
     if (scale.length >= 4 && scale.length <= 7) {
       let topTwo: CrosstabRow[] | null = null;
       let bottomTwo: CrosstabRow[] | null = null;
@@ -337,11 +356,19 @@ export function levelFindings(result: CrosstabResult): WideFinding[] {
         assumption = ` (taking the two highest codes, ${topTwo.map((r) => r.label).join(" and ")}, as the top two)`;
       }
       if (topTwo && bottomTwo) {
-        const sum = (rs: CrosstabRow[]) => rs.reduce((a, r) => a + (r.total.pct ?? 0), 0);
-        const t = round1(sum(topTwo));
-        const b = round1(sum(bottomTwo));
-        const ct = interval(t, n0);
-        const cb = interval(b, n0);
+        // Added from the unrounded shares and rounded once (CT5K-F01); a missing share makes the box
+        // unavailable rather than counting as 0.
+        const sum = (rs: CrosstabRow[]) => {
+          const parts = rs.map((r) => exactTotalPct(r));
+          return parts.some((x) => x === null) ? null : (parts as number[]).reduce((a, x) => a + x, 0);
+        };
+        const tExact = sum(topTwo);
+        const bExact = sum(bottomTwo);
+        if (tExact === null || bExact === null) continue;
+        const t = round1(tExact);
+        const b = round1(bExact);
+        const ct = interval(tExact, n0);
+        const cb = interval(bExact, n0);
         out.push({
           text: `Top two box on ${q.label}${assumption}: ${t}% (95% interval ${ct.lo} to ${ct.hi}); bottom two box: ${b}% (95% interval ${cb.lo} to ${cb.hi}) (${w}, base ${Math.round(n0)}${filterText}).`,
           theme: q.label,
@@ -365,11 +392,12 @@ export function levelFindings(result: CrosstabResult): WideFinding[] {
     }
 
     // Anything else: the leading answers.
-    const ranked = [...answers].filter((r) => !DK.test(r.label)).sort((a, b) => (b.total.pct ?? 0) - (a.total.pct ?? 0));
+    const ranked = [...answers].filter((r) => !notRanked(r.label)).sort((a, b) => (exactTotalPct(b) ?? 0) - (exactTotalPct(a) ?? 0));
     if (ranked.length === 0) continue;
     const top = ranked[0];
-    const v = round1(top.total.pct as number);
-    const ci = interval(v, n0, singleCol ? top.se?.[0] : null);
+    const topExact = exactTotalPct(top) as number;
+    const v = round1(topExact);
+    const ci = interval(topExact, n0, singleCol ? exactSe(top, 0) : null);
     const second = ranked[1];
     out.push({
       text: `On ${q.label}, the most common answer is "${top.label}" at ${v}% (95% interval ${ci.lo} to ${ci.hi})${second ? `, then "${second.label}" at ${round1(second.total.pct as number)}%` : ""} (${w}, base ${Math.round(n0)}${filterText}).`,
