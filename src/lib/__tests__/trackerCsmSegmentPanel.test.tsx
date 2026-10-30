@@ -186,6 +186,7 @@ describe("Segment chip on the CSM dashboard (R5 CSM segment, mounted)", () => {
     expect(q("[data-testid=tracker-segment-chip]")!.textContent).toContain("All eligible");
     expect(q("[data-testid=tracker-segment-base]")).toBeNull();
     expect(q("[data-testid=tracker-csm-trend]")!.textContent).toContain("all customers");
+    expect(q("[data-testid=tracker-csm-scope-base]")!.textContent).toMatch(/^All customers base n = /);
 
     await click(q("[data-testid=tracker-segment-chip]"));
     expect(all("[data-testid=tracker-segment-question]").map((b) => b.getAttribute("data-variable"))).toEqual(["gender", "segment"]);
@@ -213,6 +214,8 @@ describe("Segment chip on the CSM dashboard (R5 CSM segment, mounted)", () => {
     expect(all("[data-testid=tracker-csm-tile]").every((t) => t.querySelector("[data-testid=tracker-segment-base]") !== null)).toBe(true);
     expect(q("[data-testid=tracker-csm-trend]")!.textContent).toContain("customers in the segment");
     expect(q("[data-testid=tracker-csm-nps]")!.textContent).toContain("customers in the segment");
+    // The header base is the segment's, never labelled as all customers alone.
+    expect(q("[data-testid=tracker-csm-scope-base]")!.textContent).toMatch(/^All customers in the segment base n = /);
     expect(q("[data-testid=tracker-drivers]")!.textContent).toContain("257 complete cases of 480 in the segment");
   });
 

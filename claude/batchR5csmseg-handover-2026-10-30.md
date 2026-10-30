@@ -1,8 +1,9 @@
 # Batch R5 CSM segment handover (30 October 2026)
 
-Status: **implemented, ready for independent review.** Branch `r5csmseg`, base `r5segment` at `a7dab7b` (the brand
-dashboard's segment). Tier A (engine, the distribution, NPS and driver tools, the CSM loader) with a tier B screen. No
-migration.
+Status: **implemented, ready for independent review.** Branch `claude/r5csmseg` (cloud continuation of the laptop's
+`r5csmseg`: code commit `12ecf9a`, documentation checkpoint `7e52ec9`, carried in `2889f1e`; this handover, the gate
+results and the screenshots in the commit after it). Base `r5segment` at `a7dab7b` (the brand dashboard's segment).
+Tier A (engine, the distribution, NPS and driver tools, the CSM loader) with a tier B screen. No migration.
 
 Grant (owner, 30 October 2026): "CSM needs a segment tool as well". The CSM dashboard's "Segment: All segments" chip was
 static text; it is now the brand dashboard's picker and every CSM figure is computed in the segment.
@@ -100,8 +101,9 @@ static text; it is now the brand dashboard's picker and every CSM figure is comp
   two-question segment with kind "csm" and stores it under `tracker-segment:run-1:csm` only; switching to Man with
   Woman's answer arriving late, Man's figures stay; every tile and card names the segment; the "customers in the
   segment" and driver cases wording; the brand key and the csm key kept apart; a refused segment offers Clear the
-  segment. Shown failing without the change: with the static chip restored, test 1 fails ("expected ... not to contain
-  'All segments'").
+  segment. Also (cloud review fix, below): the header base reads "All customers in the segment base n = ..." under a
+  segment and "All customers base n = ..." without one. Shown failing without the change: with the static chip
+  restored, test 1 fails ("expected ... not to contain 'All segments'").
 - `src/lib/__tests__/trackerSegment.db.test.ts`: the one assertion that the CSM dashboard refuses a segment now asserts
   that it takes it (segment n 228 on BMW wave 1, the brand segment's own reference). This is the intended contract
   change, not a weakened test.
@@ -111,7 +113,62 @@ static text; it is now the brand dashboard's picker and every CSM figure is comp
 
 ## Checks run
 
-RESULTS_PLACEHOLDER
+Run in the cloud container on 30 October 2026 at the code of `2889f1e` (plus the review fix below for the last two
+rows), worktree with `npm ci` and `npx next typegen`, Python 3 with pandas, numpy, scipy and pyreadstat, PostgreSQL 16
+on port 55432 (trust auth, a disposable database per test file), Playwright 1.56 with its Chromium. The machine was
+shared with several other sessions (2 CPUs, a 6.3 GB memory limit shared by every shell, load average 9 to 15, the
+disk at times full); the effects are stated per row.
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Typecheck | `npx tsc --noEmit` | exit 0 (before and after the review fix) |
+| Lint | `npx eslint src e2e --quiet` | the single command was killed twice by the shared memory limit (exit 137, no lint output); the same file set run in four parts, `npx eslint src/lib/__tests__ --quiet`, `npx eslint src/lib --ignore-pattern "src/lib/__tests__/**" --quiet`, `npx eslint src/app --quiet`, `npx eslint src/components src/proxy.ts e2e --quiet` (`src/research-quality` is wholly ignored by the config): 0 errors, exit 0 each. After the review fix, the two changed files: 0 errors |
+| Engine selftest | `python3 scripts/crosstab_selftest.py` | "All checks passed", 572 PASS, 0 FAIL |
+| Key tests | `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false TEST_DATABASE_URL=postgres://postgres@localhost:55432/postgres npx vitest run src/lib/__tests__/trackerCsmSegment.db.test.ts src/lib/__tests__/trackerCsmSegmentPanel.test.tsx --pool=forks` | 2 files, 9 tests passed (7 real-engine database tests, 2 mounted) |
+| Key tests without the change | the same, `-t "weighted, wave 2\|the picker, not static"`, with `toolSeg` in `trackerCsmFigures.ts` returning null and `TrackerDashboardPanel.tsx` checked out from `12ecf9a^` (both restored afterwards) | 2 failed, 7 skipped: "expected 3.6719389761835526 to be close to 3.6836462272263453" (satisfaction mean computed on every respondent) and "expected 'CSM Analyticsbanking_w2.sav / Wave 2C...' not to contain 'All segments'" |
+| Full library | `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false TEST_DATABASE_URL=postgres://postgres@localhost:55432/postgres npx vitest run src/lib/__tests__ --pool=forks` | Run 1 abandoned: the disk filled and the shared PostgreSQL stopped accepting connections partway (every later file failed to connect); not counted. Run 2 (70.5 min): Test Files 6 failed, 371 passed, 2 skipped (379); Tests 2857 passed, 92 skipped (2949), 0 tests failed. The 6 failed files are "Hook timed out in 10000ms" in their database teardown under the load, with every test in them passed: `codedPassageSnapshot.db`, `codingStabilityPre0128.db`, `decisionRefreshReconciliation.db`, `driverDependency.db`, `narrativeRecommendationFreshness.db`, `objectiveRereadSuggestions.db` (none touched by this change) |
+| The 6 rerun | the same command with those 6 files | 5 files passed, `decisionRefreshReconciliation.db` the same hook timeout; Tests 42 passed, 2 skipped (44). That file alone: 1 file passed, 6 tests passed, 1 skipped |
+| Existing tool tests | the 12 test files calling `runDistributionAction`, `runNpsAction` or `runDriverAnalysisFor` (`answerDomainScores.db`, `callerToBuilderStrictSetup`, `chartMethod`, `csmCompanyIdentity`, `designLookupFailureSurfacing`, `driverDependency.db`, `driverLabelCollision.db`, `driverLayoutBoundary`, `driverPerformanceDomain`, `driverProvenance.db`, `waveTrackingNpsMetadata`, `weightScalePercentages.db`) | unchanged since before `12ecf9a` (`git diff --stat 12ecf9a^ HEAD` on them is empty); all passed in run 2 (`driverDependency.db` in the rerun) |
+| Production build | `node scripts/e2e/prepare-build-db.mjs postgres://postgres@localhost:55432/postgres ie_test_build_r5csmseg`, then `NEXT_FONT_GOOGLE_MOCKED_RESPONSES=$PWD/scripts/e2e/font-mock.cjs DATABASE_URL=postgres://postgres@localhost:55432/ie_test_build_r5csmseg NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:3481 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=local-stand-in SUPABASE_SECRET_KEY=local-stand-in ANTHROPIC_API_KEY=stand-in npx next build --webpack`, then the same script with `--drop` | the build's type check was killed by the shared memory limit three times ("Failed to type check." with no error, the kernel's memory-limit kill logged at the same moment); the fourth attempt passed. Rebuilt after the review fix: passed on the first attempt (build database dropped afterwards) |
+| Browser | `E2E_NEXT_START=. E2E_APP_PORT=3480 E2E_STORAGE_PORT=3481 E2E_ADMIN_DATABASE_URL=postgres://postgres@localhost:55432/postgres node scripts/e2e/local-stack.mjs`, then `SHOT_DIR=$PWD/docs/screenshots/r5csmseg npx playwright test -c e2e/ui/ui-check.config.mjs --workers=1 tracker-csm-segment tracker-dashboard tracker-segment` | 5 passed (6.8 min): the CSM segment check (54.9 s), the three tracker dashboard tests including both CSM ones, and the brand segment check. After the review fix, a new stack on the rebuilt app, `... tracker-csm-segment tracker-dashboard`: 3 passed, 1 failed (3.8 min). Passed: the CSM segment check (1.0 min) and both CSM tests of `tracker-dashboard`. Failed: the brand test "tracker dashboard: change against the previous wave" (not a CSM test), at its upload step: after "Added 1 file: bmw_w2.sav" the source list still showed only bmw_w1.sav (still reading) and `Select bmw_w2.sav` was not found in 60 s; the same in two reruns of that test alone (load average about 12). It passed in the first run on the same code apart from the one CSM header label, which that test never shows, so it is not attributed to this change; it is listed as unresolved below |
+
+**Review fix in the cloud continuation.** The first screenshots showed the CSM header's base as "All customers base
+n = 337" with a segment applied: the base was the segment's (the satisfaction tile's effective base) but labelled as
+all customers. It now reads "All customers in the segment base n = 337" (or "<company> in the segment ..."), and the
+mounted test asserts both wordings. Why the tests missed it: the mounted test checked every card's segment line but
+not this header line. Screen only; no figure changed.
+
+Screenshots (1440 x 900, from the browser check after the review fix, `docs/screenshots/r5csmseg/`):
+`csm-segment-picker.png` (the picker, Woman and Segment 1 or 3 ticked), `csm-segment-company.png` (the Company page in
+the segment: every tile and card names it), `csm-segment-drivers.png` (driver priority, "277 complete cases of 349 in
+the segment"), `csm-segment-bank.png` (Capitec within the segment), `csm-segment-cleared.png` (cleared, all eligible).
+
+## Tool contract changes
+
+The full contracts are under "What changed" (Tools) and in `claude/d2-design-2026-10-29.md` "R5 CSM segment". In short,
+each tool is unchanged when no segment is passed (the existing tests for all three pass unchanged):
+
+| Tool | New argument | New on the result | Refusals |
+| --- | --- | --- | --- |
+| `runDistributionAction` (`src/lib/chartActions.ts`) | trailing `segmentRaw = null` (profile questions by name, answers by raw code) | `filters` under a segment only; `base` (`n`, `w`, `nEff`) on every value series, with or without a segment | "The segment was not understood. Choose it again."; "The segment question <v> is not in this file."; the engine's "No cases satisfy ..." |
+| `runNpsAction` (`src/lib/npsActions.ts`) | trailing `segmentRaw = null` | `filters` under a segment only; `rawN`, `weightedBase`, `effectiveN`, interval are the segment's | as above |
+| `runDriverAnalysisFor` (`src/lib/drivers.ts`) | trailing `segmentRaw = null` | `segment` (`{ segment, filters, cases }`) under a segment; `casesInFile` is then the segment's cases | malformed segment thrown; under `MIN_SEGMENT_CASES` (20): "Fewer than 20 cases in the segment (<description>: <n>), so the driver model is not run on it." |
+| engine `driver_columns` (`api/parse-stats-file.py`) | optional `filters` (the crosstab filter shape) | only the filtered cases; `filters` (empty without any) | the engine's "No cases satisfy ..." |
+
+## Files
+
+- Engine: `api/parse-stats-file.py` (`_case_filter_mask`, `crosstab`, `driver_columns`); `scripts/crosstab_selftest.py`.
+- Owners and tools: `src/lib/trackerSegment.ts`, `src/lib/chartActions.ts`, `src/lib/npsActions.ts`,
+  `src/lib/drivers.ts`, `src/lib/trackerCsmFigures.ts`, `src/lib/trackerOverview.ts`.
+- Screen: `src/app/runs/[id]/TrackerDashboardPanel.tsx`, `src/app/runs/[id]/SegmentPicker.tsx`.
+- Tests: `src/lib/__tests__/trackerCsmSegment.db.test.ts`, `src/lib/__tests__/trackerCsmSegmentPanel.test.tsx`,
+  `src/lib/__tests__/helpers/csm_segment_reference.py`, `src/lib/__tests__/trackerSegment.db.test.ts` (one assertion,
+  the contract change), `e2e/ui/tracker-csm-segment.check.mjs`.
+- Documentation: `claude/d2-design-2026-10-29.md`, `claude/rules-registry.md`, this handover; screenshots
+  `docs/screenshots/r5csmseg/*.png`.
+- Callers affected: only the CSM loader (`trackerCsmFigures.ts`) passes a segment; every other caller of the three
+  tools (`AnalyticsBuilder.tsx`, `brandHealthActions.ts`, `driverActions.ts`, `waveTrackingActions.ts`,
+  `crosstabs.ts`, `csmActions.ts`) passes none and is unchanged.
 
 ## Mocks versus real
 
@@ -131,6 +188,11 @@ server actions (the boundary whose answer order is under test).
 - The NPS tool reports parts and score to one decimal and the effective base rounded; the distribution tool's series
   `n` is the rounded effective base (unchanged).
 - Remembered per browser only, as on the brand side.
+- Under a company chosen in "Show figures for", the satisfaction trend stays the segment's all-customer mean (as
+  before for all customers: the trend is not split by company).
+- Unresolved: the brand tracker dashboard browser test failed three times at its sequential upload step on the rebuilt
+  app under heavy shared load (see Checks run); it should be rerun on a quiet machine. The single
+  `npx eslint src e2e --quiet` command should also be rerun where memory allows (the same files were linted in parts).
 
 ## Merge notes
 

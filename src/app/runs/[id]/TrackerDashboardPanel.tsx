@@ -1673,7 +1673,9 @@ export default function TrackerDashboardPanel({
           {/* R5 CSM segment: the same picker as the brand dashboard's; every figure below is computed in it. */}
           <SegmentChip questions={segmentQuestions} segment={segment} onApply={setSegment} />
           <Chip label="" onClick={() => chooseAt("overallSatisfaction")}>{overview.figures.weighted ? "Weighted" : "Unweighted"}</Chip>
-          <span className="ml-auto text-xs text-slate-500">{baseN !== null ? `${scopeLabel} base n = ${baseN.toLocaleString()}` : ""}</span>
+          {/* Under a segment this base is the segment's (the satisfaction tile's), so it is never labelled as all
+              customers alone (R5 CSM segment). */}
+          <span className="ml-auto text-xs text-slate-500" data-testid="tracker-csm-scope-base">{baseN !== null ? `${scopeLabel}${overview.segment ? " in the segment" : ""} base n = ${baseN.toLocaleString()}` : ""}</span>
         </div>
         {overview.csmCompany && "note" in overview.csmCompany && <p className="text-xs text-amber-900">{overview.csmCompany.note}</p>}
         {customising && customise}
