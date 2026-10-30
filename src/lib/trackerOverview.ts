@@ -10,6 +10,7 @@ import { loadTrackerDashboard, type TrackerDashboardView } from "./trackerDashbo
 import { loadRoleInput } from "./trackerInput";
 import { brandOverviewFigures, changesAgainst, type BrandOverviewFigures, type StageChange } from "./trackerFigures";
 import { loadProjectWaves } from "./waveFiles";
+import { wavesOfSameGrain } from "./csmExtensionKeys";
 import type { ResolvedDashboard } from "./trackerDashboard";
 import { OVERVIEW_STAGES } from "./trackerFigures";
 import { csmAttributeMeans, csmChangesAgainst, csmOverviewFigures, satisfactionMean, type AttributeMean, type CsmChange, type CsmCompanies, type CsmTile } from "./trackerCsmFigures";
@@ -128,7 +129,10 @@ async function figuresFor(tenantId: string, runId: string, documentId: string, k
 }
 
 export async function loadBrandOverview(tenantId: string, runId: string, documentId: string, kind: TrackerDashboardKind = "brand"): Promise<BrandOverview> {
-  const [{ view, input, figures, csm, company }, waves] = await Promise.all([figuresFor(tenantId, runId, documentId, kind), loadProjectWaves(tenantId, runId)]);
+  const [{ view, input, figures, csm, company }, projectWaves] = await Promise.all([figuresFor(tenantId, runId, documentId, kind), loadProjectWaves(tenantId, runId)]);
+  // R6 CSM extension: the previous wave and the trend are files of the open file's grain only (a Relationship wave is
+  // never compared with the same project's Channel or Noncustomer file); a brand tracker's waves are all kept.
+  const waves = { ...projectWaves, included: await wavesOfSameGrain(tenantId, runId, documentId, projectWaves.included) };
   const at = waves.included.findIndex((w) => w.documentId === documentId);
   let previous: PreviousWave;
   let previousStages = null;

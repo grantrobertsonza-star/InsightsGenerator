@@ -6,6 +6,7 @@
 // are claude/tracker-packs-role-spec-2026-10-28.md.
 
 import { isZeroToTenScale } from "./descriptiveFindings";
+import { isCsmExtensionField } from "./csmExtensionRoles";
 import { brandFrameFromNames, DESIGN_VARIABLE, nameFamilies, nameWords, numberedBrandsWithoutNames, wordingOf } from "./trackerNameFamilies";
 
 /** One variable as the recogniser reads it: what the data file and a confirmed codebook say about it. */
@@ -331,7 +332,10 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
     }
   }
 
-  const csm = recogniseCsm(usable, questions, !!brandFrame);
+  // R6 CSM extension: the journey, benchmark, emotion, preference, staying-reason and noncustomer fields are their own
+  // constructs (csmExtensionRoles.ts), never a company CSM role (journey or alternative-provider satisfaction is not
+  // the company's overall satisfaction).
+  const csm = recogniseCsm(usable.filter((v) => !isCsmExtensionField(v.name)), questions, !!brandFrame);
   const isBrand = !!brandFrame && measures.filter((m) => m.stage && ["awareness", "unaided_awareness", "consideration", "shortlist", "first_choice", "usage"].includes(m.stage)).length >= 2;
   const isCsm = !!csm.overallSatisfaction && !!csm.recommend0to10;
   const type = isBrand && isCsm ? "brand_and_csm" : isBrand ? "brand" : isCsm ? "csm" : "unknown";
