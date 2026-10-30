@@ -1,6 +1,6 @@
 // Page 02 of the brand tracking dashboard, "Moments & needs": the Moment reach card (Grant, 30 October 2026). How
-// widely each brand is linked to the category's moments, by four measures of mental availability (Romaniuk and
-// Sharp; the contract in claude/d2-design-2026-10-29.md, "D3c Moments & needs", "Moment reach", names the source):
+// widely each brand is linked to the category's moments, by four measures of mental availability (the contract in
+// claude/d2-design-2026-10-29.md, "D3c Moments & needs", "Moment reach", defines them and names the sources):
 //   1. Moments per person: the weighted mean number of moments a respondent links to the brand.
 //   2. Moment penetration: the weighted share of respondents linking the brand to at least one moment.
 //   3. Moments per linker: the weighted mean number of moments among those linking it to at least one.

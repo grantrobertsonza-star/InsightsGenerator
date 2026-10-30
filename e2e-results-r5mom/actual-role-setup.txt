@@ -1,6 +1,0 @@
-Database ie_e2e_fb38b38c99, admin connection as postgres; table owners in public: postgres.
-Role "ie_e2e_app_fb38b38c99": role "ie_e2e_app_fb38b38c99" does not exist.
-No access granted (access by this role revoked) on table(s) without row-level security: tenants.
-
-Role "ie_e2e_app_fb38b38c99" is ready: can log in; not a superuser; no BYPASSRLS, CREATEDB, CREATEROLE or REPLICATION; owns no tables; no membership that bypasses the policies; read/write on every public table with row-level security and none on tables without it.
-Next (docs/database-roles.md): point the app's DATABASE_URL at this role, restart the app, then run node scripts/check-tenant-isolation.mjs.

@@ -30,7 +30,8 @@ actions) with tier B screens.
 
 1. **Rule.** Two new rules with registry rows and contracts: "A tracker dashboard's Moment profile" and "A tracker
    dashboard's Moment reach" (`claude/rules-registry.md`; contracts `claude/d2-design-2026-10-29.md`, D3c, "Moment
-   profile" and "Moment reach", where Romaniuk and Sharp are cited; the screen names the measures in plain words).
+   profile" and "Moment reach", where the research sources are cited, in the contract only; the screen names the
+   measures in plain words).
    Owners reused, never a second version: the aware-base rule of page 03
    (`trackerAssociations.awarenessForBases`, `awareBrandTables`, `associationCellsFromResult`, `gridVarsOf`; the D3d
    row now names page 02 as a second user), the selected code (`trackerFigures.selectedAnswerOf`), category relevance

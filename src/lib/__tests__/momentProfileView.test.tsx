@@ -7,7 +7,9 @@
 //   - the brand picker: five brands drawn, the others disabled; one removed, another can be added; never six;
 //   - an n/a value is not drawn (no point) and is listed with its reason and base; the table lists every value;
 //   - switching data file: a late answer for the earlier file never replaces the newer file's profile;
-//   - Moment reach: the headline for the client's brand, ranked bars, re-ranked by another measure.
+//   - Moment reach: the headline for the client's brand, ranked bars, re-ranked by another measure;
+//   - failure: a rejected or refused load shows the reason with "Try again", never an empty profile or empty bars,
+//     and "Try again" recovers; a late reach answer for an earlier file never replaces the newer file's figures.
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createElement, type ReactNode } from "react";
 import { parseHTML } from "linkedom";
@@ -92,12 +94,28 @@ const reach: MomentReach = {
 
 const held: { doc: string; release: () => void }[] = [];
 let hold = false;
+// The next load's failure: "reject" (the action throws), "refuse" (it answers ok: false with a reason), or none.
+let failNext: "reject" | "refuse" | null = null;
+const failure = () => {
+  const mode = failNext;
+  failNext = null;
+  if (mode === "reject") throw new Error("The data file could not be read (storage unavailable).");
+  return mode === "refuse" ? { ok: false as const, error: "This run is not available." } : null;
+};
 vi.mock("@/lib/trackerDashboardActions", () => ({
   loadMomentProfileAction: async (_run: string, documentId: string) => {
     if (hold) await new Promise<void>((release) => held.push({ doc: documentId, release }));
-    return { ok: true, profile: profileOf(documentId, documentId === "doc-b" ? 40 : 10) };
+    return failure() ?? { ok: true, profile: profileOf(documentId, documentId === "doc-b" ? 40 : 10) };
   },
-  loadMomentReachAction: async () => ({ ok: true, reach }),
+  loadMomentReachAction: async (_run: string, documentId: string) => {
+    if (hold) await new Promise<void>((release) => held.push({ doc: documentId, release }));
+    if (documentId === "doc-b") {
+      // doc-b: Toyota leads at 3.10 moments per person, so its figures are told apart from doc-a's.
+      const brands = reach.reach.status === "ok" ? reach.reach.brands.map((b) => (b.code === "1" ? { ...b, perPerson: 3.1 } : b)) : [];
+      return failure() ?? { ok: true, reach: { ...reach, documentId, reach: { ...reach.reach, brands } as MomentReach["reach"] } };
+    }
+    return failure() ?? { ok: true, reach };
+  },
 }));
 
 type El = { querySelectorAll(s: string): ArrayLike<El> & Iterable<El>; querySelector(s: string): El | null; dispatchEvent(e: unknown): boolean; textContent: string | null; getAttribute(n: string): string | null; hasAttribute(n: string): boolean };
@@ -259,6 +277,24 @@ describe("Moment by brand card (mounted)", () => {
     expect(bmw.textContent).toContain("49.0%");
     await act(() => root.unmount());
   });
+
+  it("failure: a load that throws shows the reason and Try again, never an empty profile; Try again recovers", async () => {
+    store.clear();
+    store.set("insights-elevator:moment-card-view:doc-a", "profile");
+    failNext = "reject";
+    const root = createRoot(container);
+    await act(async () => root.render(createElement(Card as never, cardProps("doc-a"))));
+    await settle();
+    const failed = body.querySelector('[data-testid="moment-profile-failed"]')!;
+    expect(failed.textContent).toContain("The moment profile could not be calculated: The data file could not be read (storage unavailable).");
+    expect(lines()).toHaveLength(0);
+    expect(body.querySelector('[data-testid="moment-profile-table"]')).toBeNull();
+    await click(button(/^Try again$/));
+    await settle();
+    expect(body.querySelector('[data-testid="moment-profile-failed"]')).toBeNull();
+    expect(lines()).toHaveLength(5);
+    await act(() => root.unmount());
+  });
 });
 
 describe("Moment reach card (mounted)", () => {
@@ -274,6 +310,40 @@ describe("Moment reach card (mounted)", () => {
     expect(order()).toEqual(["1", "3", "2", "4", "7", "5", "6"]);
     const bmwRow = [...body.querySelectorAll('[data-testid="moment-reach-table-row"]')].find((r) => r.getAttribute("data-code") === "7")!;
     expect([...bmwRow.querySelectorAll("td")].map((td) => td.textContent)).toEqual(["1.84", "42.4%", "4.30", "15.0%", "n=1,000eff. 960"]);
+    await act(() => root.unmount());
+  });
+
+  it("failure: a refused load shows the reason and Try again, never empty bars; Try again recovers", async () => {
+    failNext = "refuse";
+    const root = createRoot(container);
+    await act(async () => root.render(createElement(Reach as never, { runId: "run", documentId: "doc-a", moments, brands: BRANDS, focal: FOCAL, frame })));
+    await settle();
+    expect(body.querySelector('[data-testid="moment-reach-failed"]')!.textContent).toContain("Moment reach could not be calculated: This run is not available.");
+    expect(body.querySelectorAll('[data-testid="moment-reach-row"]')).toHaveLength(0);
+    await click(button(/^Try again$/));
+    await settle();
+    expect(body.querySelector('[data-testid="moment-reach-failed"]')).toBeNull();
+    expect(body.querySelectorAll('[data-testid="moment-reach-row"]')).toHaveLength(7);
+    await act(() => root.unmount());
+  });
+
+  it("switching data file: a late reach answer for the earlier file never replaces the newer file's figures", async () => {
+    hold = true;
+    const root = createRoot(container);
+    const props = (documentId: string) => ({ runId: "run", documentId, moments: { ...moments, documentId }, brands: BRANDS, focal: FOCAL, frame });
+    await act(async () => root.render(createElement(Reach as never, props("doc-a"))));
+    await settle();
+    await act(async () => root.render(createElement(Reach as never, props("doc-b"))));
+    await settle();
+    expect(held.map((h) => h.doc)).toEqual(["doc-a", "doc-b"]);
+    held[1].release();
+    await settle();
+    held[0].release();
+    await settle();
+    held.length = 0;
+    hold = false;
+    const toyota = [...body.querySelectorAll('[data-testid="moment-reach-table-row"]')].find((r) => r.getAttribute("data-code") === "1")!;
+    expect(toyota.querySelector('td[data-measure="perPerson"]')!.textContent).toBe("3.10");
     await act(() => root.unmount());
   });
 });

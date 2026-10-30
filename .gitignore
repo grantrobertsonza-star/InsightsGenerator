@@ -69,3 +69,4 @@ extract-timing.log
 
 # browser smoke output (scripts/e2e/local-stack.mjs, playwright.config.mjs)
 /e2e-results/
+/e2e-results-*/
