@@ -92,8 +92,14 @@ export function choiceProblems(
   for (const role of CSM_SINGLE) {
     const v = choices.csm?.[role];
     if (v && !variableNames.has(v) && !keptVariables.has(v)) problems.push(`${v} is not a variable in this file.`);
+    // R5 csmroles: a per-brand question or a yes/no flag is never a CSM rating; a new choice of one is refused. The
+    // company question is a list of companies, not a rating, so only the rating roles are checked.
+    else if (v && role !== "company" && rec.csmNotRatings?.[v] && !keptVariables.has(v)) problems.push(`${v} cannot be ${CSM_ROLE_TEXT[role]}: ${rec.csmNotRatings[v]}.`);
   }
-  for (const v of choices.csm?.drivers ?? []) if (!variableNames.has(v) && !keptVariables.has(v)) problems.push(`${v} is not a variable in this file.`);
+  for (const v of choices.csm?.drivers ?? []) {
+    if (!variableNames.has(v) && !keptVariables.has(v)) problems.push(`${v} is not a variable in this file.`);
+    else if (rec.csmNotRatings?.[v] && !(stored.csm?.drivers ?? []).includes(v)) problems.push(`${v} cannot be a service attribute: ${rec.csmNotRatings[v]}.`);
+  }
   // An unchanged "weighted" choice made on a wave with a weight is kept on a wave without one (Codex D2A-F03): this
   // wave's results are unweighted and say so (resolveDashboard), and the programme's preference applies again to a
   // later wave that has a weight. Only a new choice of weighting is refused here.
@@ -178,13 +184,27 @@ export function resolveDashboard(
       needsChoice.push({ id: `csm:${role}`, text: `${v}, chosen in an earlier wave, is not in this file. Choose the variable for ${CSM_ROLE_TEXT[role]}.` });
       return { variable: null, source: "chosen" as ChoiceSource };
     }
+    // R5 csmroles: a saved choice made before the rule (a per-brand flag as satisfaction) is not applied; the
+    // choice stays saved and the researcher is told why, to choose again.
+    if (v !== null && role !== "company" && rec.csmNotRatings?.[v]) {
+      needsChoice.push({ id: `csm:${role}`, text: `${v}, chosen earlier for ${CSM_ROLE_TEXT[role]}, is not used: ${rec.csmNotRatings[v]}. Choose a rating question.` });
+      return { variable: null, source: "chosen" as ChoiceSource };
+    }
     return { variable: v, source: "chosen" as ChoiceSource };
   };
   let drivers: ResolvedDashboard["csm"]["drivers"] = { variables: rec.csm.drivers, source: "suggested" };
   if (choices.csm?.drivers) {
     const missing = choices.csm.drivers.filter((d) => !variableNames.has(d));
     if (missing.length) needsChoice.push({ id: "csm:drivers", text: `Driver${missing.length === 1 ? "" : "s"} ${missing.join(", ")}, chosen in an earlier wave, ${missing.length === 1 ? "is" : "are"} not in this file.` });
-    drivers = { variables: choices.csm.drivers.filter((d) => variableNames.has(d)), source: "chosen" };
+    // R5 csmroles (Grant, 30 October 2026: per-brand unaided awareness flags shown as service attributes): saved
+    // drivers that are per-brand questions or yes/no flags are not shown as service attributes, with the reason.
+    const notRatings = choices.csm.drivers.filter((d) => variableNames.has(d) && rec.csmNotRatings?.[d]);
+    if (notRatings.length)
+      needsChoice.push({
+        id: "csm:drivers-not-ratings",
+        text: `${notRatings.length === 1 ? "A question" : `${notRatings.length} questions`} chosen earlier as service attributes ${notRatings.length === 1 ? "is" : "are"} not used, because ${notRatings.length === 1 ? "it is" : "they are"} not a rating of the customer's experience: ${notRatings.slice(0, 5).map((d) => `${d} (${rec.csmNotRatings[d]})`).join("; ")}${notRatings.length > 5 ? `; and ${notRatings.length - 5} more` : ""}. Choose the drivers again in Customise dashboard.`,
+      });
+    drivers = { variables: choices.csm.drivers.filter((d) => variableNames.has(d) && !rec.csmNotRatings?.[d]), source: "chosen" };
   }
   const csm = { overallSatisfaction: pick("overallSatisfaction"), recommend0to10: pick("recommend0to10"), likelyToStay: pick("likelyToStay"), likelyToSwitch: pick("likelyToSwitch"), company: pick("company"), drivers };
 

@@ -67,6 +67,8 @@ export type CsmRoles = {
   likelyToStay: string | null;
   likelyToSwitch: string | null;
   drivers: string[];
+  /** Which rule found the drivers, or why none were taken (R5 csmroles: the reason names the rule used). */
+  driversReason: string;
   /** The company each customer rates (their main bank, insurer, network), for figures by company (D3b); null when
    * the file has none or two questions could be it (then a question). Looked for only in a file with CSM roles and
    * no brand list. */
@@ -93,6 +95,10 @@ export type TrackerRecognition = {
   /** The channel of the most recent acquisition (findAcquisitionChannel, page 08). */
   acquisitionChannel: FoundQuestion;
   csm: CsmRoles;
+  /** Variables no CSM role may use, each with why (R5 csmroles): a per-brand question, grid cell or brand list
+   * question the brand frame claimed, a yes/no or 0/1 flag, a multiple-response option. A saved choice of one is
+   * not applied (resolveDashboard) and a new one is refused (choiceProblems). */
+  csmNotRatings: Record<string, string>;
   /** What the researcher must decide; never filled in by a guess. */
   questions: { id: string; text: string }[];
 };
@@ -331,11 +337,13 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
     }
   }
 
-  const csm = recogniseCsm(usable, questions, !!brandFrame);
+  const claimed = new Set([...measures.flatMap((m) => [...m.byBrand.map((b) => b.variable), ...m.outside]), ...grids.flatMap((g) => g.items.flatMap((i) => i.byBrand.map((b) => b.variable)))]);
+  // CSM roles never read what the brand frame has claimed (R5 csmroles): see csmNotRatings.
+  const csmNotRatingsFound = csmNotRatings(usable, claimed, brandFrame, measures, grids);
+  const csm = recogniseCsm(usable, questions, !!brandFrame, csmNotRatingsFound, perBrandNameCodes(brandFrame, measures, grids));
   const isBrand = !!brandFrame && measures.filter((m) => m.stage && ["awareness", "unaided_awareness", "consideration", "shortlist", "first_choice", "usage"].includes(m.stage)).length >= 2;
   const isCsm = !!csm.overallSatisfaction && !!csm.recommend0to10;
   const type = isBrand && isCsm ? "brand_and_csm" : isBrand ? "brand" : isCsm ? "csm" : "unknown";
-  const claimed = new Set([...measures.flatMap((m) => [...m.byBrand.map((b) => b.variable), ...m.outside]), ...grids.flatMap((g) => g.items.flatMap((i) => i.byBrand.map((b) => b.variable)))]);
   const categoryMoments = findCategoryMoments(usable.filter((v) => !claimed.has(v.name)), grids);
   const advertisingRecall: AdvertisingRecall = brandFrame ? findAdvertisingRecall(usable, brandFrame) : { status: "not_found", reason: "No brand list was found in this file." };
   // Questions asked once: never a per-brand question, a grid cell or a brand list question.
@@ -344,7 +352,7 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   const mediaUse = findMediaList(askedOnce);
   const decisionStyle = findDecisionStyle(askedOnce);
   const acquisitionChannel = findAcquisitionChannel(askedOnce);
-  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, advertisingRecall, ageGroups, mediaUse, decisionStyle, acquisitionChannel, csm, questions };
+  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, advertisingRecall, ageGroups, mediaUse, decisionStyle, acquisitionChannel, csm, csmNotRatings: csmNotRatingsFound, questions };
 }
 
 /** A single-choice question's own wording, when it has an answer list of two or more answers that is not yes/no and
@@ -688,6 +696,75 @@ export function scaleTop(v: RoleVariable): number | null {
   return suffix ? Number(suffix[1]) : null;
 }
 
+// ---- CSM roles (R5 csmroles, Grant 30 October 2026: "awareness is read as service attributes") ----------------
+// A CSM role (satisfaction, recommend, stay, switch, a driver) is a rating of the customer's experience. These
+// helpers decide what may never be one, whatever its wording or how many values it holds.
+
+/** A yes/no or mention flag: labelled, its answer codes below the non-answer codes (90 and up) are only 0 and 1;
+ * unlabelled, it holds two values or fewer. A flag's mean is a share, never a rating. */
+function isFlag(v: RoleVariable): boolean {
+  if (v.valueLabels) {
+    const codes = Object.keys(v.valueLabels).map(Number).filter((n) => Number.isFinite(n) && n < 90);
+    return codes.length > 0 && codes.every((n) => n === 0 || n === 1);
+  }
+  return v.distinct !== undefined && v.distinct <= 2;
+}
+
+/** Brand codes as they appear in variable names: the part that differs between a per-brand question's variables
+ * (unaided_b01 ... unaided_b10 give b01 ... b10, Aware_PlatoCoffee gives PlatoCoffee), and the codes of a brand
+ * list read from names. Used to tell a per-brand name family from a battery of attributes. */
+function perBrandNameCodes(frame: BrandFrame | null, measures: PerBrandMeasure[], grids: BrandGrid[]): Set<string> {
+  const out = new Set<string>();
+  const add = (names: string[]) => {
+    const split = names.map((n) => n.split("_"));
+    if (split.length < 3 || new Set(split.map((p) => p.length)).size !== 1) return;
+    const varying = [...Array(split[0].length).keys()].filter((i) => new Set(split.map((p) => p[i])).size === split.length);
+    if (varying.length === 1) for (const p of split) out.add(p[varying[0]]);
+  };
+  for (const m of measures) add(m.byBrand.map((b) => b.variable));
+  for (const g of grids) for (const i of g.items) add(i.byBrand.map((b) => b.variable));
+  // A brand list read from names (D2): its codes are name parts by construction.
+  if (frame && frame.questions.length === 0) for (const b of [...frame.brands, ...frame.nonBrandCodes]) out.add(b.code);
+  return out;
+}
+
+/** A name part that numbers a brand (b01 ... b10, b1): a per-brand family even when no brand list was found. */
+const BRAND_NUMBER = /^b\d{1,3}$/i;
+
+/**
+ * Every variable no CSM role may use, with why: a variable the brand frame claimed (a per-brand question, its
+ * outside codes, a brand grid cell, a question carrying the brand list), a multiple-response option, or a yes/no
+ * or 0/1 flag (labelled or not). Wording and value counts never override this.
+ */
+export function csmNotRatings(usable: RoleVariable[], claimed: Set<string>, frame: BrandFrame | null, measures: PerBrandMeasure[], grids: BrandGrid[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  const measureOf = new Map<string, PerBrandMeasure>();
+  for (const m of measures) for (const n of [...m.byBrand.map((b) => b.variable), ...m.outside]) measureOf.set(n, m);
+  const gridOf = new Set(grids.flatMap((g) => g.items.flatMap((i) => i.byBrand.map((b) => b.variable))));
+  const frameQuestions = new Set(frame?.questions ?? []);
+  for (const v of usable) {
+    const m = measureOf.get(v.name);
+    if (m) out[v.name] = `it is asked per brand ("${m.label}"${m.stage ? `, ${m.stage.replace(/_/g, " ")}` : ""}), a brand measure, not a rating of the customer's experience`;
+    else if (gridOf.has(v.name)) out[v.name] = "it is a cell of a brand grid (a brand linked to an attribute or moment), not a rating of the customer's experience";
+    else if (claimed.has(v.name)) out[v.name] = "it belongs to a question asked per brand, not a rating of the customer's experience";
+    else if (frameQuestions.has(v.name)) out[v.name] = "its answers are the brand list (a brand choice), not a rating";
+    else if (v.questionType === "multiple_response") out[v.name] = "it is an option of a multiple-response question (selected or not), not a rating";
+    else if (isFlag(v)) out[v.name] = v.valueLabels ? "its answers are only 0 and 1 (a yes/no or mention flag), not a rating" : "it holds only two values (a yes/no or 0/1 flag), not a rating";
+  }
+  return out;
+}
+
+/** Wording that says a question is a rating of the experience; "driver" is the CSM name for a rated driver
+ * (company_driver_d01). Read only for raw files without answer labels. */
+const RATING_WORDING = /\b(rate|rated|rating|ratings|satisf\w*|csat|performance|how well|agree\w*|disagree\w*|drivers?)\b/i;
+
+/** The top of the scale a raw variable's wording states ("0 to 10", "0to10", "1-5"), never its name's size suffix
+ * or the values the data happens to hold. */
+function statedScaleTop(v: RoleVariable): number | null {
+  const stated = /\b(?:0|1)\s*(?:to|-|–)\s*(\d{1,2})\b/i.exec(wordingOf(v));
+  return stated ? Number(stated[1]) : null;
+}
+
 /**
  * CSM roles from wording and answer lists: overall satisfaction (a rating of the company with a satisfied end),
  * likelihood to recommend on 0 to 10, likely to stay, likely to switch, and the driver battery (performance
@@ -695,16 +772,16 @@ export function scaleTop(v: RoleVariable): number | null {
  * among several overall satisfaction ratings the one about the company (or provider, bank, brand) is the
  * relationship measure the others (call centre, agent, IVR) are parts of. A raw file without answer labels
  * (D2) is read from its wording, its names' words when it has no labels, and the scale its wording states.
+ * No role reads a variable in `notRatings` (csmNotRatings).
  */
-function recogniseCsm(variables: RoleVariable[], questions: TrackerRecognition["questions"], hasBrandFrame: boolean): CsmRoles {
+function recogniseCsm(variables: RoleVariable[], questions: TrackerRecognition["questions"], hasBrandFrame: boolean, notRatings: Record<string, string>, brandNameCodes: Set<string>): CsmRoles {
+  const eligible = variables.filter((v) => !(v.name in notRatings));
   // Ratings only: a scale question or an answer list of three or more answers; without answer labels, a number
   // with three to eleven values. A yes/no flag that mentions switching ("Makes switching simple") is an
   // attribute, not a likelihood to switch.
-  const rated = variables.filter(
+  const rated = eligible.filter(
     (v) =>
       v.numeric &&
-      v.questionType !== "multiple_response" &&
-      !isYesNo(v) &&
       (v.questionType === "scale" || Object.keys(v.valueLabels ?? {}).filter((c) => Number(c) < 90).length >= 3 || (!v.valueLabels && v.distinct !== undefined && v.distinct >= 3 && v.distinct <= 11)),
   );
   const words = (v: RoleVariable) => wordingOf(v);
@@ -725,7 +802,7 @@ function recogniseCsm(variables: RoleVariable[], questions: TrackerRecognition["
   // word-of-mouth battery is one of its items. Only a stated 0 to 10 scale qualifies (zeroToTen, D1-F01); a
   // recommend question whose list labels only some points is asked about, never assumed.
   // Not only the ratings: a list labelling only its two ends has too few answers to count as a rating.
-  const recommends = variables.filter((v) => v.numeric && v.questionType !== "multiple_response" && !isYesNo(v) && /\brecommend/i.test(words(v)));
+  const recommends = eligible.filter((v) => v.numeric && /\brecommend/i.test(words(v)));
   for (const v of recommends.filter((x) => zeroToTen(x) === "partial")) {
     questions.push({ id: `csm:recommend-scale:${v.name}`, text: `Is ${v.name} ("${words(v)}") a 0 to 10 scale? Its answer list labels only ${Object.keys(v.valueLabels ?? {}).join(", ")}.` });
   }
@@ -747,24 +824,51 @@ function recogniseCsm(variables: RoleVariable[], questions: TrackerRecognition["
   const sameList = (g: RoleVariable[]) => new Set(g.map((v) => JSON.stringify(v.valueLabels ?? {}))).size === 1;
   let batteries = [...byQuestion.values()].filter((g) => g.length >= 3 && sameList(g)).sort((a, b) => b.length - a.length);
   let batteryName = (g: RoleVariable[]) => g[0].questionId ?? g[0].group ?? g[0].name.replace(/_[^_]+$/, "");
+  let ruleOf = (g: RoleVariable[]) => `the largest battery of ratings in one question (${batteryName(g)}) sharing one poor-to-excellent answer list`;
   // Without answer labels: ratings on one stated scale whose names differ in one part (AgentEmpathy_*_0to10).
+  // Tightened (R5 csmroles): never a per-brand family (its varying part, or a fixed part, is a brand code: b01 ...
+  // b10 or the brand frame's codes); each member holds three or more values; and the family states a rating scale
+  // in its wording ("0 to 10", "1 to 5") or says it is a rating (rate, satisfaction, performance, how well, agree,
+  // driver). A count (number of brands known, contacts in three months) is neither.
   if (batteries.length === 0) {
-    const ratedByName = new Map(rated.filter((v) => !v.valueLabels && !roles.has(v.name)).map((v) => [v.name, v]));
+    const ratedByName = new Map(rated.filter((v) => !v.valueLabels && !roles.has(v.name) && v.distinct !== undefined && v.distinct >= 3).map((v) => [v.name, v]));
+    const isBrandCode = (code: string) => brandNameCodes.has(code) || BRAND_NUMBER.test(code);
+    const evidence = new Map<string, string>();
     const fams = nameFamilies([...ratedByName.values()]).filter((f) => {
       const vs = f.members.map((m) => ratedByName.get(m.variable)!);
-      // One scale: the same stated top, or none stated for any of them.
-      return !/\bimportan/i.test(f.template) && new Set(vs.map((v) => scaleTop(v))).size === 1;
+      if (/\bimportan/i.test(f.template)) return false;
+      if (f.members.filter((m) => isBrandCode(m.code)).length * 2 >= f.members.length) return false;
+      if (f.template.split("_").some((p) => p !== "*" && isBrandCode(p))) return false;
+      // One scale: the same stated top for every member, or none stated for any of them.
+      const tops = new Set(vs.map((v) => statedScaleTop(v)));
+      if (tops.size !== 1) return false;
+      const top = [...tops][0];
+      if (top !== null) {
+        evidence.set(f.members[0].variable, `a stated ${top === 10 ? "0" : "1"} to ${top} scale in its wording`);
+        return true;
+      }
+      const said = RATING_WORDING.exec(vs.map((v) => wordingOf(v)).join(" ")) ?? RATING_WORDING.exec(nameWords(f.template.replace(/\*/g, " ")));
+      if (!said) return false;
+      evidence.set(f.members[0].variable, `rating wording ("${said[0]}")`);
+      return true;
     });
     batteries = fams.map((f) => f.members.map((m) => ratedByName.get(m.variable)!)).sort((a, b) => b.length - a.length);
     const famName = new Map(fams.map((f) => [f.members[0].variable, nameWords(f.template.replace(/_?\*_?/g, " ").replace(/\b\d+ ?to ?\d+\b/gi, "").trim())]));
     batteryName = (g) => famName.get(g[0].name) ?? g[0].name;
+    ruleOf = (g) => `the largest family of unlabelled ratings named alike (${batteryName(g)}), three or more values each, with ${evidence.get(g[0].name)}`;
   }
   if (batteries.length > 1 && batteries[0].length === batteries[1].length) questions.push({ id: "csm:drivers", text: `Which ratings are the drivers: ${batteries.map((g) => `${batteryName(g)} (${g.length})`).join(", ")}?` });
-  const drivers = batteries.length === 1 || (batteries.length > 1 && batteries[0].length > batteries[1].length) ? batteries[0].map((v) => v.name) : [];
+  const chosen = batteries.length === 1 || (batteries.length > 1 && batteries[0].length > batteries[1].length) ? batteries[0] : null;
+  const drivers = chosen ? chosen.map((v) => v.name) : [];
+  const driversReason = chosen
+    ? `Drivers: ${ruleOf(chosen)}.`
+    : batteries.length > 1
+      ? "No drivers taken: two or more batteries of ratings are the same size, so the researcher chooses."
+      : "No drivers taken: no battery of three or more ratings of the customer's experience was found (per-brand questions, yes/no flags and importance ratings are never drivers).";
   // A file with a brand list compares brands through that list (and its brand names, "Standard Bank", would read as
   // companies here), so the company is looked for only in a CSM file without one.
-  const company = !hasBrandFrame && [overallSatisfaction, recommend0to10, likelyToStay, likelyToSwitch].some(Boolean) ? companyOf(variables, new Set([...roles, ...drivers].filter((x): x is string => typeof x === "string")), questions) : null;
-  return { overallSatisfaction, recommend0to10, likelyToStay, likelyToSwitch, drivers, company };
+  const company = !hasBrandFrame && [overallSatisfaction, recommend0to10, likelyToStay, likelyToSwitch].some(Boolean) ? companyOf(eligible, new Set([...roles, ...drivers].filter((x): x is string => typeof x === "string")), questions) : null;
+  return { overallSatisfaction, recommend0to10, likelyToStay, likelyToSwitch, drivers, driversReason, company };
 }
 
 /** Words that name the organisation a customer is with. */

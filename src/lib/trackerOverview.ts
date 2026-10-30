@@ -214,7 +214,9 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
       .filter((m) => m.shape === "binary")
       .map((m) => ({ group: m.group, label: measureLabel.get(m.group) ?? m.group, stage: view.dashboard.stages.find((s) => s.group === m.group)?.stage ?? null })),
     csm,
-    csmCandidates: input.variables.filter((v) => !v.text && v.name !== view.dashboard.weightVar).map((v) => ({ name: v.name, label: v.label || v.name })),
+    // R5 csmroles: per-brand questions, brand grid cells and yes/no flags are not offered for a CSM role or as a
+    // service attribute (view.recognition.csmNotRatings says why each is left out).
+    csmCandidates: input.variables.filter((v) => !v.text && v.name !== view.dashboard.weightVar && !view.recognition.csmNotRatings[v.name]).map((v) => ({ name: v.name, label: v.label || v.name })),
     csmCompany: company,
     csmChanges,
     timeline,

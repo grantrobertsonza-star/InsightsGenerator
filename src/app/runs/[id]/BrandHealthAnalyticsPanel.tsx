@@ -48,6 +48,44 @@ const FUNNEL_FIELDS: { key: "awareness" | "consideration" | "usage" | "frequent"
  * picker and Map, keyed "var:<name>" or "set:<key>" so a set can sit next to plain variables in
  * one checklist/select without a name collision.
  */
+/**
+ * The loyalty card's brand groups: each scored group's NPS, then every group without one (Codex BH-F02) as a "Not
+ * shown" entry with its respondents, valid answers and the reason, so a suppressed or empty group never just
+ * disappears and is never shown with a score.
+ */
+export function LoyaltyGroups({ loyalty, ourBrand }: { loyalty: NonNullable<BrandHealthDashboard["loyalty"]>; ourBrand: string }) {
+  const unavailable = loyalty.unavailable ?? [];
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {loyalty.byBrand.map((b) => (
+          <div
+            key={b.brand}
+            className="flex flex-col items-center gap-0.5 rounded-lg border px-3 py-2"
+            style={{ borderColor: b.brand === ourBrand ? "#2563eb" : "#e2e8f0" }}
+          >
+            <span className="text-[10px] font-medium text-muted">{b.brand}{b.brand === ourBrand ? " (ours)" : ""}</span>
+            <span className="text-lg font-bold text-foreground">{Math.round(b.nps)}</span>
+            <span className="text-[10px] text-muted">{Math.round(b.promoters)}% / {Math.round(b.detractors)}%</span>
+          </div>
+        ))}
+      </div>
+      {unavailable.length > 0 && (
+        <div className="rounded-lg border border-border bg-slate-50 px-3 py-2 text-xs text-foreground" data-testid="brand-health-loyalty-unavailable">
+          <p className="font-medium">Not shown</p>
+          <ul className="mt-1 space-y-0.5">
+            {unavailable.map((u) => (
+              <li key={u.brand}>
+                <span className="font-medium">{u.brand}{u.brand === ourBrand ? " (ours)" : ""}</span>: {u.reason} (group n={u.groupN.toLocaleString()}, valid answers n={u.validAnswers.toLocaleString()})
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function sourceKey(source: BrandHealthSource | undefined): string {
   if (!source) return "";
   return "setKey" in source ? `set:${source.setKey}` : `var:${source.variable}`;
@@ -805,19 +843,7 @@ function BrandHealthDashboardView({ runId, documentId, dashboard }: { runId: str
             <BrandHealthFindingButton runId={runId} documentId={documentId} dashboard={dashboard} section="loyalty" />
           </div>
           <OverlapNote dashboard={dashboard} section="loyalty" />
-          <div className="flex flex-wrap gap-2">
-            {dashboard.loyalty.byBrand.map((b) => (
-              <div
-                key={b.brand}
-                className="flex flex-col items-center gap-0.5 rounded-lg border px-3 py-2"
-                style={{ borderColor: b.brand === dashboard.ourBrand ? "#2563eb" : "#e2e8f0" }}
-              >
-                <span className="text-[10px] font-medium text-muted">{b.brand}{b.brand === dashboard.ourBrand ? " (ours)" : ""}</span>
-                <span className="text-lg font-bold text-foreground">{Math.round(b.nps)}</span>
-                <span className="text-[10px] text-muted">{Math.round(b.promoters)}% / {Math.round(b.detractors)}%</span>
-              </div>
-            ))}
-          </div>
+          <LoyaltyGroups loyalty={dashboard.loyalty} ourBrand={dashboard.ourBrand} />
         </div>
       )}
 
