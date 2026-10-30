@@ -7,6 +7,8 @@
 
 import { isZeroToTenScale } from "./descriptiveFindings";
 import { brandFrameFromNames, DESIGN_VARIABLE, nameFamilies, nameWords, numberedBrandsWithoutNames, wordingOf } from "./trackerNameFamilies";
+import { suggestTrackerType, type TrackerType, type TrackerTypeSuggestion } from "./trackerType";
+import { RECENT_WINDOWS, windowOf, type TimeWindow } from "./trackerWindows";
 
 /** One variable as the recogniser reads it: what the data file and a confirmed codebook say about it. */
 export type RoleVariable = {
@@ -50,6 +52,13 @@ export type PerBrandMeasure = {
   shape: "binary" | "single";
   stage: FunnelStage | null;
   stageReason: string | null;
+  /** The period the question asks about (trackerWindows.ts windowOf): from its wording, else its answer labels. */
+  window: TimeWindow;
+  windowReason: string;
+  /** Present only when the stage depends on the tracker type (R5): a purchase in the past 12 months is an acquisition
+   * for Durables and annual penetration (usage) for FMCG. `stage` is the Durables reading; resolveDashboard applies
+   * the type in effect. */
+  stageByType?: Record<TrackerType, FunnelStage>;
 };
 
 /** Every stage a per-brand question can have: the one list for recognition, saving and the screens (Codex
@@ -93,6 +102,9 @@ export type TrackerRecognition = {
   /** The channel of the most recent acquisition (findAcquisitionChannel, page 08). */
   acquisitionChannel: FoundQuestion;
   csm: CsmRoles;
+  /** Durables or FMCG, suggested from the per-brand questions with the reason (trackerType.ts); null type when the
+   * questions settle neither. Only a default: a saved choice replaces it. */
+  trackerType: TrackerTypeSuggestion;
   /** What the researcher must decide; never filled in by a guess. */
   questions: { id: string; text: string }[];
 };
@@ -232,21 +244,60 @@ const STAGE_WORDS: [FunnelStage, RegExp][] = [
   ["rejection", /\bopinion\b|\bwould never\b|\breject/i],
   // Ever used before usage: having tried a brand is not using it now (D2, Grant's coffee tracker "ever used").
   ["trial", /\bever (used|bought|tried|purchased)\b|\btried\b|\btrial\b/i],
-  // Frequent use before usage: "frequent" and "most often" are a stage of their own (the brand health funnel's
-  // "Frequent / repeat usage").
-  ["frequent_usage", /\bfrequent(ly)?\b|\bmost often\b|\bregular(ly)?\b/i],
+  // Frequent use before usage: "frequent", "most often" and BUMO (bought most often) are a stage of their own (the
+  // brand health funnel's "Frequent / repeat usage").
+  ["frequent_usage", /\bfrequent(ly)?\b|\bmost often\b|\bregular(ly)?\b|\bbumo\b/i],
   // Repeat before acquisition: "repeat brand acquisition" and "previously acquired same brand" are repeats.
   ["repeat", /\brepeat\b|\bprior same-brand\b|\bsame brand\b|\bagain\b/i],
   ["acquisition", /\bacquisition\b|\bacquired\b|\bbought\b|\bpurchased?\b|\bstart(ed)?\b/i],
-  ["usage", /\b(own|owner|ownership|use|used|usage|bank with|customer of|current)\b|\bp3m\b|\bpast (3|three) months?\b/i],
+  ["usage", /\b(own|owner|ownership|use|used|usage|bank with|customer of|current)\b|\bp(1|3|6)m\b|\bp(1|4)w\b|\bpast (3|three) months?\b/i],
 ];
 
-function stageOf(wording: string): { stage: FunnelStage; reason: string } | null {
+/** Buying or using words: a question with one of these and a recent window is penetration in that window. */
+const PURCHASE_WORDS = /\b(bought|buy|buys|buying|purchased?|purchases|purchasing)\b/i;
+const USE_WORDS = /\b(used|use|uses|using|consumed?|consuming|drank|drunk|drink|drinks|ate|eaten|shopped)\b/i;
+/** Taking up a brand or a relationship (acquired, started, joined, switched to): acquisition whatever the window. */
+const TAKE_UP_WORDS = /\b(acquir\w*|acquisition|start(ed|ing|s)?|join(ed|ing)?|switch(ed|ing)?|sign(ed)? up|took out|opened)\b/i;
+
+/**
+ * A per-brand question's stage, with the words that decided it (R5, Grant 30 October 2026). Rules in order:
+ * advertising, word of mouth, moment, unaided awareness, awareness, consideration, shortlist, first choice, rejection,
+ * trial (ever), frequent use (most often, BUMO), repeat; then a purchase or use question in a recent window (past
+ * week, month or 4 weeks, 3 months, 6 months; the window from the wording or, when given, the measure's window read
+ * from its answer labels) is usage in that window, unless it is about taking a brand up (acquired, started, joined);
+ * then acquisition; then usage. "Bought in the past 3 months" is therefore usage (FMCG penetration), while
+ * "Recently acquired" and "Past 12 month household acquisition" stay acquisition.
+ */
+function stageOf(wording: string, window?: TimeWindow): { stage: FunnelStage; reason: string } | null {
+  const w = window ?? windowOf(wording).window;
   for (const [stage, re] of STAGE_WORDS) {
+    if (stage === "acquisition" && RECENT_WINDOWS.includes(w) && !TAKE_UP_WORDS.test(wording)) {
+      const verb = PURCHASE_WORDS.exec(wording) ?? USE_WORDS.exec(wording);
+      if (verb) return { stage: "usage", reason: `the question says "${verb[0]}" in a recent window, which is usage in that window` };
+    }
     const m = re.exec(wording);
     if (m) return { stage, reason: `the question says "${m[0].trim()}"` };
   }
   return null;
+}
+
+/**
+ * A measure's stage and window from its wording (the question with the brand taken out) and its first brand
+ * variable's answer labels. A purchase (not take-up) in the past 12 months is an acquisition for Durables and annual
+ * penetration (usage) for FMCG, so it carries both readings (`stageByType`); the recogniser's `stage` is the Durables
+ * one and the dashboard applies the type in effect (resolveDashboard).
+ */
+function stageAndWindow(stem: string, first: RoleVariable | undefined): Pick<PerBrandMeasure, "stage" | "stageReason" | "window" | "windowReason" | "stageByType"> {
+  const win = windowOf(stem, Object.values(first?.valueLabels ?? {}));
+  const st = stageOf(stem, win.window);
+  const yearPurchase = st?.stage === "acquisition" && win.window === "past_12_months" && PURCHASE_WORDS.test(stem) && !TAKE_UP_WORDS.test(stem);
+  return {
+    stage: st?.stage ?? null,
+    stageReason: st?.reason ?? null,
+    window: win.window,
+    windowReason: win.reason,
+    ...(yearPurchase ? { stageByType: { durables: "acquisition" as const, fmcg: "usage" as const } } : {}),
+  };
 }
 
 // ---- Recognition ------------------------------------------------------------------------------------------
@@ -291,8 +342,7 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
           continue;
         }
         const shape: PerBrandMeasure["shape"] = first.questionType === "multiple_response" || isYesNo(first) ? "binary" : "single";
-        const st = stageOf(stem);
-        measures.push({ group, label: stem, byBrand: byBrand.sort((a, b) => Number(a.code) - Number(b.code)), outside, shape, stage: st?.stage ?? null, stageReason: st?.reason ?? null });
+        measures.push({ group, label: stem, byBrand: byBrand.sort((a, b) => Number(a.code) - Number(b.code)), outside, shape, ...stageAndWindow(stem, first) });
         continue;
       }
       // A list of options none of which is a brand of the frame: its own kind of list, never brands.
@@ -344,7 +394,8 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   const mediaUse = findMediaList(askedOnce);
   const decisionStyle = findDecisionStyle(askedOnce);
   const acquisitionChannel = findAcquisitionChannel(askedOnce);
-  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, advertisingRecall, ageGroups, mediaUse, decisionStyle, acquisitionChannel, csm, questions };
+  const trackerType = brandFrame ? suggestTrackerType(measures) : { type: null, reason: "No brand list was found in this file, so it is not a brand funnel." };
+  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, advertisingRecall, ageGroups, mediaUse, decisionStyle, acquisitionChannel, csm, trackerType, questions };
 }
 
 /** A single-choice question's own wording, when it has an answer list of two or more answers that is not yes/no and
@@ -636,8 +687,7 @@ function recogniseFromNames(usable: RoleVariable[], measures: PerBrandMeasure[],
     const labelled = !!first.label && first.label.trim() !== first.name;
     const stem = clean(stemOf(wordingOf(first), { label: labelled ? brand.label : nameWords(byBrand[0].code) }).replace(/[\s:\-–]+$/, ""));
     const binary = first.questionType === "multiple_response" || isYesNo(first) || (!first.valueLabels && first.distinct !== undefined && first.distinct <= 2);
-    const st = stageOf(stem);
-    measures.push({ group: f.template, label: stem, byBrand, outside, shape: binary ? "binary" : "single", stage: st?.stage ?? null, stageReason: st?.reason ?? null });
+    measures.push({ group: f.template, label: stem, byBrand, outside, shape: binary ? "binary" : "single", ...stageAndWindow(stem, first) });
   }
   // Lists whose items are no brand: a family with its varying part last, no brand in its name or its items.
   const covered = new Set(nf.families.flatMap((f) => f.members.map((m) => m.variable)));

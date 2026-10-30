@@ -149,6 +149,8 @@ function suggestionRecord(rec: TrackerRecognition, weightVar: string | null) {
     brands: rec.frame?.brands ?? [],
     nonBrandCodes: rec.frame?.nonBrandCodes.map((c) => c.code) ?? [],
     stages: Object.fromEntries(rec.measures.map((m) => [m.group, m.stage])),
+    windows: Object.fromEntries(rec.measures.map((m) => [m.group, m.window])),
+    trackerType: rec.trackerType,
     csm: rec.csm,
     weightVar,
   };

@@ -8,9 +8,12 @@
 // unless the researcher chose unweighted.
 // Pure: no reads or writes. Persistence is trackerDashboards.ts.
 import { FUNNEL_STAGES, type FunnelStage, type TrackerRecognition } from "./trackerRoles";
+import { isTrackerType, overviewStagesFor, TRACKER_TYPE_LABEL, type TrackerType } from "./trackerType";
+import type { TimeWindow } from "./trackerWindows";
 
-/** Which recognition rules produced a suggestion, recorded with saved choices. Raise when trackerRoles.ts changes. */
-export const TRACKER_ROLE_RULES = "d1-2026-10-29";
+/** Which recognition rules produced a suggestion, recorded with saved choices. Raise when trackerRoles.ts changes.
+ * r5fmcg: time windows, recent purchase or use as usage, and the tracker type suggestion. */
+export const TRACKER_ROLE_RULES = "r5fmcg-2026-10-30";
 
 const STAGES: readonly string[] = FUNNEL_STAGES;
 const CSM_SINGLE = ["overallSatisfaction", "recommend0to10", "likelyToStay", "likelyToSwitch", "company"] as const;
@@ -31,6 +34,9 @@ export type TrackerChoices = {
   weighted?: boolean;
   /** Charts the researcher hid, by chart id. */
   hidden?: string[];
+  /** The tracker type chosen for the programme (R5): "durables" or "fmcg" (trackerType.ts). Absent: the suggestion
+   * applies. Kept as stored text so a value this app does not know is reported, never silently read as a type. */
+  trackerType?: string;
 };
 
 export type ChoiceSource = "suggested" | "chosen";
@@ -41,7 +47,13 @@ export type ResolvedDashboard = {
   brands: { code: string; label: string }[];
   nonBrandCodes: { code: string; label: string; source: ChoiceSource }[];
   focalBrand: { code: string; label: string; source: ChoiceSource | "prefilled" } | null;
-  stages: { group: string; label: string; stage: FunnelStage | null; source: ChoiceSource }[];
+  stages: { group: string; label: string; stage: FunnelStage | null; source: ChoiceSource; window: TimeWindow }[];
+  /** The tracker type in effect (R5): the saved choice, else the suggestion; null when neither gives one. `suggested`
+   * and `reason` are the suggestion's, always shown beside the choice. */
+  trackerType: { type: TrackerType | null; source: ChoiceSource; suggested: TrackerType | null; reason: string };
+  /** The brand overview's stages in order for that type (trackerType.ts overviewStagesFor): the one ordered list the
+   * tiles, the funnel rows and the headline charts read. */
+  overviewStages: FunnelStage[];
   csm: { [K in CsmSingle]: { variable: string | null; source: ChoiceSource } } & { drivers: { variables: string[]; source: ChoiceSource } };
   weightVar: string | null;
   weighted: boolean;
@@ -99,6 +111,9 @@ export function choiceProblems(
   // later wave that has a weight. Only a new choice of weighting is refused here.
   if (choices.weighted === true && !weightVar && stored.weighted !== true) problems.push("This file has no weight, so it cannot be weighted.");
   if ((choices.hidden ?? []).some((h) => typeof h !== "string" || h.length > 100) || (choices.hidden?.length ?? 0) > 200) problems.push("The hidden charts list is not valid.");
+  // A new or changed tracker type must be one this app offers; an unchanged stored value is kept (resolveDashboard
+  // reports one it does not know).
+  if (choices.trackerType !== undefined && choices.trackerType !== stored.trackerType && !isTrackerType(choices.trackerType)) problems.push(`"${choices.trackerType}" is not a tracker type. Choose Durables or FMCG.`);
   return problems;
 }
 
@@ -125,6 +140,10 @@ export function normaliseChoices(raw: unknown): TrackerChoices {
   if (typeof o.weighted === "boolean") out.weighted = o.weighted;
   const hidden = strs(o.hidden);
   if (hidden) out.hidden = hidden;
+  // Any short text is kept as given: choiceProblems refuses a new value that is not a type, and resolveDashboard
+  // reports a stored one it does not know, rather than dropping it here unseen.
+  if (typeof o.trackerType === "string" && o.trackerType.length <= 40) out.trackerType = o.trackerType;
+  else if (o.trackerType !== undefined && o.trackerType !== null) out.trackerType = String(o.trackerType).slice(0, 40);
   return out;
 }
 
@@ -162,10 +181,29 @@ export function resolveDashboard(
     focalBrand = prefill && brandList.some((b) => b.code === prefill.code) ? { ...prefill, source: "prefilled" } : null;
   }
 
+  // The tracker type: the saved choice when it is a type, else the suggestion. A stored value this app does not know
+  // is said so, and the suggestion is used until a type is chosen (never read as either type).
+  const suggestedType = rec.trackerType.type;
+  let trackerType: ResolvedDashboard["trackerType"] = { type: suggestedType, source: "suggested", suggested: suggestedType, reason: rec.trackerType.reason };
+  if (choices.trackerType !== undefined) {
+    if (isTrackerType(choices.trackerType)) trackerType = { ...trackerType, type: choices.trackerType, source: "chosen" };
+    else needsChoice.push({ id: "tracker-type", text: `The tracker type saved for this programme ("${choices.trackerType}") is not one this app knows. ${suggestedType ? `The suggested type, ${TRACKER_TYPE_LABEL[suggestedType]}, is used until you choose one.` : "Choose Durables or FMCG."}` });
+  }
+
   const stages = rec.measures.map((m) => {
     const chosen = choices.stages && Object.prototype.hasOwnProperty.call(choices.stages, m.group);
-    return { group: m.group, label: m.label, stage: chosen ? choices.stages![m.group] : m.stage, source: (chosen ? "chosen" : "suggested") as ChoiceSource };
+    return { group: m.group, label: m.label, stage: chosen ? choices.stages![m.group] : m.stage, source: (chosen ? "chosen" : "suggested") as ChoiceSource, window: m.window };
   });
+  // A stage that depends on the type (a purchase in the past 12 months: acquisition for Durables, annual penetration
+  // for FMCG) takes the type's reading when it is not chosen, and only when no other question already has that stage,
+  // so the type never creates a contest the researcher did not have (an FMCG file with P3M and P12M keeps P3M as usage).
+  if (trackerType.type) {
+    for (const s of stages) {
+      const m = rec.measures.find((x) => x.group === s.group)!;
+      const typed = m.stageByType?.[trackerType.type];
+      if (s.source === "suggested" && typed && typed !== s.stage && !stages.some((o) => o !== s && o.stage === typed)) s.stage = typed;
+    }
+  }
   for (const group of Object.keys(choices.stages ?? {})) {
     if (!rec.measures.some((m) => m.group === group)) needsChoice.push({ id: `stage:${group}`, text: `Question ${group}, given a funnel stage in an earlier wave, is not in this file.` });
   }
@@ -222,6 +260,8 @@ export function resolveDashboard(
     weighted: weightVar !== null && choices.weighted !== false,
     weightSource: weightChosen ? "chosen" : "default",
     hidden: choices.hidden ?? [],
+    trackerType,
+    overviewStages: [...overviewStagesFor(trackerType.type)],
     needsChoice: [...open, ...needsChoice],
   };
 }

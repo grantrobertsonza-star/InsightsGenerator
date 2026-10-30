@@ -1,14 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-30. State: **READY_FOR_CODEX** (BatchDEVFIX on top of BatchSEC; SEC-F01 and SEC-F02 repairs in progress): development only, Tailwind reads class names from src only and work/ is ignored by git, TypeScript and ESLint, so the dev server no longer rescans Codex's review archives on every change. No product behaviour change; no migration.
-
-## Claude: batch DEVFIX (2026-10-30, morning)
-
-Grant, 30 October: on the dev server the Brand tracking dashboard was drawn over the Analytics page (no background, no width limit, text overlapping), and the dev page earlier kept reloading. Cause: Tailwind's automatic source detection scans the whole app folder, including `work/` (about 145 Codex review folders, many holding full copies of the app). Measured here with 40 copies of `src` in `work/`: one style build took 18.2 s instead of 1.4 s, and every write in `work/` triggers another. Classes added recently (`bg-[#f5f7fb]`, `max-w-[84rem]`) were missing from the stale styles Grant's browser received.
-
-- `src/app/globals.css`: `@import "tailwindcss" source("../")`, so Tailwind reads `src` only. Compiled with and without: 979 against 976 classes; the three dropped (`end-2022`, `end-2025`, `lowercase`) came from `public/home.html` and docs, and no `src` file uses them. With `work/` full of copies the build took 1.1 s.
-- `.gitignore`: `/work/` (also speeds up `git status`, which timed out on the laptop). `tsconfig.json` excludes `work`; `eslint.config.mjs` ignores `work/**`.
-- Gates: `npx tsc --noEmit` exit 0. No runtime code changed.
+Updated: 2026-10-30. State: **READY_FOR_CODEX** (BatchSEC on top of BatchD3e): SEC2, the project's ownership checked at the entry of every server action that takes a project id (204 actions) with a source scan, and security headers on every response; SEC3, uploaded content reaches the Research assistant as delimited data and report revisions happen only when the researcher asked. No migration.
 
 ## Claude: batch SEC, main copy (2026-10-30, night)
 

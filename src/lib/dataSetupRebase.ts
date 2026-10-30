@@ -71,3 +71,64 @@ export async function saveSetupEdit(save: SaveSetup, previous: DataSetup, next: 
   if (!again.conflict) return { status: "failed", error: again.error, current };
   return { status: "conflict", current: again.current ?? current };
 }
+
+export type QueuedSetupEditOutcome = SetupEditOutcome & {
+  /** True when no edit was made on this file after this one: only then may the screen show this outcome's setup
+   * (an earlier edit's answer must not replace a newer edit already on screen). */
+  latest: boolean;
+};
+
+export type SetupEditQueue = {
+  /** Sends one edit, made on `view` (what the screen showed) to `next`, after every earlier edit of this file has
+   * been answered. */
+  edit(view: DataSetup, next: DataSetup): Promise<QueuedSetupEditOutcome>;
+  /** Records what is now known to be saved (the file's first-view acceptance, or what a conflict reported). */
+  adopt(saved: DataSetup): void;
+};
+
+/**
+ * One file's Setup edits, sent one at a time (R3e1, Codex's E1R waves-in-project receipt). Each edit is applied to
+ * what the previous edit actually saved, never to the screen's optimistic view of it: before this, a fieldwork month
+ * and an inclusion choice made while the wave label's save was still on its way were each sent with that unconfirmed
+ * label as the expected value. When the label's save had to be re-applied (the form's view was behind what was saved),
+ * the later saves met a value they did not expect, re-applied themselves on a version read before the label landed,
+ * conflicted again and were dropped (persisted: wave set, month null, still included).
+ *
+ * The edit is the fields that differ between `view` and `next`. rebaseSetupEdit applies them to the last known saved
+ * version (null, a conflict, when one of those fields was changed by an earlier edit or elsewhere, or when an
+ * acceptance was given to a structure that is no longer saved), and saveSetupEdit sends it as a compare-and-swap, so a
+ * change made in another tab is still detected. A save that throws (a lost response) is a failed edit, never "saved",
+ * and the next edit's compare-and-swap finds out what is stored.
+ */
+export function createSetupEditQueue(save: SaveSetup, saved: DataSetup | null): SetupEditQueue {
+  let known = saved;
+  let tail: Promise<unknown> = Promise.resolve();
+  let issued = 0;
+  const run = async (view: DataSetup, next: DataSetup): Promise<SetupEditOutcome> => {
+    const base = known ?? view;
+    const changed = (Object.keys(next) as (keyof DataSetup)[]).some((k) => !same(view[k], next[k]));
+    if (!changed) return { status: "saved", setup: base, savedOver: base };
+    const target = rebaseSetupEdit(view, next, base);
+    if (!target) return { status: "conflict", current: base };
+    let r: SetupEditOutcome;
+    try {
+      r = await saveSetupEdit(save, base, target);
+    } catch (e) {
+      r = { status: "failed", error: e instanceof Error ? e.message : String(e), current: null };
+    }
+    if (r.status === "saved") known = r.setup;
+    else if (r.current) known = r.current;
+    return r;
+  };
+  return {
+    edit(view, next) {
+      const seq = ++issued;
+      const outcome = tail.then(() => run(view, next));
+      tail = outcome.catch(() => {});
+      return outcome.then((r) => ({ ...r, latest: seq === issued }));
+    },
+    adopt(setup) {
+      known = setup;
+    },
+  };
+}

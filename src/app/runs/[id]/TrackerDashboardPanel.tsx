@@ -22,6 +22,8 @@ import type { BrandOverview, TimelinePoint } from "@/lib/trackerOverview";
 import type { TrackerChoices } from "@/lib/trackerDashboard";
 import type { CompanyBox, CompanyNps, CsmTile, CsmTileId } from "@/lib/trackerCsmFigures";
 import type { FunnelStage } from "@/lib/trackerRoles";
+import { TRACKER_TYPES, TRACKER_TYPE_LABEL } from "@/lib/trackerType";
+import { windowChangeReason, windowSuffix } from "@/lib/trackerWindows";
 import { searchVariables } from "@/lib/variableSearch";
 import { QuestionPicker, variableText } from "./QuestionPicker";
 
@@ -35,6 +37,7 @@ const STAGE_LABEL: Record<string, string> = {
   trial: "Trial",
   usage: "Usage",
   frequent_usage: "Frequent usage",
+  acquisition: "Acquisition",
 };
 /** One colour per funnel stage, as in the brand preview (blue, sky, teal, violet), carried through bars and lines. */
 const STAGE_COLOUR: Record<string, string> = {
@@ -45,8 +48,10 @@ const STAGE_COLOUR: Record<string, string> = {
   trial: "#f59e0b",
   usage: "#0ea5e9",
   frequent_usage: "#64748b",
+  acquisition: "#0d9488",
 };
-const HEADLINE_STAGES = ["awareness", "consideration", "shortlist", "first_choice"];
+/** A stage's name with its question's time window, as every tile, funnel row and chart shows it ("Usage, past 3 months"). */
+const stageText = (stage: string, window: Parameters<typeof windowSuffix>[1]) => `${STAGE_LABEL[stage] ?? stage}${windowSuffix(stage, window)}`;
 
 type CsmRole = "overallSatisfaction" | "recommend0to10" | "likelyToStay" | "likelyToSwitch" | "company";
 const CSM_TILE: Record<CsmTileId, { title: string; role: CsmRole | "drivers" }> = {
@@ -479,6 +484,28 @@ export default function TrackerDashboardPanel({
               </select>
             </label>
           )}
+          {kind === "brand" && (
+            <label className="flex flex-col gap-1" id="tracker-choice-tracker-type">
+              <span className="font-medium text-slate-900">Tracker type</span>
+              <select
+                aria-label="Tracker type"
+                value={draft.trackerType ?? ""}
+                onChange={(e) => editDraft((d) => ({ ...d, trackerType: e.target.value || undefined }))}
+                className="rounded border border-slate-200 bg-white px-2 py-1.5"
+                data-testid="tracker-type"
+              >
+                <option value="">{dashboard.trackerType.suggested ? `Suggested: ${TRACKER_TYPE_LABEL[dashboard.trackerType.suggested]}` : "Not set"}</option>
+                {TRACKER_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {TRACKER_TYPE_LABEL[t]}
+                  </option>
+                ))}
+              </select>
+              <span className="text-slate-500" data-testid="tracker-type-reason">
+                {dashboard.trackerType.reason} It sets the funnel stages shown and their order.
+              </span>
+            </label>
+          )}
           <label className="flex items-start gap-2">
             <input
               type="checkbox"
@@ -520,7 +547,7 @@ export default function TrackerDashboardPanel({
                   const holders = overview.stageCandidates.filter((c) => stageOfGroup(c.group) === t.stage);
                   return (
                     <label key={t.stage} className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-center gap-2" id={`tracker-choice-stage-${t.stage}`}>
-                      <span>{STAGE_LABEL[t.stage]}</span>
+                      <span>{stageText(t.stage, t.window)}</span>
                       <QuestionPicker
                         ariaLabel={`Question for ${STAGE_LABEL[t.stage]}`}
                         value={holders.length === 1 ? holders[0].group : null}
@@ -687,7 +714,7 @@ export default function TrackerDashboardPanel({
                 <BlankTile
                   key={t.stage}
                   testId="tracker-kpi"
-                  title={STAGE_LABEL[t.stage]}
+                  title={stageText(t.stage, t.window)}
                   text={
                     t.status === "choose"
                       ? "Two questions could be this stage. Choose which one."
@@ -704,7 +731,7 @@ export default function TrackerDashboardPanel({
             const c = focal ? stageChange(s.stage, focal.code) : null;
             return (
               <div key={t.stage} className="rounded-2xl border border-slate-200 bg-white p-5" data-testid="tracker-kpi">
-                <p className="text-sm text-slate-500">{STAGE_LABEL[t.stage]}</p>
+                <p className="text-sm text-slate-500" data-testid="tracker-kpi-title">{stageText(t.stage, s.window)}</p>
                 <div className="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1">
                   <p className="text-[2rem] font-bold tabular-nums leading-none text-slate-900">{!focal ? "-" : b?.share === null || b?.share === undefined ? "n/a" : `${b.share.toFixed(1)}%`}</p>
                   {focal && (
@@ -738,8 +765,8 @@ export default function TrackerDashboardPanel({
                         const v = b?.share ?? null;
                         const d = pp(stageChange(s.stage, code)?.changePp ?? null);
                         return (
-                          <div key={s.stage} className="grid grid-cols-[5.5rem_minmax(0,1fr)_2.6rem] items-center gap-2 text-xs" title={b?.reason ?? (d ? `${d} vs ${previousName ?? "previous wave"}` : undefined)}>
-                            <span className="truncate text-slate-500">{STAGE_LABEL[s.stage]}</span>
+                          <div key={s.stage} className="grid grid-cols-[7.5rem_minmax(0,1fr)_2.6rem] items-center gap-2 text-xs" title={b?.reason ?? (d ? `${d} vs ${previousName ?? "previous wave"}` : stageText(s.stage, s.window))}>
+                            <span className="truncate text-slate-500" data-testid="tracker-compare-stage">{stageText(s.stage, s.window)}</span>
                             <span className="h-3.5 rounded bg-slate-100">
                               <span className="block h-full rounded" style={{ width: `${Math.max(0, Math.min(100, v ?? 0))}%`, background: STAGE_COLOUR[s.stage] }} />
                             </span>
@@ -763,18 +790,37 @@ export default function TrackerDashboardPanel({
           >
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
               {shownStages
-                .filter((s) => HEADLINE_STAGES.includes(s.stage))
+                // The four headline stages: the first four of the tracker type's ordered list (dashboard.overviewStages).
+                .filter((s) => dashboard.overviewStages.slice(0, 4).includes(s.stage))
                 .map((s) => (
                   <div key={s.stage}>
-                    <p className="text-sm font-semibold text-slate-900">{STAGE_LABEL[s.stage]}</p>
+                    <p className="text-sm font-semibold text-slate-900">{stageText(s.stage, s.window)}</p>
                     <WaveLine
                       colour={STAGE_COLOUR[s.stage]}
                       format={(v) => `${v.toFixed(1)}%`}
-                      points={overview.timeline.map((p) => ({ tick: waveTick(p), value: p.status === "ok" ? (p.stages?.find((x) => x.stage === s.stage)?.byBrand.find((x) => x.code === focal.code)?.share ?? null) : null }))}
+                      // A wave whose question asked about another window is not drawn (the same rule as the change).
+                      points={overview.timeline.map((p) => {
+                        const at = p.status === "ok" ? p.stages?.find((x) => x.stage === s.stage) : undefined;
+                        return { tick: waveTick(p), value: at && !windowChangeReason(s.window, at.window) ? (at.byBrand.find((x) => x.code === focal.code)?.share ?? null) : null };
+                      })}
                     />
                   </div>
                 ))}
             </div>
+            {(() => {
+              const withheld = shownStages
+                .filter((s) => dashboard.overviewStages.slice(0, 4).includes(s.stage))
+                .flatMap((s) => overview.timeline.flatMap((p) => {
+                  const at = p.status === "ok" ? p.stages?.find((x) => x.stage === s.stage) : undefined;
+                  const why = at ? windowChangeReason(s.window, at.window) : null;
+                  return why ? [`${STAGE_LABEL[s.stage] ?? s.stage}, ${p.wave}: ${why}`] : [];
+                }));
+              return withheld.length > 0 ? (
+                <p className="mt-2 text-[11px] text-amber-800" data-testid="tracker-timeline-withheld">
+                  {withheld.join(" ")}
+                </p>
+              ) : null;
+            })()}
             {overview.timeline.some((p) => p.status === "failed") && (
               <p className="mt-2 text-[11px] text-amber-800">
                 {overview.timeline

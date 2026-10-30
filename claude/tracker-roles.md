@@ -42,8 +42,38 @@ codebook question fields, and many carry no answer labels at all.
    flag, a routed duplicate) stay outside.
 3. **Stage** from the question's wording once the brand is taken out, in order: advertising, word of mouth,
    moment (CEP links, mental availability), unaided awareness, awareness, consideration, shortlist, first choice,
-   rejection (brand opinion), repeat, acquisition, usage. A funnel stage claimed by two questions is asked about;
+   rejection (brand opinion), trial (ever), frequent use (most often, BUMO), repeat, then (R5) a purchase or use
+   question in a recent window, then acquisition, then usage. A funnel stage claimed by two questions is asked about;
    advertising, word of mouth and moment measures may be several.
+   - **Recent purchase or use is usage (R5, Grant 30 October 2026).** A wording with a buying word (bought, buy,
+     purchase) or a using word (use, used, consume, drink, ate, shopped) and a recent window (past week, past month or
+     4 weeks, past 3 months, past 6 months; P1W, P1M, P4W, P3M, P6M; the window from the wording, else from the answer
+     labels, rule 3a) is usage in that window: FMCG penetration. Not when the wording is about taking a brand up
+     (acquired, acquisition, started, joined, switched, signed up, took out, opened): "Acquired", "Recently acquired"
+     and "Started using in the past 3 months" stay acquisition. This rule runs after repeat and before acquisition,
+     so "Bought in the past 3 months" is no longer acquisition by "bought".
+   - **A purchase in the past 12 months depends on the tracker type (decided R5).** A buying word (not a take-up
+     word) with a 12-month window is acquisition for Durables (as before) and annual penetration (usage) for FMCG. The
+     recogniser gives `stage` = acquisition and `stageByType` = {durables: acquisition, fmcg: usage};
+     `resolveDashboard` applies the type in effect to a stage the researcher has not chosen, and only when no other
+     question already has that stage (an FMCG file with P3M and P12M keeps P3M as usage and P12M as acquisition, so
+     the type never creates a contest). A take-up wording with a 12-month window ("Past 12 month household
+     acquisition", "Past 12 months category start") is acquisition for both types and has no `stageByType`.
+   - The BMW, banking, insurance and telecoms packs keep every stage they had (owner and current are usage; bought12,
+     started12 and started90 are acquisition; telecoms' "Past 90 days category start" is a take-up, so acquisition).
+3a. **Time window** (`window`, `windowReason`; owner `src/lib/trackerWindows.ts` `windowOf`, R5). One of past week,
+   past month (also 4 weeks, 30 days, P1M, P4W), past 3 months (also 12 or 13 weeks, 90 days, a quarter, P3M), past 6
+   months, past 12 months (also a year, 52 weeks, "12 month", P12M), ever, currently (current, own, owner, ownership,
+   now, these days), or unknown. Read from the wording with the brand taken out; when it states none, from the answer
+   labels when they agree on exactly one ("Bought in the last 4 weeks" as the yes answer); two different periods in
+   one wording, or in the labels, are unknown with the reason. Unknown is never read as any period. Shown beside the
+   stage on every tile, funnel row and chart ("Usage, past 3 months"; `windowSuffix`): a known window always, an
+   unknown one only for a behaviour stage (trial, usage, frequent use, acquisition, repeat) as "window not stated".
+   Wave comparison (`changesAgainst`, `windowChangeReason`): a stage is compared only with the same window in both
+   waves; a changed window is withheld with "The time window changed (past 3 months in the previous wave, past month
+   now), so it is not compared."; the trend chart draws no point for a wave with another window and says why. Two
+   unknown windows are treated as the same (the same variable at the same stage states no period in either wave); a
+   known window against an unknown one is withheld.
 4. **Brand grids.** A per-brand group whose wording is "<brand> associated with <attribute>" or "<brand> recalled
    for <situation>" is one item of an associations or moments grid.
 5. **Other lists.** A group of three or more yes/no options none of which is a brand (media, purchase journey,
@@ -76,6 +106,22 @@ codebook question fields, and many carry no answer labels at all.
    Two candidates for a role are asked about.
 7. **Type.** Brand when there is a brand list and at least two funnel or usage stages; CSM when there is overall
    satisfaction and a 0 to 10 recommend question; both, or unknown.
+7a. **Tracker type** (`trackerType`, R5; owner `src/lib/trackerType.ts` `suggestTrackerType`): Durables or FMCG
+   (an enum; "services" may follow and is not offered). Suggested from the recognised stages and windows, with the
+   reason: FMCG when the file has a usage question in a window of 3 months or less (past week, month, 3 months) or a
+   bought most often question (frequent use, BUMO), and no shortlist or first choice question; otherwise Durables
+   when it has a shortlist or first choice question, current ownership or use (usage, currently), or an acquisition
+   in the past 12 months; otherwise no suggestion ("Choose one"). No brand list, no suggestion. The researcher's
+   saved choice replaces it (one dropdown, "Tracker type", in Customise; `TrackerChoices.trackerType`, saved through
+   `saveTrackerChoices` with the revision check). It sets the brand overview's stages and order
+   (`overviewStagesFor`, exposed as `ResolvedDashboard.overviewStages`): Durables = awareness, consideration,
+   shortlist, first choice, usage (owner), acquisition; FMCG = awareness, consideration, trial (ever tried), usage
+   (bought in the window), frequent use (bought most often); no type = the list used before tracker types
+   (awareness, consideration, shortlist, first choice, trial, usage, frequent use). The headline trend charts are
+   the first four of that list. The type never changes which question a stage reads, except the 12-month purchase
+   reading in rule 3; the researcher can still map any question to any stage. A stored value that is not a type is
+   reported under "Still to decide" and the suggestion is used until a type is chosen; a new value that is not a
+   type is refused on save.
 
 ## Raw files with no answer lists (D2, `src/lib/trackerNameFamilies.ts`)
 
@@ -99,8 +145,8 @@ Used only when rule 1 finds no labelled brand list.
     per brand: its wording (label, else the name's words) without the brand gives the stage. A family of two
     values is yes/no. A family with no brand among its items or in its name is a list of its own.
 11. **Stages added for raw files:** trial ("ever used", "tried") before usage; frequent use ("frequent", "most
-    often", "regular") before repeat; "P3M" and "past 3 months" are usage; "WOM" is word of mouth; "same brand"
-    is repeat.
+    often", "regular", "BUMO") before repeat; "P3M", "P1M", "P6M", "P1W", "P4W" and "past 3 months" are usage; "WOM"
+    is word of mouth; "same brand" is repeat.
 12. **CSM from raw files.** Wording is the label, else the name's words ("OverallCompanySatisfaction_0to10" is
     "Overall Company Satisfaction 0 to 10"). A number with three to eleven values is a rating; its scale top is
     the answer list's, else the range its wording states ("0 to 10"), else the size its name ends in
@@ -113,6 +159,12 @@ Always asked: which brand is the client's (the data never says).
 
 ## Tests and limits
 
+`trackerFmcg.test.ts` (R5): an FMCG codebook in codebook, CSV-codebook and labels-only forms; wording variants (P3M,
+past three months, last 4 weeks, past month, P1M, past week, last 13 weeks, past 6 months); take-up wordings kept as
+acquisition; a durable's "bought in the past 12 months"; the window from answer labels; the BMW pack unchanged; the
+type suggestion, choice, unknown stored value and stage order; the window rule in wave comparison.
+`trackerFmcg.db.test.ts`: the same on a two-wave synthetic snack tracker (fixtures/tracker-fmcg) through the real
+engine and database, figures equal to an independent pandas reading.
 `trackerRoles.test.ts` on the BMW, banking, insurance and telecoms brand packs and the banking CSM relationship
 file (fixtures built from their codebooks), plus will-not-guess cases. CSM roles read ratings only (a scale, or
 three or more answers): a yes/no attribute that mentions switching is not a likelihood to switch. `trackerRolesRaw.test.ts` (fixtures/tracker-raw) on Grant's raw files as the engine reads them:

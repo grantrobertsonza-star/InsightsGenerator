@@ -7,9 +7,12 @@
 //      shows only after the save; the tiles show BMW's figures, equal to the pack's reference to one decimal.
 //   3. After a reload the choice is still there (kept for the project).
 //   4. At 760 wide the tiles and the comparison still fit the screen.
-// Every standard tile is shown (Grant, 29 October 2026): BMW has no trial or frequent-usage question, so those two
-// tiles are blank with "Choose a question"; its CSM dashboard shows only NPS (the main brand's recommendation
-// question) and the other four tiles are blank. A blank tile can be hidden and shown again.
+// Every standard tile is shown (Grant, 29 October 2026). R5 (30 October): BMW is suggested Durables, so its tiles are
+// the Durables funnel (awareness, consideration, shortlist, first choice, usage "currently", acquisition "past 12
+// months"), all with a question. Set to FMCG under Customise, the FMCG funnel shows instead and BMW's trial and
+// frequent-usage tiles are blank with "Choose a question"; a blank tile can be hidden and shown again; the type is then
+// set back to the suggestion. Its CSM dashboard shows only NPS (the main brand's recommendation question) and the other
+// four tiles are blank.
 // A second test: the CSM dashboard on the banking CSM pack's wave 1 (fixtures/csm) shows the pack's reference figures; "Likely to stay" set to none becomes a blank tile, and choosing the question again from that
 // tile brings the figure back.
 import { expect, test } from "@playwright/test";
@@ -81,24 +84,37 @@ test("tracker dashboard: change against the previous wave, choices applied and k
     await expect(dash.getByTestId("tracker-basis")).toContainText("Change is against Wave 1 (bmw_w1.sav)");
     await expect(dash.getByTestId("tracker-compare-row")).toHaveCount(5);
     await expect(page.getByText("Choose your brand (the Brand chip)")).toBeVisible();
-    await expect(dash.getByTestId("tracker-kpi")).toHaveCount(7);
+    // Durables (suggested): six tiles, each with a question, the behaviour stages with their window.
+    await expect(dash.getByTestId("tracker-kpi")).toHaveCount(6);
+    await expect(dash.locator('[data-testid="tracker-kpi"][data-blank="true"]')).toHaveCount(0);
+    await expect(dash.getByTestId("tracker-kpi-title")).toHaveText(["Awareness", "Consideration", "Shortlist", "First choice", "Usage, currently", "Acquisition, past 12 months"]);
+    const custom = dash.getByTestId("tracker-customise");
+    await dash.getByRole("button", { name: "Customise dashboard" }).click();
+    await expect(custom.getByTestId("tracker-type-reason")).toContainText("Suggested from the questions: a shortlist or first choice question");
+    await expect(custom.getByLabel("Tracker type").locator("option:checked")).toHaveText("Suggested: Durables");
+    // Set to FMCG: the FMCG funnel; BMW has no trial or frequent-usage question, so those tiles are blank.
+    await custom.getByLabel("Tracker type").selectOption({ label: "FMCG" });
+    await custom.getByRole("button", { name: "Apply changes" }).click();
+    await expect(dash.getByText("Saved for this project.")).toBeVisible({ timeout: 2 * 60_000 });
+    await expect(dash.getByTestId("tracker-kpi")).toHaveCount(5, { timeout: 2 * 60_000 });
     await expect(dash.locator('[data-testid="tracker-kpi"][data-blank="true"]')).toHaveCount(2);
     // A blank tile can be hidden for a report (Grant, 29 October 2026), and shown again.
     await dash.getByRole("button", { name: "Hide the Trial tile" }).click();
     await expect(dash.getByTestId("tracker-hidden")).toContainText("1 empty tile is hidden", { timeout: 2 * 60_000 });
-    await expect(dash.getByTestId("tracker-kpi")).toHaveCount(6);
+    await expect(dash.getByTestId("tracker-kpi")).toHaveCount(4);
     await dash.getByRole("button", { name: "Show hidden tiles" }).click();
-    await expect(dash.getByTestId("tracker-kpi")).toHaveCount(7, { timeout: 2 * 60_000 });
+    await expect(dash.getByTestId("tracker-kpi")).toHaveCount(5, { timeout: 2 * 60_000 });
     await expect(dash.getByTestId("tracker-hidden")).toHaveCount(0);
 
-    // 2. Choose BMW and apply.
+    // 2. Choose BMW, set the type back to the suggestion, and apply.
     await dash.getByRole("button", { name: "Customise dashboard" }).click();
-    const custom = dash.getByTestId("tracker-customise");
+    await custom.getByLabel("Tracker type").selectOption({ label: "Suggested: Durables" });
     await custom.getByLabel("Which brand is yours?").selectOption({ label: "BMW" });
     // An unapplied edit clears the "Saved" note left by hiding and showing a tile.
     await expect(dash.getByText(/^Saved for this/)).toHaveCount(0);
     await custom.getByRole("button", { name: "Apply changes" }).click();
     await expect(dash.getByText("Saved for this project.")).toBeVisible({ timeout: 2 * 60_000 });
+    await expect(dash.getByTestId("tracker-kpi")).toHaveCount(6, { timeout: 2 * 60_000 });
     const tiles = dash.getByTestId("tracker-kpi");
     await expect(tiles.first()).toBeVisible({ timeout: 2 * 60_000 });
     const aware = tiles.filter({ hasText: "Awareness" });

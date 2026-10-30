@@ -58,7 +58,10 @@ test("setup fields wait for the first-view save, and a wave typed after it is ke
     await wave.fill("Wave 4");
     await wave.blur();
     await expect(setup.getByLabel("Fieldwork month: first-view.csv")).toBeVisible({ timeout: 30_000 });
-    await page.waitForLoadState("networkidle");
+    // Reloaded only once the form says the wave's save was answered (R3e1): "networkidle" had already been reached and
+    // returned at once, so the page could reload with the save still on its way (this check failed on the base tree too).
+    await expect(setup.getByTestId("setup-save-status").filter({ visible: true })).toHaveAttribute("data-saving", "false", { timeout: 60_000 });
+    await expect(setup.getByTestId("setup-save-error").filter({ visible: true })).toHaveCount(0);
     await expect(setup.getByText("changed elsewhere")).toHaveCount(0);
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Import data/ }).first().click();

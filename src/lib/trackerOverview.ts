@@ -11,9 +11,9 @@ import { loadRoleInput } from "./trackerInput";
 import { brandOverviewFigures, changesAgainst, type BrandOverviewFigures, type StageChange } from "./trackerFigures";
 import { loadProjectWaves } from "./waveFiles";
 import type { ResolvedDashboard } from "./trackerDashboard";
-import { OVERVIEW_STAGES } from "./trackerFigures";
 import { csmAttributeMeans, csmChangesAgainst, csmOverviewFigures, satisfactionMean, type AttributeMean, type CsmChange, type CsmCompanies, type CsmTile } from "./trackerCsmFigures";
 import type { FunnelStage, RoleVariable, TrackerRecognition } from "./trackerRoles";
+import type { TimeWindow } from "./trackerWindows";
 import { prefilledFocalBrand } from "./trackerDashboard";
 
 export type PreviousWave =
@@ -32,11 +32,12 @@ export type BrandOverview = {
   changes: StageChange[];
   /** The brands compared by default: five, the client's brand first when chosen, then the file's list order. */
   suggestedComparators: string[];
-  /** Every overview stage, shown or not: "shown" has figures; "choose" means two questions claim it; "missing" means
-   * no question in this file has it. The screen keeps a blank tile for the last two (Grant, 29 October 2026). */
-  stageTiles: { stage: FunnelStage; status: "shown" | "choose" | "missing"; groups: string[] }[];
+  /** Every overview stage, shown or not, in the tracker type's order (dashboard.overviewStages): "shown" has figures;
+   * "choose" means two questions claim it; "missing" means no question in this file has it. The screen keeps a blank
+   * tile for the last two (Grant, 29 October 2026). `window` is the shown question's period (null otherwise). */
+  stageTiles: { stage: FunnelStage; status: "shown" | "choose" | "missing"; groups: string[]; window: TimeWindow | null }[];
   /** Per-brand yes/no questions a stage can be set to: the researcher's choices for a blank or contested tile. */
-  stageCandidates: { group: string; label: string; stage: FunnelStage | null }[];
+  stageCandidates: { group: string; label: string; stage: FunnelStage | null; window: TimeWindow }[];
   /** The customer satisfaction tiles, every one returned (trackerCsmFigures.ts). */
   csm: CsmTile[];
   /** Variables that could fill a blank CSM tile: this file's variables with an answer list or numeric scale. */
@@ -95,12 +96,13 @@ export function csmCompanyOf(variables: RoleVariable[], dashboard: ResolvedDashb
   };
 }
 
-/** Each overview stage's tile: which per-brand yes/no questions claim it now (the dashboard's stage per group). */
-export function stageTilesOf(rec: TrackerRecognition, dashboard: ResolvedDashboard): BrandOverview["stageTiles"] {
+/** Each overview stage's tile, in the dashboard's order: which per-brand yes/no questions claim it now (the
+ * dashboard's stage per group), and the window of the one that does. */
+export function stageTilesOf(rec: TrackerRecognition, dashboard: Pick<ResolvedDashboard, "stages" | "overviewStages">): BrandOverview["stageTiles"] {
   const stageOf = new Map(dashboard.stages.map((s) => [s.group, s.stage]));
-  return OVERVIEW_STAGES.map((stage) => {
-    const groups = rec.measures.filter((m) => m.shape === "binary" && stageOf.get(m.group) === stage).map((m) => m.group);
-    return { stage, status: groups.length === 1 ? "shown" : groups.length > 1 ? "choose" : "missing", groups };
+  return dashboard.overviewStages.map((stage) => {
+    const claims = rec.measures.filter((m) => m.shape === "binary" && stageOf.get(m.group) === stage);
+    return { stage, status: claims.length === 1 ? "shown" : claims.length > 1 ? "choose" : "missing", groups: claims.map((m) => m.group), window: claims.length === 1 ? claims[0].window : null };
   });
 }
 
@@ -212,7 +214,7 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
     stageTiles: stageTilesOf(view.recognition, view.dashboard),
     stageCandidates: view.recognition.measures
       .filter((m) => m.shape === "binary")
-      .map((m) => ({ group: m.group, label: measureLabel.get(m.group) ?? m.group, stage: view.dashboard.stages.find((s) => s.group === m.group)?.stage ?? null })),
+      .map((m) => ({ group: m.group, label: measureLabel.get(m.group) ?? m.group, stage: view.dashboard.stages.find((s) => s.group === m.group)?.stage ?? null, window: m.window })),
     csm,
     csmCandidates: input.variables.filter((v) => !v.text && v.name !== view.dashboard.weightVar).map((v) => ({ name: v.name, label: v.label || v.name })),
     csmCompany: company,

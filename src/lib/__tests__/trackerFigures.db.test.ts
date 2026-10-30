@@ -82,7 +82,9 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("D3 brand overview figures aga
   it("wave 1, weighted by default: every brand's awareness, consideration, shortlist and first choice equal the reference to 1e-6", async () => {
     const { view, f } = await figures(docs[0]);
     expect([f.weighted, f.weightVar]).toEqual([true, "weight"]);
-    expect(f.stages.map((s) => s.stage)).toEqual(["awareness", "consideration", "shortlist", "first_choice", "usage"]);
+    // R5: BMW is suggested Durables, whose overview adds acquisition (bought12, "Past 12 month household acquisition").
+    expect(view.dashboard.trackerType).toMatchObject({ type: "durables", source: "suggested" });
+    expect(f.stages.map((s) => [s.stage, s.window])).toEqual([["awareness", "unknown"], ["consideration", "unknown"], ["shortlist", "unknown"], ["first_choice", "unknown"], ["usage", "currently"], ["acquisition", "past_12_months"]]);
     const label = new Map(view.dashboard.brands.map((b) => [b.code, b.label]));
     let compared = 0;
     for (const s of f.stages.filter((x) => METRIC[x.stage])) {
