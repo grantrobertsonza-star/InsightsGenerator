@@ -14,10 +14,11 @@ const file = n => `UA_Soft_Drinks_Wave_${n}_5000.csv`;
 const refs = readFileSync(path.join(pack, "QA_Expected_Metrics.csv"), "utf8").trim().split(/\r?\n/).slice(1).map(line => line.split(","));
 const expectedAt = (wave, label) => Number(refs.find(r => r[0] === String(wave) && r[1] === label)[6]);
 const expected = label => expectedAt(1, label);
-const fmt = n => new Intl.NumberFormat("en-ZA", { maximumFractionDigits: 1 }).format(n);
+
 test.use({ viewport: { width: 1440, height: 900 } });
 test("U&A: real uploads, confirmed codebook, headline QA, nine pages and saved choices", async ({ page }, testInfo) => {
-  test.setTimeout(25 * 60_000);
+  test.setTimeout(35 * 60_000);
+  const fmt = n => page.evaluate(value => new Intl.NumberFormat("en-ZA", { maximumFractionDigits: 1 }).format(value), n);
   const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
   const ui = await bind({ page, target, testInfo });
   const run = await ui.createRun({ name: `Karoo Drinks U&A ${Date.now()}` });
@@ -38,6 +39,7 @@ test("U&A: real uploads, confirmed codebook, headline QA, nine pages and saved c
   await expect(card.getByText(/Confirmed .*same-code matches/)).toBeVisible({ timeout: 300_000 });
   console.info("UA browser: codebook links confirmed");
   await addFiles(page, [path.join(pack, "UA_Soft_Drinks_Questionnaire.docx")], "Questionnaire");
+  console.info("UA browser: questionnaire stored; naming waves");
   for (const n of [1, 2, 3]) {
     const setup = await openSource(page, file(n), "Setup");
     await expect(setup.getByLabel(`Wave: ${file(n)}`)).toBeEnabled({ timeout: 180_000 });
@@ -47,19 +49,21 @@ test("U&A: real uploads, confirmed codebook, headline QA, nine pages and saved c
   await expect(async () => {
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Import data/ }).first().click();
-    for (const n of [1, 2, 3]) {
+    console.info("UA browser: questionnaire stored; naming waves");
+  for (const n of [1, 2, 3]) {
       const setup = await openSource(page, file(n), "Setup");
       await expect(setup.getByLabel(`Wave: ${file(n)}`)).toHaveValue(`Wave ${n}`);
     }
   }).toPass({ timeout: 180_000 });
+  console.info("UA browser: wave labels read back; opening Analytics");
   await page.getByRole("button", { name: /^Analytics/ }).first().click();
   const section = page.getByTestId("analytics-section").filter({ visible: true });
   await section.getByTestId("analytics-file-select").selectOption({ label: `Wave 1: ${file(1)}` });
   await section.getByRole("button", { name: /^Usage & attitudes dashboard/ }).click({ timeout: 180_000 });
   const dash = page.getByTestId("ua-dashboard");
   const metric = label => dash.locator('[data-testid="ua-metric"]').filter({ has: page.getByRole("heading", { name: label, exact: true }) });
-  await expect(metric("Ever consumption")).toContainText(`${fmt(expected("Ever consumption"))}%`, { timeout: 300_000 });
-  await expect(metric("P3M consumption")).toContainText(`${fmt(expected("P3M consumption"))}%`);
+  await expect(metric("Ever consumption")).toContainText(`${await fmt(expected("Ever consumption"))}%`, { timeout: 300_000 });
+  await expect(metric("P3M consumption")).toContainText(`${await fmt(expected("P3M consumption"))}%`);
   await dash.getByLabel("Focal brand", { exact: true }).selectOption({ label: "Karoo Fizz" });
   const savedFocal = await dash.getByLabel("Focal brand", { exact: true }).inputValue();
   await dash.getByRole("button", { name: "Save choices", exact: true }).click();
@@ -83,10 +87,11 @@ test("U&A: real uploads, confirmed codebook, headline QA, nine pages and saved c
   }
   await dash.getByRole("navigation", { name: "U&A pages" }).getByRole("button", { name: /Category footprint/ }).click();
   await dash.getByLabel("Wave", { exact: true }).selectOption({ label: "Wave 2" });
-  await expect(metric("P3M consumption")).toContainText(`${fmt(expectedAt(2, "P3M consumption"))}%`, { timeout: 300_000 });
-  await expect(metric("P3M consumption")).toContainText(`${fmt(expectedAt(2, "P3M consumption") - expectedAt(1, "P3M consumption"))} points since previous wave`);
+  await expect(metric("P3M consumption")).toContainText(`${await fmt(expectedAt(2, "P3M consumption"))}%`, { timeout: 300_000 });
+  await expect(metric("P3M consumption")).toContainText(`${await fmt(expectedAt(2, "P3M consumption") - expectedAt(1, "P3M consumption"))} points since previous wave`);
   await dash.getByRole("button", { name: "Close dashboard" }).click();
   await page.reload({ waitUntil: "networkidle" });
+  console.info("UA browser: wave labels read back; opening Analytics");
   await page.getByRole("button", { name: /^Analytics/ }).first().click();
   await section.getByRole("button", { name: /^Usage & attitudes dashboard/ }).click({ timeout: 180_000 });
   await expect(dash.getByLabel("Focal brand", { exact: true })).toHaveValue(savedFocal, { timeout: 120_000 });

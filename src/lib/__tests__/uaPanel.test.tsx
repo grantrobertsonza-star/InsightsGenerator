@@ -19,7 +19,7 @@ beforeAll(async () => {
   act = (await import("react")).act as typeof act; createRoot = (await import("react-dom/client")).createRoot;
   container = doc.getElementById("app")!;
 });
-afterEach(async () => { if (root) await act(() => root!.unmount()); root = null; vi.clearAllMocks(); });
+afterEach(async () => { if (root) await act(() => root!.unmount()); root = null; vi.clearAllMocks(); vi.unstubAllGlobals(); });
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
 const workspace = (): UaWorkspace => ({ recognition: { recognised: true, needsMapping: false, fields: [], reasons: [], questions: [], brands: [], roles: {}, analysisWeight: "weight", populationWeight: null }, choices: { focalBrand: null, weighted: true, roleCorrections: {}, lightUserMaximum: null }, revision: null, scope: "project:x", storageAvailable: true, metrics: [{ page: "footprint" }, { page: "needs" }] as UaWorkspace["metrics"], unavailable: [] });
 const response = (page: "footprint" | "needs", label: string) => ({ ok: true as const, page: { page, documentId: "doc", weightVar: "weight", unavailable: [], metrics: [{ spec: { id: label, label, page, sourceQuestionIds: ["Q1"], kind: "percent", unit: "percent", reason: "Declared question", period: "P3M", variable: "v" }, result: { id: label, value: 42, numerator: 42, assignedBase: { n: 100, w: 100, nEff: 90 }, eligibleBase: { n: 100, w: 100, nEff: 90 }, validBase: { n: 100, w: 100, nEff: 90 }, suppressed: false, reason: null, designApplied: false } }] } as UaPage, comparison: { status: "none" as const, reason: "Earliest wave" } });
@@ -59,5 +59,39 @@ describe("mounted U&A panel navigation and late replies", () => {
     await act(() => saved.resolve({ ok: true, result: { saved: false, reason: "Someone else saved first. Reload." } }));
     expect(doc.querySelector('[role="alert"]')?.textContent).toContain("Someone else saved first");
     expect(doc.body.textContent).not.toContain("Saved");
+  });
+});
+
+describe("U&A tile visibility", () => {
+  it("queues no recognition while hidden, and exactly one when shown, even after repeated observer entries", async () => {
+    let enter!: (entries: { isIntersecting: boolean }[]) => void;
+    vi.stubGlobal("IntersectionObserver", class { constructor(cb: typeof enter) { enter = cb; } observe() {} disconnect() {} });
+    actions.workspace.mockResolvedValue({ ok: true, view: workspace() });
+    const Tile = (await import("../../app/runs/[id]/UaDashboardTile")).default;
+    root = createRoot(container);
+    await act(() => root!.render(createElement(Tile, { runId: "run", documentId: "doc", waveFiles: [] })));
+    expect(actions.workspace).toHaveBeenCalledTimes(0);
+    await act(() => enter([{ isIntersecting: false }]));
+    expect(actions.workspace).toHaveBeenCalledTimes(0);
+    await act(() => enter([{ isIntersecting: true }]));
+    expect(actions.workspace).toHaveBeenCalledTimes(1);
+    await act(() => enter([{ isIntersecting: true }]));
+    expect(actions.workspace).toHaveBeenCalledTimes(1);
+    expect(button("Usage & attitudes dashboard")).toBeTruthy();
+  });
+  it("shows a visible recognition failure and recovers on a reopened tile", async () => {
+    let enter!: (entries: { isIntersecting: boolean }[]) => void;
+    vi.stubGlobal("IntersectionObserver", class { constructor(cb: typeof enter) { enter = cb; } observe() {} disconnect() {} });
+    actions.workspace.mockRejectedValueOnce(new Error("Storage unavailable"));
+    const Tile = (await import("../../app/runs/[id]/UaDashboardTile")).default;
+    root = createRoot(container);
+    await act(() => root!.render(createElement(Tile, { key: "first", runId: "run", documentId: "doc", waveFiles: [] })));
+    await act(() => enter([{ isIntersecting: true }]));
+    expect(container.textContent).toContain("Storage unavailable");
+    actions.workspace.mockResolvedValue({ ok: true, view: workspace() });
+    await act(() => root!.render(createElement(Tile, { key: "reopened", runId: "run", documentId: "doc", waveFiles: [] })));
+    await act(() => enter([{ isIntersecting: true }]));
+    expect(container.textContent).not.toContain("Storage unavailable");
+    expect(button("Usage & attitudes dashboard")).toBeTruthy();
   });
 });

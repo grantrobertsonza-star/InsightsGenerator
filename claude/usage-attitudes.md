@@ -61,3 +61,7 @@ The production pack exposed repeated gate grouping in the existing `dataQuality.
 ## Worker transport
 
 Wide CSV conversions produce large JSON replies even when the source file is small. The local worker listener now scans each incoming chunk once and joins fragments only at a complete newline, preserving UTF-8, reply IDs, empty-line handling, restart and error responses. Protocol tag 7 replaces a version-6 listener retained by a dev-server hot reload. Payloads and statistical values are unchanged. The framing benchmark excludes Python calculation, database and browser time; it is not a total import-time claim.
+
+## Visible-screen recognition
+
+The U&A tile waits until its Analytics tile intersects the viewport before requesting recognition. Existing section panels can remain mounted while hidden. The mounted regression measures one full-file recognition request before this guard and zero while hidden afterward; entering the viewport starts exactly one request, and repeated observer entries add none. Failure is visible and a reopened tile can recover. This is a request-count improvement, not a claimed end-to-end upload timing improvement.
