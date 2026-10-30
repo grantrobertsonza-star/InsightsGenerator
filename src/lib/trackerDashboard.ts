@@ -10,7 +10,7 @@
 import { FUNNEL_STAGES, type FunnelStage, type TrackerRecognition } from "./trackerRoles";
 
 /** Which recognition rules produced a suggestion, recorded with saved choices. Raise when trackerRoles.ts changes. */
-export const TRACKER_ROLE_RULES = "d1-2026-10-29";
+export const TRACKER_ROLE_RULES = "d1-2026-10-30";
 
 const STAGES: readonly string[] = FUNNEL_STAGES;
 const CSM_SINGLE = ["overallSatisfaction", "recommend0to10", "likelyToStay", "likelyToSwitch", "company"] as const;
@@ -31,7 +31,38 @@ export type TrackerChoices = {
   weighted?: boolean;
   /** Charts the researcher hid, by chart id. */
   hidden?: string[];
+  /** The Audience page's profile questions, in the order shown (R5, Grant 30 October 2026). Absent: the defaults
+   * (age, gender, income, each as recognised in each wave's file). See ProfileChoice. */
+  audienceProfiles?: ProfileChoice[];
 };
+
+/** The profile questions the Audience page shows by default, in this order (Grant, 30 October 2026: "include age,
+ * gender, income automatically and then have an option to add more"). */
+export const PROFILE_DEFAULTS = ["age", "gender", "income"] as const;
+export type ProfileRole = (typeof PROFILE_DEFAULTS)[number];
+/** The most profile questions a programme can save; more would not read as a dashboard page. */
+export const MAX_PROFILE_QUESTIONS = 24;
+
+/**
+ * One card of the Audience page as saved for the programme. Identity is the variable name (raw), never the wording:
+ *   - `role` set, `variable` null: the default question for that role as recognised in each wave's file (it follows
+ *     the recogniser, so a wave that words gender differently still shows it);
+ *   - `role` set, `variable` set: the researcher's question in place of that default (kept by variable name);
+ *   - `role` null, `variable` set: a question the researcher added.
+ * `label` is the wording when it was chosen, kept for display when a wave's file lacks the variable. A default the
+ * researcher hid is a role missing from the list; the order of the list is the order of the cards.
+ */
+export type ProfileChoice = { role: ProfileRole | null; variable: string | null; label: string | null };
+
+/** The Audience page's cards for this wave, resolved from the saved list (or the defaults) and this file. */
+export type ResolvedProfile =
+  | { status: "ok"; role: ProfileRole | null; variable: string; label: string; source: ChoiceSource }
+  /** A default this file does not have (or has twice): the card says so and offers "Choose a question". */
+  | { status: "not_found" | "ambiguous"; role: ProfileRole; reason: string; source: ChoiceSource }
+  /** A saved question this wave's file does not have: shown, and kept in the saved choice. */
+  | { status: "not_in_file"; role: ProfileRole | null; variable: string; label: string | null; source: ChoiceSource };
+
+export const PROFILE_ROLE_TEXT: Record<ProfileRole, string> = { age: "Age", gender: "Gender", income: "Household income" };
 
 export type ChoiceSource = "suggested" | "chosen";
 export type NeedsChoice = { id: string; text: string };
@@ -47,6 +78,10 @@ export type ResolvedDashboard = {
   weighted: boolean;
   weightSource: "default" | "chosen";
   hidden: string[];
+  /** The Audience page's profile cards, in order (resolveProfiles). */
+  audienceProfiles: ResolvedProfile[];
+  /** "chosen" when the programme saved its own set; "suggested" for the defaults. */
+  audienceProfilesSource: ChoiceSource;
   /** What the researcher still has to decide for this wave: the recogniser's open questions, and saved choices
    * this file cannot apply (each says why). */
   needsChoice: NeedsChoice[];
@@ -99,6 +134,42 @@ export function choiceProblems(
   // later wave that has a weight. Only a new choice of weighting is refused here.
   if (choices.weighted === true && !weightVar && stored.weighted !== true) problems.push("This file has no weight, so it cannot be weighted.");
   if ((choices.hidden ?? []).some((h) => typeof h !== "string" || h.length > 100) || (choices.hidden?.length ?? 0) > 200) problems.push("The hidden charts list is not valid.");
+  problems.push(...profileChoiceProblems(choices.audienceProfiles, rec, stored.audienceProfiles));
+  return problems;
+}
+
+/**
+ * The Audience page's saved list checked before saving: at most MAX_PROFILE_QUESTIONS cards, each a known default
+ * role or a variable, no role or variable twice. A variable new to the list (not in `stored`) must be a profile
+ * question of this file (trackerRoles.profileQuestionsOf: single choice, asked once, with its own wording); one kept
+ * unchanged from the stored list is accepted even when this wave's file lacks it (it was chosen on a wave that had
+ * it, and is shown as not in this wave's file, never dropped).
+ */
+function profileChoiceProblems(list: ProfileChoice[] | undefined, rec: TrackerRecognition, stored: ProfileChoice[] | undefined): string[] {
+  if (list === undefined) return [];
+  const problems: string[] = [];
+  if (list.length > MAX_PROFILE_QUESTIONS) problems.push(`At most ${MAX_PROFILE_QUESTIONS} profile questions can be shown.`);
+  const kept = new Set((stored ?? []).map((p) => p.variable).filter((v): v is string => v !== null));
+  const eligible = new Set(rec.profileQuestions.map((q) => q.variable));
+  const roles = new Set<string>();
+  const variables = new Set<string>();
+  for (const p of list) {
+    if (p.role !== null) {
+      if (roles.has(p.role)) problems.push(`The ${PROFILE_ROLE_TEXT[p.role].toLowerCase()} profile is listed twice.`);
+      roles.add(p.role);
+    } else if (p.variable === null) problems.push("A profile question needs a question.");
+    if (p.variable !== null) {
+      if (variables.has(p.variable)) problems.push(`${p.variable} is listed twice as a profile question.`);
+      variables.add(p.variable);
+      if (!eligible.has(p.variable) && !kept.has(p.variable)) problems.push(`${p.variable} is not a single-choice question asked once in this file, so it cannot be a profile question.`);
+    }
+  }
+  // A default shown as recognised and the same question added again would be one question on two cards.
+  const found = { age: rec.ageGroups, gender: rec.gender, income: rec.income };
+  for (const p of list) {
+    const f = p.role !== null && p.variable === null ? found[p.role] : null;
+    if (f?.status === "found" && variables.has(f.variable)) problems.push(`${f.variable} is already shown as the ${PROFILE_ROLE_TEXT[p.role!].toLowerCase()} profile.`);
+  }
   return problems;
 }
 
@@ -125,7 +196,50 @@ export function normaliseChoices(raw: unknown): TrackerChoices {
   if (typeof o.weighted === "boolean") out.weighted = o.weighted;
   const hidden = strs(o.hidden);
   if (hidden) out.hidden = hidden;
+  const profiles = profileChoicesOf(o.audienceProfiles);
+  if (profiles) out.audienceProfiles = profiles;
   return out;
+}
+
+/** A stored or submitted profile list: only well-formed entries (a known role or null; a variable name and wording of
+ * sensible length or null); anything else left out. Not an array: absent (the defaults). */
+function profileChoicesOf(raw: unknown): ProfileChoice[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const roles: readonly string[] = PROFILE_DEFAULTS;
+  const text = (v: unknown, max: number) => (typeof v === "string" && v.length > 0 && v.length <= max ? v : null);
+  return raw.flatMap((p): ProfileChoice[] => {
+    if (!p || typeof p !== "object" || Array.isArray(p)) return [];
+    const o = p as Record<string, unknown>;
+    const role = typeof o.role === "string" && roles.includes(o.role) ? (o.role as ProfileRole) : null;
+    if (o.role !== undefined && o.role !== null && role === null) return [];
+    const variable = text(o.variable, 200);
+    if (role === null && variable === null) return [];
+    return [{ role, variable, label: text(o.label, 500) }];
+  });
+}
+
+/** The default profile list: age, gender and income, each as recognised in this wave's file. */
+export const DEFAULT_PROFILES: ProfileChoice[] = PROFILE_DEFAULTS.map((role) => ({ role, variable: null, label: null }));
+
+/**
+ * The Audience page's cards for this file: the saved list (or the defaults), each resolved against this file. A
+ * default follows the recogniser (found, not found or ambiguous, with its reason); a chosen variable is shown when this
+ * file has it, and is "not_in_file" otherwise (kept, never dropped). The wording shown is this file's when the question
+ * is a profile question here, else the wording saved with the choice, else the variable name.
+ */
+export function resolveProfiles(rec: TrackerRecognition, variableNames: Set<string>, saved: ProfileChoice[] | undefined): ResolvedProfile[] {
+  const source: ChoiceSource = saved ? "chosen" : "suggested";
+  const wording = new Map(rec.profileQuestions.map((q) => [q.variable, q.label]));
+  const found = { age: rec.ageGroups, gender: rec.gender, income: rec.income };
+  return (saved ?? DEFAULT_PROFILES).map((p): ResolvedProfile => {
+    if (p.variable === null) {
+      const f = found[p.role!];
+      if (f.status === "found") return { status: "ok", role: p.role, variable: f.variable, label: f.label, source: "suggested" };
+      return { status: f.status, role: p.role!, reason: f.reason, source: "suggested" };
+    }
+    if (!variableNames.has(p.variable)) return { status: "not_in_file", role: p.role, variable: p.variable, label: p.label, source };
+    return { status: "ok", role: p.role, variable: p.variable, label: wording.get(p.variable) ?? p.label ?? p.variable, source };
+  });
 }
 
 /** This wave's dashboard: the suggestion with the saved choices applied where this file supports them. */
@@ -222,6 +336,8 @@ export function resolveDashboard(
     weighted: weightVar !== null && choices.weighted !== false,
     weightSource: weightChosen ? "chosen" : "default",
     hidden: choices.hidden ?? [],
+    audienceProfiles: resolveProfiles(rec, variableNames, choices.audienceProfiles),
+    audienceProfilesSource: choices.audienceProfiles ? "chosen" : "suggested",
     needsChoice: [...open, ...needsChoice],
   };
 }

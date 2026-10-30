@@ -6,6 +6,7 @@
 // are claude/tracker-packs-role-spec-2026-10-28.md.
 
 import { isZeroToTenScale } from "./descriptiveFindings";
+import { isNonAnswerLabel } from "./nonAnswerLabel";
 import { brandFrameFromNames, DESIGN_VARIABLE, nameFamilies, nameWords, numberedBrandsWithoutNames, wordingOf } from "./trackerNameFamilies";
 
 /** One variable as the recogniser reads it: what the data file and a confirmed codebook say about it. */
@@ -86,6 +87,13 @@ export type TrackerRecognition = {
   advertisingRecall: AdvertisingRecall;
   /** The age groups question (findAgeGroups, page 05). */
   ageGroups: FoundQuestion;
+  /** The gender question (findGender, Audience page, R5 30 October 2026). */
+  gender: FoundQuestion;
+  /** The household or personal income bands question (findIncome, Audience page). */
+  income: FoundQuestion;
+  /** Every single-choice question asked once with its own wording, in file order: what the Audience page's
+   * "Add a profile question" offers (profileQuestions). */
+  profileQuestions: ProfileQuestion[];
   /** The media use list (findMediaList, page 05). */
   mediaUse: FoundList;
   /** How category decisions are made (findDecisionStyle, page 08). */
@@ -127,6 +135,10 @@ export type FoundQuestion =
   | { status: "found"; variable: string; label: string }
   | { status: "ambiguous"; candidates: string[]; reason: string }
   | { status: "not_found"; reason: string };
+
+/** A single-choice question asked once that the Audience page can profile: its variable (identity) and its own
+ * wording (presentation). */
+export type ProfileQuestion = { variable: string; label: string };
 
 /** A list of yes/no options asked once (not per brand) that the dashboard reads: "found" with its options in the
  * file's order (an exclusive "None" or "Other" option left out); "ambiguous"; "not_found" with the reason. */
@@ -341,10 +353,13 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   // Questions asked once: never a per-brand question, a grid cell or a brand list question.
   const askedOnce = usable.filter((v) => !claimed.has(v.name) && !(brandFrame?.questions ?? []).includes(v.name));
   const ageGroups = findAgeGroups(askedOnce);
+  const gender = findGender(askedOnce);
+  const income = findIncome(askedOnce);
+  const profileQuestions = profileQuestionsOf(askedOnce);
   const mediaUse = findMediaList(askedOnce);
   const decisionStyle = findDecisionStyle(askedOnce);
   const acquisitionChannel = findAcquisitionChannel(askedOnce);
-  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, advertisingRecall, ageGroups, mediaUse, decisionStyle, acquisitionChannel, csm, questions };
+  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, advertisingRecall, ageGroups, gender, income, profileQuestions, mediaUse, decisionStyle, acquisitionChannel, csm, questions };
 }
 
 /** A single-choice question's own wording, when it has an answer list of two or more answers that is not yes/no and
@@ -380,6 +395,73 @@ export function findAgeGroups(askedOnce: RoleVariable[]): FoundQuestion {
     return ranges >= 2 && ranges >= labels.length * 0.6;
   });
   return oneQuestion(found, "age groups", "No question asked once whose wording names age and whose answers are age ranges (for example 18-24) was found.");
+}
+
+/** An answer that names a gender (or a gender identity): "Male", "Woman", "Non-binary", "Another identity". */
+const GENDER_ANSWER = /^\s*(males?|females?|man|men|woman|women|boys?|girls?|non[- ]?binary|gender[- ]?(diverse|fluid|queer|non[- ]?conforming)|trans(gender)?\b|trans (man|woman)|agender|intersex|(another|other|different) (gender|identity)|self[- ]?describe|prefer to self[- ]?describe)\b/i;
+
+/** The answers of a list that are not non-answers (don't know, refused, prefer not to say: nonAnswerLabel.ts). */
+const substantiveLabels = (v: RoleVariable) => Object.values(v.valueLabels ?? {}).filter((l) => !isNonAnswerLabel(l));
+
+/**
+ * The gender question (Audience page, Grant 30 October 2026: "include age, gender, income automatically"; BMW pack D1
+ * `gender`, "Gender": Man, Woman, Another identity, Prefer not to say): a single-choice question asked once whose own
+ * wording names gender or sex (or asks whether the respondent is male or female, or how they identify) and whose
+ * answers name genders: at least two answers, and 60% of the answers other than non-answers ("Prefer not to say" is
+ * kept as an answer on the card but does not count here). Never from a variable name alone; two candidates are
+ * ambiguous.
+ */
+export function findGender(askedOnce: RoleVariable[]): FoundQuestion {
+  const found = askedOnce.filter((v) => {
+    const wording = singleChoiceWording(v);
+    if (!wording || !/\b(gender|sex)\b|\bmale or female\b|\bman or (a )?woman\b|\bidentify (yourself|as)\b|\bdescribe your gender\b/i.test(wording)) return false;
+    const labels = substantiveLabels(v);
+    const named = labels.filter((l) => GENDER_ANSWER.test(clean(l))).length;
+    return named >= 2 && named >= labels.length * 0.6;
+  });
+  return oneQuestion(found, "gender", "No question asked once whose wording names gender or sex and whose answers name genders (for example Man, Woman) was found.");
+}
+
+/** An amount band: a number with a currency ("R15,000", "$50k", "ZAR 5 000") or with a range or bound ("15 000 to
+ * 29 999", "Under 5,000", "80 000 or more", "50k+"); or no income at all. */
+const CURRENCY = /(\bR\s?\d|[$£€¥₹]|\b(ZAR|USD|GBP|EUR|KES|NGN|rands?|dollars?|pounds?|euros?)\b)/i;
+const AMOUNT_RANGE = /\d[\d\s,.]*\s*[km]?\s*(-|\u2013|\u2014|to)\s*\D{0,4}\d|\b(under|below|less than|up to|more than|over|above|at least)\s*\D{0,4}\d|\d[\d\s,.]*\s*[km]?\s*(\+|or (more|above|over)|and (above|over|more))/i;
+const NO_INCOME = /^\s*(no (income|earnings|salary)|nil income|zero income|none)\b/i;
+const isAmountBand = (label: string) => NO_INCOME.test(label) || (/\d/.test(label) && (CURRENCY.test(label) || AMOUNT_RANGE.test(label)));
+
+/**
+ * The income question (Audience page; BMW pack D4 `income`, "Monthly household income before tax": Below R15,000 ...
+ * R80,000 or more, 99 Prefer not to say): a single-choice question asked once whose own wording names income,
+ * earnings, salary or wages, and whose answers are amount bands (a number with a currency, or with a range or bound;
+ * "No income" counts): at least two answers, and 60% of the answers other than non-answers. Its bands are shown in
+ * the file's code order, never sorted by share. Never from a variable name alone; two candidates are ambiguous.
+ */
+export function findIncome(askedOnce: RoleVariable[]): FoundQuestion {
+  const found = askedOnce.filter((v) => {
+    const wording = singleChoiceWording(v);
+    if (!wording || !/\b(income|earnings?|earn|salary|salaries|wages?)\b/i.test(wording)) return false;
+    const labels = substantiveLabels(v);
+    const bands = labels.filter((l) => isAmountBand(clean(l))).length;
+    return bands >= 2 && bands >= labels.length * 0.6;
+  });
+  return oneQuestion(found, "income", "No question asked once whose wording names income or earnings and whose answers are amount bands (for example Below R15,000) was found.");
+}
+
+const SURVEY_WAVE = /^(survey )?(wave|round|fieldwork (wave|period))( (number|label|id))?$/i;
+
+/**
+ * The questions the Audience page can profile (its "Add a profile question" list): every single-choice question asked
+ * once with an answer list and its own wording (singleChoiceWording), in the file's order, except the file's wave
+ * marker ("Wave"). Asked once already leaves
+ * out brand list questions, per-brand (funnel) questions and grid cells; a yes/no option (media, journey and other
+ * lists) is never single choice here. Labelled by its wording, identified by its variable name.
+ */
+export function profileQuestionsOf(askedOnce: RoleVariable[]): ProfileQuestion[] {
+  return askedOnce.flatMap((v) => {
+    const label = singleChoiceWording(v);
+    // The file's wave (or round) marker describes the file, not the respondent: one answer per file.
+    return label && !SURVEY_WAVE.test(clean(label)) ? [{ variable: v.name, label }] : [];
+  });
 }
 
 /**

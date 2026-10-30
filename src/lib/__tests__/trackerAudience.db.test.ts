@@ -1,5 +1,6 @@
-// Page 05 "Audience & media" of the brand tracking dashboard (Grant's design, 29 October 2026) through the actual
-// loader, loadBrandAudience: recognition from what was imported, figures from the Cross tab engine computed without
+// Page 05 "Audience & media" of the brand tracking dashboard (Grant's design, 29 October 2026; split into the Audience
+// and Media pages on 30 October 2026, read here together) through the actual loaders, loadBrandAudience (the age card of
+// the default profile list) and loadBrandMedia (compared with all eligible respondents): recognition from what was imported, figures from the Cross tab engine computed without
 // saving a table, the client's brand's recent acquirers selected by the raw acquisition code, with the dashboard's
 // weight. Real disposable PostgreSQL and the actual engine; storage is an in-memory stand-in and the model is stubbed
 // (never called). The client's brand is BMW, pre-filled from the project name.
@@ -65,10 +66,22 @@ function variant(kind: string, dir: string): string {
   return out;
 }
 type Page = Awaited<ReturnType<typeof import("../trackerAudience").loadBrandAudience>>;
+type MediaPage = Awaited<ReturnType<typeof import("../trackerAudience").loadBrandMedia>>;
+/** The Audience page's age card (R5: one card of the profile list). */
+const ageOf = (m: Page) => m.profiles.find((p) => p.role === "age")!;
+/** The Audience page (age) and the Media page against all eligible respondents, read together. */
+async function pages(run: string, doc: string): Promise<Page & { age: ReturnType<typeof ageOf>; mediaPage: MediaPage }> {
+  const { loadBrandAudience, loadBrandMedia } = await import("../trackerAudience");
+  const a = await loadBrandAudience(tenant(), run, doc);
+  return { ...a, age: ageOf(a), mediaPage: await loadBrandMedia(tenant(), run, doc, null) };
+}
+let tenantId = "";
+const tenant = () => tenantId;
 
 /** Every age group and media share of both groups equal to the reference; returns the number of figures compared. */
-function expectReference(m: Page, ref: Ref["weighted"]) {
-  if (m.age.status !== "ok") throw new Error(m.age.reason);
+function expectReference(page: Awaited<ReturnType<typeof pages>>, ref: Ref["weighted"]) {
+  const m = { age: page.age, media: page.mediaPage.media };
+  if (m.age.status !== "ok") throw new Error(`age: ${m.age.status}`);
   if (m.media.status !== "ok") throw new Error(m.media.reason);
   let figures = 0;
   const same = (got: { share: number | null; base: number | null }, want: [number | null, number], what: string) => {
@@ -83,12 +96,11 @@ function expectReference(m: Page, ref: Ref["weighted"]) {
   }
   expect(m.media.rows.map((r) => r.key).sort()).toEqual(Object.keys(ref.category.media).sort());
   for (const r of m.media.rows) {
-    same(r.category, ref.category.media[r.key], `category ${r.key}`);
-    same(r.acquirers, ref.acquirers.media[r.key], `acquirers ${r.key}`);
+    same(r.comparison, ref.category.media[r.key], `category ${r.key}`);
+    same(r.focal, ref.acquirers.media[r.key], `acquirers ${r.key}`);
   }
-  // Media ordered by the category's share, highest first.
-  const shares = m.media.rows.map((r) => r.category.share!);
-  expect([...shares].sort((a, b) => b - a)).toEqual(shares);
+  // Media in the list's order (the screen sorts, trackerAudienceFigures.sortMediaRows).
+  expect(m.media.rows.map((r) => r.key)).toEqual(Object.keys(ref.category.media));
   return figures;
 }
 
@@ -122,6 +134,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("Audience & media figures agai
   }
 
   beforeAll(async () => {
+    tenantId = tenant;
     db = await createDisposableDb();
     process.env.DATABASE_URL = db.url;
     process.env.DEFAULT_TENANT_ID = tenant;
@@ -140,9 +153,8 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("Audience & media figures agai
   it("BMW wave 1, weighted by default: BMW's 13 recent acquirers and all eligible respondents, every age group and media share equal to the reference to 1e-6; very small base; no table saved", async () => {
     const ref = reference(packPath("wave1_labels_only_compressed.sav"));
     expect(ref.acquirers_n).toBe(13);
-    const { loadBrandAudience } = await import("../trackerAudience");
     const before = Number((await q("select count(*)::int as n from document_tables where run_id = $1", [savRun]))[0].n);
-    const m = await loadBrandAudience(tenant, savRun, sav);
+    const m = await pages(savRun, sav);
     expect(Number((await q("select count(*)::int as n from document_tables where run_id = $1", [savRun]))[0].n)).toBe(before);
     expect([m.weighted, m.weightVar, m.categoryN]).toEqual([true, "weight", 1000]);
     expect(m.acquirers).toMatchObject({ status: "ok", brand: { code: "8", label: "BMW" }, variable: "bought12_b08", code: "1", n: 13, level: "very_small" });
@@ -150,7 +162,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("Audience & media figures agai
     expect(m.acquirers.effectiveBase).toBeGreaterThan(0);
     expect(m.acquirers.effectiveBase).toBeLessThanOrEqual(13);
     expect(expectReference(m, ref.weighted)).toBe(2 * 4 + 2 * 12);
-    if (m.age.status !== "ok") throw new Error(m.age.reason);
+    if (m.age.status !== "ok") throw new Error(m.age.status);
     expect(m.age.rows.map((r) => r.label)).toEqual(["18\u201324", "25\u201334", "35\u201349", "50\u201369"]);
   });
 
@@ -160,8 +172,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("Audience & media figures agai
     const v = await loadTrackerDashboard(tenant, savRun, sav);
     expect((await saveTrackerChoices(tenant, savRun, sav, { scope: v.scopeKey, revision: v.revision }, { weighted: false }, "x")).saved).toBe(true);
     try {
-      const { loadBrandAudience } = await import("../trackerAudience");
-      const m = await loadBrandAudience(tenant, savRun, sav);
+        const m = await pages(savRun, sav);
       expect([m.weighted, m.effectiveBase]).toEqual([false, null]);
       expect(m.acquirers).toMatchObject({ n: 13, effectiveBase: null });
       expect(expectReference(m, ref.unweighted)).toBe(32);
@@ -179,20 +190,18 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("Audience & media figures agai
     expect(ref.weighted.acquirers.age["1"][1]).toBe(33);
     expect(ref.weighted.acquirers.media.media_m01[1]).toBe(35);
     const { run, data } = await csvWithCodebook(file);
-    const { loadBrandAudience } = await import("../trackerAudience");
-    const m = await loadBrandAudience(tenant, run, data);
+    const m = await pages(run, data);
     expect(m.acquirers).toMatchObject({ status: "ok", n: 35, level: "small" });
     expect(expectReference(m, ref.weighted)).toBe(32);
   });
 
   it("unknown: no acquirer is a base of 0 with n/a figures (never 0%); two acquisition questions are Mapping needed; no age or media question is Not measured", async () => {
-    const { loadBrandAudience } = await import("../trackerAudience");
     const none = await csvWithCodebook(variant("none", dir));
-    const z = await loadBrandAudience(tenant, none.run, none.data);
+    const z = await pages(none.run, none.data);
     expect(z.acquirers).toMatchObject({ status: "ok", n: 0, reason: expect.stringMatching(/No respondent in this file is a recent acquirer of BMW/) });
-    if (z.age.status !== "ok" || z.media.status !== "ok") throw new Error("cards should still show the category");
+    if (z.age.status !== "ok" || z.mediaPage.media.status !== "ok") throw new Error("cards should still show the category");
     expect(z.age.rows.every((r) => r.acquirers.share === null && r.category.share !== null)).toBe(true);
-    expect(z.media.rows.every((r) => r.acquirers.share === null && /No respondent/.test(r.acquirers.reason ?? ""))).toBe(true);
+    expect(z.mediaPage.media.rows.every((r) => r.focal.share === null && /No respondent/.test(r.focal.reason ?? ""))).toBe(true);
 
     const { saveTrackerChoices, loadTrackerDashboard } = await import("../trackerDashboards");
     const v = await loadTrackerDashboard(tenant, savRun, sav);
@@ -200,16 +209,17 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("Audience & media figures agai
     const repeatGroup = v.dashboard.stages.find((s) => s.stage === "repeat")!.group;
     expect((await saveTrackerChoices(tenant, savRun, sav, { scope: v.scopeKey, revision: v.revision }, { stages: { [repeatGroup]: "acquisition" } }, "x")).saved).toBe(true);
     try {
-      const m = await loadBrandAudience(tenant, savRun, sav);
+      const m = await pages(savRun, sav);
       expect(m.acquirers).toMatchObject({ status: "mapping_needed", reason: expect.stringMatching(/Two questions could be recent acquisition/) });
     } finally {
       const again = await loadTrackerDashboard(tenant, savRun, sav);
       await saveTrackerChoices(tenant, savRun, sav, { scope: again.scopeKey, revision: again.revision }, {}, "x");
     }
     const gone = await csvWithCodebook(variant("no_audience", dir));
-    const n = await loadBrandAudience(tenant, gone.run, gone.data);
-    expect(n.age).toMatchObject({ status: "not_measured" });
-    expect(n.media).toMatchObject({ status: "not_measured" });
+    const n = await pages(gone.run, gone.data);
+    // R5: the age card of the default list says the file has no age question (with "Choose a question").
+    expect(n.age).toMatchObject({ status: "not_found", role: "age" });
+    expect(n.mediaPage.media).toMatchObject({ status: "not_measured" });
     expect(n.acquirers).toMatchObject({ status: "ok", n: expect.any(Number) });
   });
 
@@ -218,9 +228,8 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("Audience & media figures agai
     const doc = await stored(run, "table", "bmw_wave1.sav", readFileSync(packPath("wave1_labels_only_compressed.sav")));
     const key = (await q("select storage_path from documents where id = $1", [doc]))[0].storage_path as string;
     await q("update documents set storage_path = $2 where id = $1", [doc, `${key}.missing`]);
-    const { loadBrandAudience } = await import("../trackerAudience");
-    await expect(loadBrandAudience(tenant, run, doc)).rejects.toThrow();
+    await expect(pages(run, doc)).rejects.toThrow();
     await q("update documents set storage_path = $2 where id = $1", [doc, key]);
-    expect((await loadBrandAudience(tenant, run, doc)).age.status).toBe("ok");
+    expect((await pages(run, doc)).age.status).toBe("ok");
   });
 });

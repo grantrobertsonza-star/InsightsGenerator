@@ -60,6 +60,16 @@ codebook question fields, and many carry no answer labels at all.
    names age and whose answers are age ranges (two or more, 60% of the list). Media use: a group of three or more
    yes/no options whose own labels name media (three or more, 60% of the options other than None or Other). Never
    by a variable name alone; two candidates are ambiguous. See `claude/d2-design-2026-10-29.md`, D3f.
+5b1. **Gender, income and the profile questions** (`gender`, `findGender`; `income`, `findIncome`; `profileQuestions`,
+   `profileQuestionsOf`; R5, Grant 30 October 2026): single-choice questions asked once. Gender: own wording names
+   gender or sex (or asks male or female, or how the respondent identifies) and at least two answers, and 60% of the
+   answers other than non-answers (`nonAnswerLabel.isNonAnswerLabel`), name genders (Man, Woman, Male, Female,
+   Non-binary, Another identity, ...). Income: own wording names income, earnings, salary or wages and at least two
+   answers, and 60% of the answers other than non-answers, are amount bands (a number with a currency, R, $, ZAR, ...,
+   or with a range or bound, "15 000 to 29 999", "Under 5,000", "80 000+"; "No income" counts). The profile questions
+   (what the Audience page can add) are every single-choice question asked once with an answer list and its own
+   wording, in file order, except the file's wave marker ("Wave"). Never by a variable name alone; two candidates are
+   ambiguous. See `claude/d2-design-2026-10-29.md`, D3f.
 5c. **Decision style and acquisition channel** (`decisionStyle`, `findDecisionStyle`; `acquisitionChannel`,
    `findAcquisitionChannel`; D3g): single-choice questions asked once. Decision style: own wording about a decision
    style, making, process or approach, or how the respondent decides or chooses. Acquisition channel: own wording

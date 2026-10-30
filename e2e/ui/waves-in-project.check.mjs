@@ -41,15 +41,25 @@ test("waves are ordered by fieldwork, one can be left out, and Cross tabs opens 
     const month = setup.getByLabel(`Fieldwork month: ${f.name}`);
     await expect(month).toBeVisible({ timeout: 30_000 });
     await month.fill(f.month);
-    await page.waitForLoadState("networkidle");
-    if (f.exclude) {
-      await setup.getByLabel(`Include in wave tracking: ${f.name}`).uncheck();
-      await page.waitForLoadState("networkidle");
-    }
+    if (f.exclude) await setup.getByLabel(`Include in wave tracking: ${f.name}`).uncheck();
+    // The form says when its edits have been answered (R3e1): wait for that, with no error, before moving on. Before,
+    // "networkidle" had already been reached and returned at once, so the page was reloaded with Wave 2's month and
+    // exclusion still on their way (Codex's E1R receipt).
+    const status = setup.getByTestId("setup-save-status").filter({ visible: true });
+    await expect(status).toHaveAttribute("data-saving", "false", { timeout: 60_000 });
+    await expect(setup.getByTestId("setup-save-error").filter({ visible: true })).toHaveCount(0);
     if (f.exclude && SHOT) await setup.screenshot({ path: SHOT.replace(".png", "-setup.png") });
   }
 
+  // What was saved reads back after a reload: one reload, no retry, so a lost save fails here.
   await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /^Import data/ }).first().click();
+  for (const f of files) {
+    const setup = await openSource(page, f.name, "Setup");
+    await expect(setup.getByLabel(`Wave: ${f.name}`)).toHaveValue(f.wave);
+    await expect(setup.getByLabel(`Fieldwork month: ${f.name}`)).toHaveValue(f.month);
+    await expect(setup.getByLabel(`Include in wave tracking: ${f.name}`)).toBeChecked({ checked: !f.exclude });
+  }
   await page.getByRole("button", { name: /^Analytics/ }).first().click();
   const section = page.getByTestId("analytics-section").filter({ visible: true });
   await section.getByRole("list", { name: "Analyses" }).getByRole("button", { name: /^Wave tracking/ }).click();

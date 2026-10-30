@@ -803,8 +803,9 @@ export type CrosstabResult = {
   caption?: string;
   blocks: { var: string; label: string }[];
   /** var/rawCode: a banner column's identity (its variable and answer code, same text form as
-   * CrosstabRow.rawCode); rawCodes for a grouped column. Absent for the overall column, a set
-   * member column, and tables built by an engine before 2026.10.16-9. */
+   * CrosstabRow.rawCode); rawCodes for a grouped column. A multiple-response set member column has
+   * `var` (the member variable, 30 October 2026) and no rawCode. Absent for the overall column, and
+   * tables built by an engine before 2026.10.16-9 (and set member columns built before 30 October 2026). */
   columns: { block: number; blockLabel: string; name: string; letter?: string; isGroup?: boolean; n: number; w: number; nEff: number; var?: string; rawCode?: string; rawCodes?: string[] }[];
   /** Base of the NET column of each banner variable. Absent on tables saved before 9 October 2026. */
   nets?: { block: number; blockLabel: string; n: number; w: number; nEff: number }[];

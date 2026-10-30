@@ -32,7 +32,6 @@
   ],
   "exclude": [
     "node_modules",
-    "work",
     "scripts/exportfix-review",
     "scripts/overnight-trust-review/runs",
     "scripts/repair6-verification/adapters",

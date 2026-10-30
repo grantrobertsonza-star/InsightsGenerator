@@ -106,7 +106,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("tracker dashboard choices per
     expect(v.dashboard.stages.find((s) => s.group === "repeat12")).toMatchObject({ stage: null, source: "chosen" });
     expect(v.choicesFrom).toMatchObject({ runId: wave1.run, documentId: wave1.doc, thisWave: false, by: "grant@example.com" });
     const rows = await q("select program_id, run_id, revision, suggested->>'rules' as rules from tracker_dashboards where tenant_id = $1", [tenant]);
-    expect(rows).toEqual([{ program_id: program, run_id: null, revision: 1, rules: "d1-2026-10-29" }]);
+    expect(rows).toEqual([{ program_id: program, run_id: null, revision: 1, rules: "d1-2026-10-30" }]);
   });
 
   it("compare-and-swap: a second first save and a stale save are refused with the current choices; nothing changes", async () => {

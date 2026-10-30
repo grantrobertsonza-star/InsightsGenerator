@@ -8,7 +8,7 @@ import { loadBrandOverview, type BrandOverview } from "./trackerOverview";
 import { loadBrandMoments } from "./trackerMoments";
 import { loadBrandAssociations } from "./trackerAssociations";
 import { loadBrandAdvertising } from "./trackerAdvertising";
-import { loadBrandAudience } from "./trackerAudience";
+import { loadBrandAudience, loadBrandMedia } from "./trackerAudience";
 import { loadCategoryOverview } from "./trackerCategory";
 import { loadTrackerDashboard, resetTrackerChoices, saveTrackerChoices, type ExpectedDashboard, type SaveResult, type TrackerDashboardView } from "./trackerDashboards";
 
@@ -79,12 +79,26 @@ export async function loadBrandAdvertisingAction(runId: string, documentId: stri
   }
 }
 
-/** Page 05 of the brand dashboard, Audience & media (figures computed, nothing saved). */
+/** The brand dashboard's Audience page: profile questions of the client's brand's recent acquirers (figures computed,
+ * nothing saved). */
 export async function loadBrandAudienceAction(runId: string, documentId: string): Promise<{ ok: true; audience: Awaited<ReturnType<typeof loadBrandAudience>> } | Fail> {
   const ctx = await requireRequestContext();
   if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, audience: await loadBrandAudience(ctx.tenantId, runId, documentId) };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** The brand dashboard's Media page (figures computed, nothing saved): compared with all eligible respondents
+ * (`compareBrandRaw` null) or with another brand's recent acquirers (its code in the brand list, checked by the loader). */
+export async function loadBrandMediaAction(runId: string, documentId: string, compareBrandRaw: unknown): Promise<{ ok: true; media: Awaited<ReturnType<typeof loadBrandMedia>> } | Fail> {
+  const ctx = await requireRequestContext();
+  if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
+  if (compareBrandRaw !== null && (typeof compareBrandRaw !== "string" || !/^[\w.-]{1,50}$/.test(compareBrandRaw))) return { ok: false, error: "Choose a brand from the list to compare with." };
+  try {
+    return { ok: true, media: await loadBrandMedia(ctx.tenantId, runId, documentId, compareBrandRaw) };
   } catch (e) {
     return { ok: false, error: message(e) };
   }

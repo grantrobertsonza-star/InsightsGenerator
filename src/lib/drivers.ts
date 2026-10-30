@@ -1,5 +1,5 @@
 import { withTenant } from "./db";
-import { performanceScales, predictorPerformance, type PerformanceMeasure } from "./driverPerformance";
+import { outcomeTopBox, performanceScales, predictorPerformance, type AnswerDomain, type PerformanceMeasure } from "./driverPerformance";
 import { recordHumanReview } from "./findingProvenance";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { runStatsTool } from "./parseStatsFile";
@@ -48,6 +48,10 @@ export type DriverPerformance = {
   measure?: PerformanceMeasure;
   scaleTop?: number | null;
   scaleStated?: boolean | null;
+  /** T2-F01 (absent on reports saved before 30 October 2026): the scale's lowest code, and whether the measure was read
+   * from the declared answer list or only from the answers present (driverPerformance.ts). */
+  scaleMin?: number | null;
+  domainSource?: AnswerDomain["source"];
 };
 
 /**
@@ -87,8 +91,8 @@ export type DriverReport = {
 export type DriverProvenance = { documentId: string; overridesSnapshot: unknown; variables: string[] };
 
 type Columns = {
-  outcome: { name: string; label: string; min: number; max: number; distinct: number; valueLabels: Record<string, string> };
-  predictors: { name: string; label: string; min: number; max: number; distinct: number; scaleTop?: number; scaleStated?: boolean }[];
+  outcome: { name: string; label: string; min: number; max: number; distinct: number; valueLabels: Record<string, string>; answerDomain?: AnswerDomain };
+  predictors: { name: string; label: string; min: number; max: number; distinct: number; scaleTop?: number; scaleStated?: boolean; answerDomain?: AnswerDomain }[];
   y: (number | null)[];
   x: (number | null)[][];
   weights: (number | null)[] | null;
@@ -151,10 +155,14 @@ export async function runDriverAnalysisFor(
   let outcomeNote = `Score on ${cols.outcome.label}, treated as a number.`;
   if (request.outcomeType === "binary") {
     const o = cols.outcome;
-    const min = request.topBoxMin ?? (o.distinct === 2 ? o.max : o.max - 1);
-    if (!(min > o.min)) throw new Error("The top box must start above the lowest answer code.");
+    // The default comes from the outcome's answer domain (driverPerformance.outcomeTopBox), never from the highest
+    // answer that happens to be present.
+    const box = outcomeTopBox(o);
+    const min = request.topBoxMin ?? box.min;
+    if (!(min > box.lowest)) throw new Error("The top box must start above the lowest answer code.");
     y = y.map((v) => (Number.isFinite(v) ? (v >= min ? 1 : 0) : NaN));
-    outcomeNote = `Top box on ${o.label}: answers from ${min} up to ${o.max}, against everyone else who answered.`;
+    const scaleNote = box.source === "declared" ? "" : " (no answer list, so the scale is the answers present)";
+    outcomeNote = `Top box on ${o.label}: answers from ${min} up to ${box.top}${scaleNote}, against everyone else who answered.`;
   }
 
   // Display names, unique within the report (driverPresentation.driverDisplayNames, Codex AN500-F01).
@@ -232,10 +240,9 @@ export async function runDriverAnalysisFor(
           ws.push(wi);
         });
         if (vals.length === 0) continue;
-        const sw = ws.reduce((a, b) => a + b, 0);
-        const smallScale = meta.distinct >= 3 && meta.distinct <= 11;
-        const cut = meta.max - 1;
-        const topTwo = smallScale && sw > 0 ? vals.reduce((a, v, i) => a + (v >= cut ? ws[i] : 0), 0) / sw : null;
+        // The importance question's top two by the same answer-domain rule as performance (T2-F01): counted from its
+        // declared scale, not from the answers present in this file or segment.
+        const { topTwo } = predictorPerformance(meta, vals, ws);
         const mean = wMean(vals, ws);
         out.push({ name: names[k], predictor: pred, variable: imp, mean: Number.isFinite(mean) ? mean : null, topTwo });
       }
@@ -286,7 +293,7 @@ export async function runDriverAnalysisFor(
     skipped: cols.skipped,
     result: resultWithCodes,
     performance,
-    performanceScales: performanceScales(performance.map((x) => ({ mean: x.mean, topTwo: x.topTwo, measure: x.measure ?? "mean", scaleTop: x.scaleTop ?? null, scaleStated: x.scaleStated ?? null })), cols.predictors),
+    performanceScales: performanceScales(performance, cols.predictors),
     groupVariable: cols.group?.name ?? null,
     groupLabel: cols.group?.label ?? null,
     segments,

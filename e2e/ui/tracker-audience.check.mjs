@@ -1,13 +1,15 @@
-// Page 05 of the brand tracking dashboard, "Audience & media" (Grant's design, 29 October 2026), real browser on the
+// Pages 05 and 06 of the brand tracking dashboard, "Audience" and "Media" (Grant's design, 29 October 2026; Audience &
+// media split in two on 30 October 2026, so this check now opens each page by its own menu button and reads the age
+// card among the profile cards, and media rows in their default order, the BMW acquirers' share), real browser on the
 // disposable stack. BMW wave 1 as SPSS with labels only (fixtures/tracker-packs/bmw_car), BMW pre-filled as the
 // client's brand from the project name:
-//   1. Audience & media is a button in the menu; opening it shows the page with the same chips row.
+//   1. Audience is a button in the menu; opening it shows the page with the same chips row.
 //   2. BMW has 13 recent acquirers: the "VERY SMALL BASE" banner says the figures are a descriptive illustration only,
 //      with no significance, targeting or market inference.
 //   3. "Age profile": four age groups, each with the acquirers' and the category's share equal to the independent
 //      reference (src/lib/__tests__/helpers/audience_reference.py, weighted) to one decimal.
-//   4. "Media use": twelve media, ordered by the category's share, each pair equal to the reference; the subtitle says
-//      media habits, not advertising effectiveness.
+//   4. Media page, "Media use": twelve media, ordered by the BMW acquirers' share (the default sort), each pair equal to
+//      the reference; the subtitle says media habits, not advertising effectiveness.
 //   5. At 760 wide the menu is replaced by page tabs and the page still fits.
 // Written 29 October 2026; not yet run.
 import { expect, test } from "@playwright/test";
@@ -33,7 +35,7 @@ const pct = (v) => `${v.toFixed(1)}%`;
 
 test.use({ viewport: { width: 1500, height: 1000 } });
 
-test("tracker dashboard page 05: age profile and media use of BMW recent acquirers equal the reference, very small base flagged", async ({ page }, testInfo) => {
+test("tracker dashboard pages 05 and 06: age profile and media use of BMW recent acquirers equal the reference, very small base flagged", async ({ page }, testInfo) => {
   test.setTimeout(10 * 60_000);
   const dir = mkdtempSync(path.join(tmpdir(), "tracker-audience-"));
   try {
@@ -68,9 +70,9 @@ test("tracker dashboard page 05: age profile and media use of BMW recent acquire
     const dash = page.getByRole("dialog", { name: "Brand tracking dashboard" });
     await expect(dash.getByTestId("tracker-compare")).toBeVisible({ timeout: 3 * 60_000 });
     const menu = dash.getByRole("navigation", { name: "Brand tracking sections" });
-    await menu.getByRole("button", { name: /Audience & media/ }).click();
-    await expect(menu.getByRole("button", { name: /Audience & media/ })).toHaveAttribute("aria-current", "page");
-    await expect(dash.getByRole("heading", { name: "Audience & media" })).toBeVisible();
+    await menu.getByRole("button", { name: /^05\s*Audience$/ }).click();
+    await expect(menu.getByRole("button", { name: /^05\s*Audience$/ })).toHaveAttribute("aria-current", "page");
+    await expect(dash.getByRole("heading", { name: "Audience", exact: true })).toBeVisible();
     await expect(dash.getByTestId("tracker-chips")).toContainText("Brand BMW");
 
     // 2. The very small base banner.
@@ -80,36 +82,38 @@ test("tracker dashboard page 05: age profile and media use of BMW recent acquire
     await expect(banner).toHaveText("VERY SMALL BASE: BMW recent acquirers n=13. Descriptive illustration only. No significance, targeting or market inference.");
 
     // 3. Age profile.
-    const age = dash.getByTestId("tracker-audience-age");
-    await expect(age).toContainText('BMW recent acquirers ("Past 12 month household acquisition", n=13) vs all eligible category respondents (n=1,000)');
-    const ageRows = age.getByTestId("tracker-audience-age-row");
+    await expect(dash.getByTestId("tracker-audience-groups")).toContainText('BMW recent acquirers ("Past 12 month household acquisition", n=13) vs all eligible category respondents (n=1,000)');
+    const age = dash.locator('[data-testid="tracker-audience-profile"][data-role="age"]');
+    const ageRows = age.getByTestId("tracker-audience-profile-row");
     await expect(ageRows).toHaveCount(4);
     for (const [i, code] of ["1", "2", "3", "4"].entries()) {
       const row = ageRows.nth(i);
       await expect(row).toHaveAttribute("data-key", code);
-      await expect(row.getByTestId("tracker-audience-age-row-acquirers")).toHaveText(pct(REF.weighted.acquirers.age[code][0]));
-      await expect(row.getByTestId("tracker-audience-age-row-category")).toHaveText(pct(REF.weighted.category.age[code][0]));
+      await expect(row.getByTestId("tracker-audience-profile-row-focal")).toHaveText(pct(REF.weighted.acquirers.age[code][0]));
+      await expect(row.getByTestId("tracker-audience-profile-row-comparison")).toHaveText(pct(REF.weighted.category.age[code][0]));
     }
+    await page.screenshot({ path: testInfo.outputPath("tracker-audience.png"), fullPage: true });
 
-    // 4. Media use, ordered by the category's share.
+    // 4. Media use, on the Media page, ordered by the BMW acquirers' share.
+    await menu.getByRole("button", { name: /^06\s*Media$/ }).click();
     const media = dash.getByTestId("tracker-audience-media");
     await expect(media).toContainText("Multiple response; media habits, not advertising effectiveness.");
     const mediaRows = media.getByTestId("tracker-audience-media-row");
     await expect(mediaRows).toHaveCount(12);
-    const order = Object.entries(REF.weighted.category.media).sort((x, y) => y[1][0] - x[1][0]);
+    const order = Object.entries(REF.weighted.acquirers.media).sort((x, y) => y[1][0] - x[1][0]);
     for (const [i, [variable, [share]]] of order.entries()) {
       const row = mediaRows.nth(i);
       await expect(row).toHaveAttribute("data-key", variable);
-      await expect(row.getByTestId("tracker-audience-media-row-category")).toHaveText(pct(share));
-      await expect(row.getByTestId("tracker-audience-media-row-acquirers")).toHaveText(pct(REF.weighted.acquirers.media[variable][0]));
+      await expect(row.getByTestId("tracker-audience-media-row-focal")).toHaveText(pct(share));
+      await expect(row.getByTestId("tracker-audience-media-row-comparison")).toHaveText(pct(REF.weighted.category.media[variable][0]));
     }
-    await page.screenshot({ path: testInfo.outputPath("tracker-audience.png"), fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath("tracker-media.png"), fullPage: true });
 
     // 5. Narrow screen: page tabs instead of the menu; the page fits.
     await page.setViewportSize({ width: 760, height: 1000 });
     const tabs = dash.getByRole("group", { name: "Brand tracking pages" });
     await expect(tabs).toBeVisible();
-    await tabs.getByRole("button", { name: "Audience & media" }).click();
+    await tabs.getByRole("button", { name: "Audience", exact: true }).click();
     await expect(age).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);

@@ -10,6 +10,12 @@
 //     immediately before it in that range. Change = latest minus previous on the shown scale, from the unrounded
 //     numbers, rounded once to the shown decimals. For a percentage it is in percentage points, never a relative
 //     change; it is stated with both periods and is never called year-on-year unless the two are consecutive years.
+//     Three things are kept apart (Codex D6-F01): the direction, from the unrounded values; whether the two
+//     observations are shown as the same value, from the two shown values at their own precision; and the change
+//     text, the unrounded change rounded once. A change that rounds to zero is never read as "no change".
+//   - Time axis: one calendar for every chart of the view (Codex D6-F02). Each period is placed at its first day
+//     (periodPlacement), and the axis spans the view's periods of every area (timeAxisOf); a period that cannot be
+//     placed withholds the time-axis charts with the reason. A point is never placed by its index in one chart.
 //   - One series at a time: a series is the indicator with one code per breakdown (for DHS, one reference window,
 //     COMP_BREAKDOWN_1 ANCC_IRN_02, 03 or 05). Windows and other breakdowns are never pooled, averaged or summed.
 //   - Comparison: the areas observed in exactly one period of the same series. An area with no observation in that
@@ -19,20 +25,93 @@
 //     path or claims significance. No sample size, weight or uncertainty is in these files, so none is shown.
 import { areaName, breakdownChoices, indicatorKeyOf, indicatorNameOf, indicatorOptions, isPercentUnit, shownNumber, shownText, sourceText, unitText, withheldCells, type BreakdownChoice, type IndicatorOption } from "./indicatorDisplay";
 import type { IndicatorArea, IndicatorFileSummary, IndicatorLayout, IndicatorObservation, IndicatorSeriesSummary } from "./indicatorData";
+import { indicatorPeriodValid } from "./indicatorLayouts";
 
 type Scale = Pick<IndicatorSeriesSummary, "valueScale" | "unitMult" | "unitCode" | "unitLabel" | "baseDescription">;
 
-/** A point on the calendar axis: a year, or a year with a quarter, half or month; null for any other spelling. */
+/** The frequencies of the shared period rule (indicatorPeriodValid), coarsest first. */
+export const PERIOD_FREQUENCIES = ["year", "half", "quarter", "month", "week", "day"] as const;
+export type PeriodFrequency = (typeof PERIOD_FREQUENCIES)[number];
+
+/** Days since 1 January 1970 (UTC) of a calendar date; years 0 to 99 are kept as written, not read as 19xx. */
+function dayNumber(year: number, monthIndex: number, day: number): number {
+  const t = new Date(0);
+  t.setUTCFullYear(year, monthIndex, day);
+  return t.getTime() / 86400000;
+}
+
+/** ISO 8601 weeks in a year: 53 when 1 January is a Thursday, or a Wednesday in a leap year; otherwise 52. */
+function isoWeeksIn(year: number): number {
+  const jan1 = new Date(dayNumber(year, 0, 1) * 86400000).getUTCDay();
+  const leap = dayNumber(year, 2, 1) - dayNumber(year, 1, 1) === 29;
+  return jan1 === 4 || (leap && jan1 === 3) ? 53 : 52;
+}
+
+/**
+ * Where a period sits on the common calendar: the day number of its first day (a year at 1 January, a quarter,
+ * half or month at its first day, a date at itself, an ISO week at its Monday, which for week 1 can fall in the
+ * previous December), with its frequency. Every accepted form of the shared period rule is placed; a period the
+ * rule refuses, or an ISO week 53 in a year that has 52 weeks (the rule accepts weeks 01 to 53 in every year, and
+ * placing it would move it to week 1 of the next year), answers the reason instead.
+ */
+export function periodPlacement(period: string): { frequency: PeriodFrequency; position: number } | { reason: string } {
+  if (!indicatorPeriodValid(period)) return { reason: `${period} is not a real calendar period.` };
+  const [y, rest] = [Number(period.slice(0, 4)), period.slice(5)];
+  if (rest === "") return { frequency: "year", position: dayNumber(y, 0, 1) };
+  let m = /^Q([1-4])$/.exec(rest);
+  if (m) return { frequency: "quarter", position: dayNumber(y, (Number(m[1]) - 1) * 3, 1) };
+  m = /^S([12])$/.exec(rest);
+  if (m) return { frequency: "half", position: dayNumber(y, (Number(m[1]) - 1) * 6, 1) };
+  m = /^W([0-9]{2})$/.exec(rest);
+  if (m) {
+    const week = Number(m[1]);
+    const weeks = isoWeeksIn(y);
+    if (week > weeks) return { reason: `${period} is not an ISO week of ${y}, which has ${weeks} weeks.` };
+    // Week 1 is the week with 4 January in it; weeks start on Monday.
+    const jan4 = dayNumber(y, 0, 4);
+    const monday1 = jan4 - ((new Date(jan4 * 86400000).getUTCDay() + 6) % 7);
+    return { frequency: "week", position: monday1 + (week - 1) * 7 };
+  }
+  m = /^M?([0-9]{2})$/.exec(rest);
+  if (m) return { frequency: "month", position: dayNumber(y, Number(m[1]) - 1, 1) };
+  m = /^([0-9]{2})-([0-9]{2})$/.exec(rest)!;
+  return { frequency: "day", position: dayNumber(y, Number(m[1]) - 1, Number(m[2])) };
+}
+
+/** A period's day number on the common calendar (periodPlacement); null when it cannot be placed. */
 export function periodPosition(period: string): number | null {
-  let m = /^([0-9]{4})$/.exec(period);
-  if (m) return Number(m[1]);
-  m = /^([0-9]{4})-Q([1-4])$/.exec(period);
-  if (m) return Number(m[1]) + (Number(m[2]) - 1) / 4;
-  m = /^([0-9]{4})-S([12])$/.exec(period);
-  if (m) return Number(m[1]) + (Number(m[2]) - 1) / 2;
-  m = /^([0-9]{4})-M?([0-9]{2})$/.exec(period);
-  if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) return Number(m[1]) + (Number(m[2]) - 1) / 12;
-  return null;
+  const p = periodPlacement(period);
+  return "position" in p ? p.position : null;
+}
+
+/**
+ * The one time axis of a view: the span of the view's periods (every area's, within the range), or withheld with
+ * the reason. Periods of more than one frequency are withheld too: a series is one frequency (frequency is a
+ * breakdown), and placing a year at 1 January beside daily values would read as a daily observation.
+ */
+export type TimeAxis = { state: "calendar"; frequency: PeriodFrequency; min: number; max: number } | { state: "withheld"; reason: string };
+export function timeAxisOf(periods: string[]): TimeAxis {
+  const withheld = (why: string): TimeAxis => ({ state: "withheld", reason: `Not placed on a time axis: ${why}` });
+  if (periods.length === 0) return withheld("no period is observed in this range.");
+  const placed: { frequency: PeriodFrequency; position: number }[] = [];
+  for (const period of [...periods].sort()) {
+    const p = periodPlacement(period);
+    if ("reason" in p) return withheld(p.reason);
+    placed.push(p);
+  }
+  const frequencies = PERIOD_FREQUENCIES.filter((f) => placed.some((p) => p.frequency === f));
+  if (frequencies.length > 1) return withheld(`the periods mix frequencies (${frequencies.join(", ")}), so one axis would misstate their spacing.`);
+  const positions = placed.map((p) => p.position);
+  return { state: "calendar", frequency: frequencies[0], min: Math.min(...positions), max: Math.max(...positions) };
+}
+
+/**
+ * A position's share of the axis span, 0 at the first period and 1 at the last; one period alone sits in the
+ * middle (0.5). Null when the axis is withheld or the position is outside it: the chart then places nothing.
+ */
+export function axisFraction(position: number | null, axis: TimeAxis): number | null {
+  if (axis.state !== "calendar" || position === null || position < axis.min || position > axis.max) return null;
+  return axis.max === axis.min ? 0.5 : (position - axis.min) / (axis.max - axis.min);
 }
 
 /** Digits after the decimal point of a value as written; null for an exponent spelling (5.12E-4). */
@@ -66,7 +145,7 @@ export function figureText(n: number, decimals: number | null, s: Scale): string
 
 export type ObservedPoint = {
   period: string;
-  /** Calendar position (2008, 2023.25 for 2023-Q2); null for a period spelled otherwise, placed by order. */
+  /** Day number of the period's first day on the common calendar (periodPosition); null when it cannot be placed. */
   position: number | null;
   valueText: string;
   value: number;
@@ -112,6 +191,9 @@ export function observedTrend(observations: IndicatorObservation[], areaCode: st
 export type Change = {
   /** Latest minus previous on the shown scale, unrounded. */
   value: number;
+  /** From the unrounded values: never from the rounded change, which can be 0 for a real rise or fall. */
+  direction: "rose" | "fell" | "same";
+  /** The unrounded change rounded once ("+19.7 pp"); a rise or fall smaller than the shown step is "+<0.1 pp". */
   text: string;
   unitWords: string;
   periodsText: string;
@@ -123,21 +205,40 @@ const yearOf = (p: string) => (/^[0-9]{4}$/.test(p) ? Number(p) : null);
 /** The change from the previous observation to the latest one (see the file header). */
 export function changeBetween(previous: ObservedPoint, latest: ObservedPoint, s: Scale): Change {
   const value = latest.value - previous.value;
+  const direction = value > 0 ? "rose" : value < 0 ? "fell" : "same";
+  const sign = direction === "rose" ? "+" : direction === "fell" ? "-" : "";
   const decimals = latest.decimals === null || previous.decimals === null ? null : Math.max(latest.decimals, previous.decimals);
   const percent = isPercentUnit(s);
-  const rounded = decimals === null ? value : Number(value.toFixed(decimals));
-  const magnitude = decimals === null ? shownText(Math.abs(value), { ...s, valueScale: null }) : Math.abs(rounded).toLocaleString("en-GB", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  const sign = rounded > 0 ? "+" : rounded < 0 ? "-" : "";
+  const fixed = (n: number, d: number) => n.toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
+  let magnitude: string;
+  let roundsAway = false;
+  if (decimals === null) magnitude = shownText(Math.abs(value), { ...s, valueScale: null });
+  else {
+    const rounded = Number(Math.abs(value).toFixed(decimals));
+    // A real rise or fall that rounds to 0 is stated as smaller than one shown step, keeping its sign.
+    roundsAway = rounded === 0 && direction !== "same";
+    magnitude = roundsAway ? `<${fixed(10 ** -decimals, decimals)}` : fixed(rounded, decimals);
+  }
+  // The shown values are rounded on their own, so their difference can differ from the rounded change (1.1% minus
+  // 1.0% is a change of +0.02 pp when the values are 1.06 and 1.04): then say where the change comes from.
+  const shownDifference = decimals === null ? null : Number((shownValueOf(latest) - shownValueOf(previous)).toFixed(decimals));
+  const fromUnrounded = shownDifference !== null && (roundsAway || shownDifference !== Number(value.toFixed(decimals!)));
   const ly = yearOf(latest.period);
   const py = yearOf(previous.period);
   const consecutive = ly !== null && py !== null && ly - py === 1;
   return {
     value,
+    direction,
     text: `${sign}${magnitude}${percent ? " pp" : ""}`,
     unitWords: percent ? "percentage points" : `in the series' unit (${unitText(s).replace(/^Unit: /, "")})`,
     periodsText: `${latest.period} vs ${previous.period}, ${consecutive ? "consecutive years" : "not year-on-year"}`,
-    arithmetic: `${latest.shown} minus ${previous.shown}`,
+    arithmetic: `${latest.shown} minus ${previous.shown}${fromUnrounded ? ", calculated from the unrounded values" : ""}`,
   };
+}
+
+/** The number an observation is shown as ("3,427" is 3427, "1.0%" is 1), so two shown values can be compared. */
+function shownValueOf(p: ObservedPoint): number {
+  return Number(p.shown.replace(/[,%]/g, ""));
 }
 
 export type Headline = {
@@ -163,6 +264,31 @@ export function headlineFigures(points: ObservedPoint[], s: Scale): Headline {
 
 export type ViewSummary = { statement: string; detail: string };
 
+/**
+ * How the value moved, in words that agree with both shown observations (Codex D6-F01). The direction is the
+ * unrounded one; whether the two are shown as one value is read from the shown values themselves:
+ *   - unrounded equal: "was the same" (naming both shown values when written to different precisions);
+ *   - shown as one value but unrounded different: "is shown as 70.5% in both ...; unrounded, it fell (change ...)";
+ *   - shown order agrees with the direction: "rose from 1.0% in 2020 to 1.1% in 2021";
+ *   - shown order disagrees (two precisions: 1% then 1.03% for 1.04 then 1.03): both shown values, then the
+ *     unrounded direction, never "rose" against the unrounded values or "fell" against the shown ones.
+ */
+function movement(previous: ObservedPoint, latest: ObservedPoint, change: Change): string {
+  const [p, l] = [shownValueOf(previous), shownValueOf(latest)];
+  const unrounded = `unrounded, it ${change.direction} (change ${change.text})`;
+  if (change.direction === "same") {
+    return previous.shown === latest.shown ? `was the same in ${previous.period} and ${latest.period} (${latest.shown})` : `was the same in ${previous.period} (${previous.shown}) and ${latest.period} (${latest.shown})`;
+  }
+  const comparable = Number.isFinite(p) && Number.isFinite(l);
+  if (comparable && p === l) {
+    return previous.shown === latest.shown
+      ? `is shown as ${latest.shown} in both ${previous.period} and ${latest.period}; ${unrounded}`
+      : `is shown as ${previous.shown} in ${previous.period} and ${latest.shown} in ${latest.period}, the same value at different precisions; ${unrounded}`;
+  }
+  if (!comparable || l > p === (change.direction === "rose")) return `${change.direction} from ${previous.shown} in ${previous.period} to ${latest.shown} in ${latest.period}`;
+  return `is shown as ${previous.shown} in ${previous.period} and ${latest.shown} in ${latest.period}, at different precisions; ${unrounded}`;
+}
+
 /** "What this view says": chosen by rule from the headline, descriptive only (see the file header). */
 export function viewSummary(area: string, h: Headline, withheldAfterLatest: string[]): ViewSummary {
   const withheld = withheldAfterLatest.length > 0 ? ` ${withheldAfterLatest.join(", ")} ${withheldAfterLatest.length === 1 ? "is" : "are"} withheld by the publisher as confidential and not counted.` : "";
@@ -171,10 +297,7 @@ export function viewSummary(area: string, h: Headline, withheldAfterLatest: stri
     return { statement: `${area}: ${h.latest.shown} in ${h.latest.period}, the only observation in this range.`, detail: `No change can be stated from one observation.${withheld}` };
   }
   const { latest, previous, change } = h;
-  const verb = change.text.startsWith("+") ? "rose" : change.text.startsWith("-") ? "fell" : null;
-  const statement = verb
-    ? `For ${area}, the reported value ${verb} from ${previous.shown} in ${previous.period} to ${latest.shown} in ${latest.period}.`
-    : `For ${area}, the reported value was the same at the shown precision in ${previous.period} and ${latest.period} (${latest.shown}).`;
+  const statement = `For ${area}, the reported value ${movement(previous, latest, change)}.`;
   const ly = yearOf(latest.period);
   const py = yearOf(previous.period);
   const gap = ly !== null && py !== null ? ly - py : null;

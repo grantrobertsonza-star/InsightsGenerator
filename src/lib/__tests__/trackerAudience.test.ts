@@ -4,7 +4,7 @@
 //   - smallBaseLevel: the plan's rule, flagged below 50 and descriptive only below 30;
 //   - acquirerParts: the acquisition question and the client's brand's variable, or why not (no question: not
 //     measured; two, or no client's brand: mapping needed);
-//   - ageRowsFromResults and mediaRowsFromResults: shares by raw code for both groups; a listed answer nobody in the
+//   - profileRowsFromResults and mediaRowsFromResults: shares by raw code for both groups; a listed answer nobody in the
 //     group gave is 0 of a known base, a suppressed or missing figure is n/a with the reason, never 0.
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -16,7 +16,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 import { findAgeGroups, findMediaList, recogniseTracker, type RoleVariable } from "../trackerRoles";
 import { resolveDashboard } from "../trackerDashboard";
-import { acquirerParts, ageRowsFromResults, mediaRowsFromResults, smallBaseLevel } from "../trackerAudience";
+import { acquirerParts, profileRowsFromResults, mediaRowsFromResults, smallBaseLevel } from "../trackerAudience";
 import type { CrosstabResult } from "../parseStatsFile";
 
 const fixture = (dir: string, name: string): RoleVariable[] => JSON.parse(readFileSync(path.join(process.cwd(), "fixtures", dir, `${name}.json`), "utf8"));
@@ -99,9 +99,9 @@ function table(questions: Record<string, { base: number; answers: Record<string,
   } as unknown as CrosstabResult;
 }
 
-describe("ageRowsFromResults and mediaRowsFromResults", () => {
+describe("profileRowsFromResults and mediaRowsFromResults", () => {
   it("every listed code for both groups; one nobody in the group gave is 0 of the known base; a suppressed one is n/a", () => {
-    const rows = ageRowsFromResults(
+    const rows = profileRowsFromResults(
       table({ age: { base: 100, answers: { "1": 20, "2": 30, "3": 40, "4": 10 } } }),
       table({ age: { base: 13, answers: { "2": 50, "3": null, "4": 50 } } }),
       "age",
@@ -118,23 +118,26 @@ describe("ageRowsFromResults and mediaRowsFromResults", () => {
     expect(rows[2].acquirers.reason).toBe("Suppressed for a small base.");
   });
   it("no acquirers table: every acquirer figure n/a with the reason given, the category still read", () => {
-    const rows = ageRowsFromResults(table({ age: { base: 100, answers: { "1": 100 } } }), null, "age", v("age", "Age group", { "1": "18-24" }), "No respondent in this file is a recent acquirer of BMW.");
+    const rows = profileRowsFromResults(table({ age: { base: 100, answers: { "1": 100 } } }), null, "age", v("age", "Age group", { "1": "18-24" }), "No respondent in this file is a recent acquirer of BMW.");
     expect(rows[0]).toMatchObject({ category: { share: 100 }, acquirers: { share: null, reason: "No respondent in this file is a recent acquirer of BMW." } });
   });
-  it("media ordered by the category's share, a figure that cannot be read last and never 0", () => {
+  it("media in the list's order for the focal and comparison groups; a figure that cannot be read is n/a, never 0", () => {
     const list = { status: "found" as const, group: "media", label: "P1", outside: [], options: [{ variable: "m1", label: "Radio" }, { variable: "m2", label: "TV" }, { variable: "m3", label: "Odd" }] };
     const vars = new Map([["m1", v("m1", "Radio", YN)], ["m2", v("m2", "TV", YN)], ["m3", v("m3", "Odd", { "0": "No", "1": "Maybe" })]]);
     const rows = mediaRowsFromResults(
-      table({ m1: { base: 100, answers: { "0": 60, "1": 40 } }, m2: { base: 100, answers: { "0": 20, "1": 80 } }, m3: { base: 100, answers: { "0": 10, "1": 90 } } }),
       table({ m1: { base: 13, answers: { "0": 100 } }, m2: { base: 13, answers: { "0": 50, "1": 50 } }, m3: { base: 13, answers: { "1": 100 } } }),
+      table({ m1: { base: 100, answers: { "0": 60, "1": 40 } }, m2: { base: 100, answers: { "0": 20, "1": 80 } }, m3: { base: 100, answers: { "0": 10, "1": 90 } } }),
       list,
       vars,
       null,
+      null,
     );
-    expect(rows.map((r) => [r.label, r.category.share, r.acquirers.share])).toEqual([
-      ["TV", 80, 50],
+    expect(rows.map((r) => [r.label, r.comparison.share, r.focal.share])).toEqual([
       ["Radio", 40, 0],
+      ["TV", 80, 50],
       ["Odd", null, null],
     ]);
+    const none = mediaRowsFromResults(null, table({ m1: { base: 100, answers: { "0": 60, "1": 40 } } }), { ...list, options: [list.options[0]] }, vars, "No respondent in this file is a recent acquirer of BMW.", null);
+    expect(none[0]).toMatchObject({ focal: { share: null, reason: "No respondent in this file is a recent acquirer of BMW." }, comparison: { share: 40 } });
   });
 });

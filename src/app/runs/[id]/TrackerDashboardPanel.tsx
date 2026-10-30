@@ -12,11 +12,11 @@
 // moved save reloads what is stored instead of overwriting it.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { loadBrandAdvertisingAction, loadBrandAssociationsAction, loadBrandAudienceAction, loadCategoryOverviewAction, loadBrandMomentsAction, loadBrandOverviewAction, resetTrackerChoicesAction, saveTrackerChoicesAction } from "@/lib/trackerDashboardActions";
+import { loadBrandAdvertisingAction, loadBrandAssociationsAction, loadCategoryOverviewAction, loadBrandMomentsAction, loadBrandOverviewAction, resetTrackerChoicesAction, saveTrackerChoicesAction } from "@/lib/trackerDashboardActions";
 import type { BrandMoments } from "@/lib/trackerMoments";
 import type { BrandAssociations } from "@/lib/trackerAssociations";
 import type { BrandAdvertising } from "@/lib/trackerAdvertising";
-import type { BrandAudience, ProfileRow } from "@/lib/trackerAudience";
+import { AudiencePage, MediaPage } from "./AudienceProfiles";
 import type { CategoryOverview, Distribution } from "@/lib/trackerCategory";
 import type { BrandOverview, TimelinePoint } from "@/lib/trackerOverview";
 import type { TrackerChoices } from "@/lib/trackerDashboard";
@@ -64,7 +64,8 @@ const CSM_ROLES: { role: CsmRole; label: string }[] = [
   { role: "company", label: "Company each customer rates" },
 ];
 /** The brand dashboard's pages, all built (batch M4); a page's number in the menu is its place here. */
-const BRAND_SECTIONS = ["Brand overview", "Moments & needs", "Brand associations", "Advertising & WOM", "Audience & media", "Category overview"];
+// Audience & media is two pages (Grant, 30 October 2026): Audience (profile cards) and Media (media use).
+const BRAND_SECTIONS = ["Brand overview", "Moments & needs", "Brand associations", "Advertising & WOM", "Audience", "Media", "Category overview"];
 
 // A change shown to one decimal: one that rounds to zero is "±0.0", never "−0.0".
 const signed = (v: number, digits = 1) => {
@@ -87,8 +88,6 @@ type MomentsLoad = { state: "idle" } | { state: "loading" } | { state: "failed";
 type AssociationsLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; associations: BrandAssociations };
 /** Page 04's figures, loaded the same way as page 02's. */
 type AdvertisingLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; advertising: BrandAdvertising };
-/** Page 05's figures, loaded the same way as page 02's. */
-type AudienceLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; audience: BrandAudience };
 /** The Category overview page's figures, loaded the same way as page 02's. */
 type CategoryLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; category: CategoryOverview };
 /** A word of mouth group's colour, from its wording (presentation only; the group's identity is its code). */
@@ -222,19 +221,18 @@ export default function TrackerDashboardPanel({
   const [draft, setDraft] = useState<TrackerChoices>({});
   const [save, setSave] = useState<SaveState>({ state: "idle" });
   // The brand dashboard's page, by its place in BRAND_SECTIONS: 0 Brand overview (the default), 1 Moments & needs,
-  // 2 Brand associations, 3 Advertising & WOM, 4 Audience & media, 5 Category overview.
+  // 2 Brand associations, 3 Advertising & WOM, 4 Audience, 5 Media, 6 Category overview. The page is not remembered
+  // between openings, so the split of Audience & media (formerly 4) cannot land a saved place on the wrong page.
   const [section, setSection] = useState(0);
   const [moments, setMoments] = useState<MomentsLoad>({ state: "idle" });
   const [associations, setAssociations] = useState<AssociationsLoad>({ state: "idle" });
   const [advertising, setAdvertising] = useState<AdvertisingLoad>({ state: "idle" });
-  const [audience, setAudience] = useState<AudienceLoad>({ state: "idle" });
   const [category, setCategory] = useState<CategoryLoad>({ state: "idle" });
   // Only the latest request may update the screen: a slow earlier load (or one for another file) is ignored.
   const latest = useRef(0);
   const latestMoments = useRef(0);
   const latestAssociations = useRef(0);
   const latestAdvertising = useRef(0);
-  const latestAudience = useRef(0);
   const latestCategory = useRef(0);
 
   const loadMoments = useCallback(async () => {
@@ -261,14 +259,6 @@ export default function TrackerDashboardPanel({
     setAdvertising(r.ok ? { state: "ready", advertising: r.advertising } : { state: "failed", error: r.error });
   }, [runId, documentId]);
 
-  const loadAudience = useCallback(async () => {
-    const id = ++latestAudience.current;
-    setAudience({ state: "loading" });
-    const r = await loadBrandAudienceAction(runId, documentId);
-    if (id !== latestAudience.current) return;
-    setAudience(r.ok ? { state: "ready", audience: r.audience } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
-
   const loadCategory = useCallback(async () => {
     const id = ++latestCategory.current;
     setCategory({ state: "loading" });
@@ -288,8 +278,6 @@ export default function TrackerDashboardPanel({
     setAssociations({ state: "idle" });
     latestAdvertising.current += 1;
     setAdvertising({ state: "idle" });
-    latestAudience.current += 1;
-    setAudience({ state: "idle" });
     latestCategory.current += 1;
     setCategory({ state: "idle" });
     const r = await loadBrandOverviewAction(runId, documentId, kind);
@@ -308,7 +296,6 @@ export default function TrackerDashboardPanel({
       latestMoments.current += 1;
       latestAssociations.current += 1;
       latestAdvertising.current += 1;
-      latestAudience.current += 1;
       latestCategory.current += 1;
     };
   }, [reload]);
@@ -332,15 +319,9 @@ export default function TrackerDashboardPanel({
   }, [kind, section, advertising.state, loadAdvertising]);
 
   useEffect(() => {
-    // Page 05 likewise: calculated only when shown, once per load of the dashboard.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (kind === "brand" && section === 4 && audience.state === "idle") void loadAudience();
-  }, [kind, section, audience.state, loadAudience]);
-
-  useEffect(() => {
     // The Category overview likewise: calculated only when shown, once per load of the dashboard.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (kind === "brand" && section === 5 && category.state === "idle") void loadCategory();
+    if (kind === "brand" && section === 6 && category.state === "idle") void loadCategory();
   }, [kind, section, category.state, loadCategory]);
 
   const overview = load.state === "ready" ? load.overview : null;
@@ -1212,140 +1193,34 @@ export default function TrackerDashboardPanel({
     );
   })();
 
-  // ---- Brand tracking dashboard, page 05 "Audience & media" (Grant's design, 29 October 2026) ---------------
-  const audienceView = overview && dashboard && (() => {
-    const a = audience.state === "ready" ? audience.audience : null;
-    const pct = (v: number) => `${v.toFixed(1)}%`;
-    const weighting = a ? (a.weighted ? `Weighted by ${a.weightVar}` : "Unweighted") : "";
-    const acq = a?.acquirers.status === "ok" ? a.acquirers : null;
-    const brandName = acq?.brand.label ?? focal?.label ?? "your brand";
-    const groupsText = acq
-      ? `${brandName} recent acquirers ("${acq.label}", n=${acq.n === null ? "n/a" : acq.n.toLocaleString()}) vs all eligible category respondents (n=${a?.categoryN?.toLocaleString() ?? "n/a"})`
-      : `All eligible category respondents (n=${a?.categoryN?.toLocaleString() ?? "n/a"})`;
-    // Paired bars: the acquirers (the client's colour) and the category (grey), each with its value.
-    const paired = (rows: ProfileRow[], testId: string) => (
-      <ol className="flex flex-col gap-3">
-        {rows.map((r) => (
-          <li key={r.key} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] items-center gap-3 text-sm" data-testid={testId} data-key={r.key}>
-            <span className="truncate text-slate-700" title={r.label}>
-              {r.label}
-            </span>
-            <span className="flex flex-col gap-1">
-              {(
-                [
-                  ["acquirers", r.acquirers, FOCAL_COLOUR],
-                  ["category", r.category, "#94a3b8"],
-                ] as const
-              ).map(([which, g, colour]) => (
-                <span key={which} className="grid grid-cols-[minmax(0,1fr)_3.5rem] items-center gap-2" title={g.reason}>
-                  <span className="h-2.5 rounded bg-slate-100">
-                    <span className="block h-full rounded" style={{ width: `${Math.max(0, Math.min(100, g.share ?? 0))}%`, background: colour }} />
-                  </span>
-                  <span className="text-right text-xs tabular-nums text-slate-900" data-testid={`${testId}-${which}`}>
-                    {g.share === null ? <span className="text-slate-400">n/a</span> : pct(g.share)}
-                  </span>
-                </span>
-              ))}
-            </span>
-          </li>
-        ))}
-      </ol>
-    );
-    const legend = (
-      <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700" aria-label="Legend">
-        <li className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: FOCAL_COLOUR }} aria-hidden="true" />
-          {brandName} recent acquirers
-        </li>
-        <li className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-400" aria-hidden="true" />
-          All eligible category respondents
-        </li>
-      </ul>
-    );
-    const naNote = (rows: ProfileRow[], testId: string) => {
-      const reasons = [...new Set(rows.filter((r) => r.acquirers.share === null).map((r) => r.acquirers.reason ?? "Not available."))];
-      return reasons.length > 0 ? (
-        <p className="mt-3 text-[11px] text-slate-500" data-testid={testId}>
-          Acquirers n/a: {reasons.join(" ")}
-        </p>
-      ) : null;
-    };
-    return (
-      <>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-[2rem] font-bold leading-tight tracking-tight text-slate-900">Audience &amp; media</h2>
-            <p className="mt-1 text-[15px] text-slate-500">Compare who recently acquired your brand with everyone in the category.</p>
-          </div>
-          <button type="button" onClick={() => setCustomising((v) => !v)} aria-expanded={customising} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50">
-            Customise dashboard
-          </button>
-        </div>
-        {brandChips(a ? a.weighted : overview.figures.weighted)}
-        {customising && customise}
-        {statusLine}
-        {audience.state === "loading" || audience.state === "idle" ? (
-          <p className="text-sm text-slate-500" role="status">
-            Calculating the audience profile and media use from this file...
-          </p>
-        ) : audience.state === "failed" ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert" data-testid="tracker-audience-failed">
-            <p>The audience profile and media use could not be calculated: {audience.error}</p>
-            <button type="button" onClick={() => void loadAudience()} className="mt-2 rounded border border-red-300 bg-white px-2.5 py-1 text-xs">
-              Try again
-            </button>
-          </div>
-        ) : (
-          a && (
-            <>
-              {a.acquirers.status !== "ok" ? (
-                <UnavailableNote state={a.acquirers} testId="tracker-audience-acquirers-unavailable" />
-              ) : a.acquirers.n === null || a.acquirers.n === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-700" data-testid="tracker-audience-no-acquirers">
-                  {a.acquirers.reason ?? `No recent acquirers of ${brandName} could be counted.`}
-                </p>
-              ) : a.acquirers.level === "very_small" ? (
-                <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900" role="note" data-testid="tracker-audience-small-base" data-level="very_small">
-                  VERY SMALL BASE: {brandName} recent acquirers n={a.acquirers.n.toLocaleString()}. Descriptive illustration only. No significance, targeting or market inference.
-                </p>
-              ) : a.acquirers.level === "small" ? (
-                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="note" data-testid="tracker-audience-small-base" data-level="small">
-                  SMALL BASE: {brandName} recent acquirers n={a.acquirers.n.toLocaleString()}. Read with caution; no significance test is applied.
-                </p>
-              ) : null}
-              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-                <Card title="Age profile" subtitle={`${groupsText}. ${weighting}.`} testId="tracker-audience-age">
-                  {a.age.status !== "ok" ? (
-                    <UnavailableNote state={a.age} testId="tracker-audience-age-unavailable" />
-                  ) : (
-                    <>
-                      {legend}
-                      {paired(a.age.rows, "tracker-audience-age-row")}
-                      {naNote(a.age.rows, "tracker-audience-age-na")}
-                      <p className="mt-3 text-[11px] text-slate-500">Share of each group with an answer to &ldquo;{a.age.label}&rdquo;; every answer is shown. A profile of the respondents, not of the market.</p>
-                    </>
-                  )}
-                </Card>
-                <Card title="Media use" subtitle={`Multiple response; media habits, not advertising effectiveness. ${groupsText}. ${weighting}.`} testId="tracker-audience-media">
-                  {a.media.status !== "ok" ? (
-                    <UnavailableNote state={a.media} testId="tracker-audience-media-unavailable" />
-                  ) : (
-                    <>
-                      {legend}
-                      {paired(a.media.rows, "tracker-audience-media-row")}
-                      {naNote(a.media.rows, "tracker-audience-media-na")}
-                      <p className="mt-3 text-[11px] text-slate-500">Ordered by use among all eligible respondents. Respondents who use none of the listed media stay in the base.</p>
-                    </>
-                  )}
-                </Card>
-              </div>
-            </>
-          )
-        )}
-      </>
-    );
-  })();
+  // ---- Brand tracking dashboard, pages 05 "Audience" and 06 "Media" (AudienceProfiles.tsx; Grant, 30 October 2026) ----
+  // Each page loads its own figures when shown and again whenever the dashboard is loaded again (loadKey).
+  const audienceChrome = (weighted: boolean | null) => (
+    <>
+      <div className="flex justify-end">
+        <button type="button" onClick={() => setCustomising((v) => !v)} aria-expanded={customising} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50">
+          Customise dashboard
+        </button>
+      </div>
+      {brandChips(weighted ?? overview?.figures.weighted ?? false)}
+      {customising && customise}
+      {statusLine}
+    </>
+  );
+  const audienceView = overview && dashboard && (
+    <AudiencePage
+      runId={runId}
+      documentId={documentId}
+      loadKey={overview}
+      chrome={audienceChrome}
+      profiles={dashboard.audienceProfiles}
+      saved={overview.view.choices.audienceProfiles}
+      saving={save.state === "saving"}
+      canSave={overview.view.storageAvailable}
+      onSave={(next) => apply({ ...overview.view.choices, audienceProfiles: next }, false)}
+    />
+  );
+  const mediaView = overview && dashboard && <MediaPage runId={runId} documentId={documentId} loadKey={overview} chrome={audienceChrome} />;
 
   // ---- Brand tracking dashboard, "Category overview" (Grant's design, page 08, 29 October 2026) --------------
   const categoryView = overview && dashboard && (() => {
@@ -1848,7 +1723,7 @@ export default function TrackerDashboardPanel({
                 ))}
               </div>
             )}
-            {kind === "brand" ? (section === 1 ? momentsView : section === 2 ? associationsView : section === 3 ? advertisingView : section === 4 ? audienceView : section === 5 ? categoryView : brandView) : csmView}
+            {kind === "brand" ? (section === 1 ? momentsView : section === 2 ? associationsView : section === 3 ? advertisingView : section === 4 ? audienceView : section === 5 ? mediaView : section === 6 ? categoryView : brandView) : csmView}
           </div>
         </div>
       </div>
