@@ -28,6 +28,8 @@ date and included.
 - **Wave tracking** (Analytics) uses the included waves in that order and shows the order basis and the
   waves left out.
 - **Brand Health and CSM** use the included waves when run across all waves.
+- **The tracker dashboards** (R5 waves) offer the included waves in this order in their Wave selector and compare with
+  the previous included wave by default, or an earlier one (`claude/wave-change.md`).
 - **Cross tabs and Analytics** list each data file as "Wave N: file". With no file used last, they open
   the latest included wave (`initialCrosstabDataset`).
 - "Copy tables from..." can copy from any labelled wave, including one left out.

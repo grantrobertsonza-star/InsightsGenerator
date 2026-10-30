@@ -1,14 +1,18 @@
 // D3 overview for one wave file: the dashboard's resolved choices (trackerDashboards.ts), every brand's stage figures
 // (trackerFigures.ts), the customer satisfaction tiles with figures by company (trackerCsmFigures.ts, D3b), and the
-// change of both against the previous wave file of the same project (waveFiles.ts).
+// change of both against the compared wave of the same project (waveFiles.ts).
 //
-// The previous wave is the wave file immediately before this one in the project's wave order. Its figures use the
-// same saved programme choices, resolved against its own file. When there is no previous wave, or its figures
-// cannot be read, the overview still shows this wave and says why the change is missing: a failed read of the
-// previous wave is reported as failed, never shown as "no change" or as an earlier wave that does not exist.
+// The compared wave (R5 waves) is the included wave immediately before this one in the project's wave order by
+// default, or an earlier included wave the researcher chose, or none (trackerWaveChange.comparisonTarget). Its figures
+// use the same saved programme choices, resolved against its own file. When there is no compared wave, or its figures
+// cannot be read, the overview still shows this wave and says why the change is missing: a failed read is reported as
+// failed, never shown as "no change" or as an earlier wave that does not exist. Stage changes carry the engine's
+// significance test (trackerWaveChange.attachTests).
 import { loadTrackerDashboard, type TrackerDashboardView } from "./trackerDashboards";
 import { loadRoleInput } from "./trackerInput";
-import { brandOverviewFigures, changesAgainst, type BrandOverviewFigures, type StageChange } from "./trackerFigures";
+import { brandOverviewFigures, changesAgainst, type BrandOverviewFigures, type StageChange, type StageFigures } from "./trackerFigures";
+import { loadDocumentFile } from "./crosstabs";
+import { attachTests, comparisonTarget, DESIGN_NOTE, SRS_NOTE, TEST_LINE, waveListOf, type CompareChoice, type TestJob, type WaveList } from "./trackerWaveChange";
 import { loadProjectWaves } from "./waveFiles";
 import type { ResolvedDashboard } from "./trackerDashboard";
 import { OVERVIEW_STAGES } from "./trackerFigures";
@@ -16,9 +20,12 @@ import { csmAttributeMeans, csmChangesAgainst, csmOverviewFigures, satisfactionM
 import type { FunnelStage, RoleVariable, TrackerRecognition } from "./trackerRoles";
 import { prefilledFocalBrand } from "./trackerDashboard";
 
+/** The wave this one is compared with (R5 waves: the previous included wave by default, an earlier included wave the
+ * researcher chose, or none). "off": the researcher chose None. */
 export type PreviousWave =
   | { status: "ok"; documentId: string; wave: string; filename: string }
   | { status: "none"; reason: string }
+  | { status: "off"; reason: string }
   | { status: "failed"; documentId: string; wave: string; filename: string; error: string };
 
 export type BrandOverview = {
@@ -54,6 +61,12 @@ export type BrandOverview = {
   timeline: TimelinePoint[];
   /** CSM "Service attributes": each driver's mean on its own scale (csmAttributeMeans); empty on the brand dashboard. */
   attributes: AttributeMean[];
+  /** The project's waves for the wave selector (included, in their owner's order; excluded named as left out). */
+  waves: WaveList;
+  /** The compare choice these figures were computed with: "previous", "none", or a wave file's id. */
+  compareWith: string;
+  /** The significance test's line for the stage changes; null when nothing is compared (or on the CSM dashboard). */
+  compareTest: { line: string; note: string; failed: string | null } | null;
 };
 
 export type TimelinePoint = {
@@ -127,76 +140,75 @@ async function figuresFor(tenantId: string, runId: string, documentId: string, k
   return { view, input, figures, csm, company };
 }
 
-export async function loadBrandOverview(tenantId: string, runId: string, documentId: string, kind: TrackerDashboardKind = "brand"): Promise<BrandOverview> {
+export async function loadBrandOverview(tenantId: string, runId: string, documentId: string, kind: TrackerDashboardKind = "brand", choice: CompareChoice = "previous"): Promise<BrandOverview> {
   const [{ view, input, figures, csm, company }, waves] = await Promise.all([figuresFor(tenantId, runId, documentId, kind), loadProjectWaves(tenantId, runId)]);
   const at = waves.included.findIndex((w) => w.documentId === documentId);
+  const target = comparisonTarget(waves, documentId, choice);
   let previous: PreviousWave;
-  let previousStages = null;
-  let previousCsm: CsmTile[] | null = null;
-  let previousCompanies: CsmCompanies | null = null;
-  let previousBrands: { code: string; label: string }[] = [];
-  const timeline: TimelinePoint[] = [];
-  const satOf = (tiles: CsmTile[]) => {
-    const t = tiles.find((x) => x.id === "satisfaction");
-    return t && t.status === "ok" && t.id === "satisfaction" ? { mean: t.mean, effectiveBase: t.effectiveBase } : { mean: null, effectiveBase: null };
-  };
-  if (at < 0) previous = { status: "none", reason: "This file is not labelled as a wave of this project, so there is no earlier wave to compare with." };
-  else if (at === 0) previous = { status: "none", reason: "This is the earliest wave of this project." };
+  let compared: Awaited<ReturnType<typeof figuresFor>> | null = null;
+  if (target.status !== "target") previous = target;
   else {
-    const p = waves.included[at - 1];
+    const p = target.wave;
     try {
-      const prev = await figuresFor(tenantId, runId, p.documentId, kind);
-      previousStages = prev.figures.stages;
-      previousBrands = prev.view.dashboard.brands;
-      previousCsm = prev.csm;
-      previousCompanies = prev.company && "companies" in prev.company ? prev.company : null;
+      compared = await figuresFor(tenantId, runId, p.documentId, kind);
       previous = { status: "ok", documentId: p.documentId, wave: p.wave, filename: p.filename };
     } catch (e) {
       previous = { status: "failed", documentId: p.documentId, wave: p.wave, filename: p.filename, error: e instanceof Error ? e.message : String(e) };
     }
   }
-  if (at >= 0) {
-    // The waves before the previous one, read for the trend only: brand stage figures, or satisfaction's mean
-    // (the same reading as the tile), each with that wave's own resolved choices.
-    const earlier = await Promise.all(
-      waves.included.slice(0, Math.max(0, at - 1)).map(async (w): Promise<TimelinePoint> => {
-        const base = { documentId: w.documentId, wave: w.wave, waveDate: w.waveDate };
-        try {
-          if (kind === "brand") return { ...base, status: "ok", stages: (await figuresFor(tenantId, runId, w.documentId, "brand")).figures.stages };
-          const v = await loadTrackerDashboard(tenantId, runId, w.documentId);
-          const variable = v.dashboard.csm.overallSatisfaction.variable;
-          if (!variable) return { ...base, status: "failed", error: "No overall satisfaction question in this wave." };
-          const m = await satisfactionMean(runId, w.documentId, variable, v.dashboard.weighted ? v.dashboard.weightVar : null);
-          return m.error ? { ...base, status: "failed", error: m.error } : { ...base, status: "ok", satisfaction: { mean: m.mean, effectiveBase: m.effectiveBase } };
-        } catch (e) {
-          return { ...base, status: "failed", error: e instanceof Error ? e.message : String(e) };
-        }
-      }),
-    );
-    timeline.push(...earlier);
-    if (at >= 1) {
-      const p = waves.included[at - 1];
-      const base = { documentId: p.documentId, wave: p.wave, waveDate: p.waveDate };
-      if (previous.status === "failed") timeline.push({ ...base, status: "failed", error: previous.error });
-      else timeline.push(kind === "brand" ? { ...base, status: "ok", stages: previousStages ?? [] } : { ...base, status: "ok", satisfaction: satOf(previousCsm ?? []) });
-    }
-    const c = waves.included[at];
-    timeline.push(kind === "brand" ? { documentId, wave: c.wave, waveDate: c.waveDate, status: "ok", stages: figures.stages } : { documentId, wave: c.wave, waveDate: c.waveDate, status: "ok", satisfaction: satOf(csm) });
-  }
+  const previousStages = compared?.figures.stages ?? null;
+  const previousCsm = compared?.csm ?? null;
+  const previousCompanies = compared?.company && "companies" in compared.company ? compared.company : null;
+  const satOf = (tiles: CsmTile[]) => {
+    const t = tiles.find((x) => x.id === "satisfaction");
+    return t && t.status === "ok" && t.id === "satisfaction" ? { mean: t.mean, effectiveBase: t.effectiveBase } : { mean: null, effectiveBase: null };
+  };
+  // The trend: every included wave up to this one, each with its own resolved choices (brand stage figures, or
+  // satisfaction's mean, the same reading as the tile). This wave and the compared wave are not read twice.
+  const timeline: TimelinePoint[] = at < 0 ? [] : await Promise.all(
+    waves.included.slice(0, at + 1).map(async (w): Promise<TimelinePoint> => {
+      const base = { documentId: w.documentId, wave: w.wave, waveDate: w.waveDate };
+      if (w.documentId === documentId) return kind === "brand" ? { ...base, status: "ok", stages: figures.stages } : { ...base, status: "ok", satisfaction: satOf(csm) };
+      if (previous.status === "failed" && previous.documentId === w.documentId) return { ...base, status: "failed", error: previous.error };
+      if (compared && previous.status === "ok" && previous.documentId === w.documentId)
+        return kind === "brand" ? { ...base, status: "ok", stages: compared.figures.stages } : { ...base, status: "ok", satisfaction: satOf(compared.csm) };
+      try {
+        if (kind === "brand") return { ...base, status: "ok", stages: (await figuresFor(tenantId, runId, w.documentId, "brand")).figures.stages };
+        const v = await loadTrackerDashboard(tenantId, runId, w.documentId);
+        const variable = v.dashboard.csm.overallSatisfaction.variable;
+        if (!variable) return { ...base, status: "failed", error: "No overall satisfaction question in this wave." };
+        const m = await satisfactionMean(runId, w.documentId, variable, v.dashboard.weighted ? v.dashboard.weightVar : null);
+        return m.error ? { ...base, status: "failed", error: m.error } : { ...base, status: "ok", satisfaction: { mean: m.mean, effectiveBase: m.effectiveBase } };
+      } catch (e) {
+        return { ...base, status: "failed", error: e instanceof Error ? e.message : String(e) };
+      }
+    }),
+  );
   const attributes =
     kind === "csm" && view.dashboard.csm.drivers.variables.length > 0
       ? await csmAttributeMeans(runId, documentId, view.dashboard.csm.drivers.variables, view.dashboard.weighted ? view.dashboard.weightVar : null)
       : [];
+  const notCompared = previous.status === "failed" ? "The compared wave's figures could not be read." : previous.status === "ok" ? "" : previous.reason;
   const changes =
-    previous.status === "ok"
-      ? changesAgainst(figures.stages, previousStages, { current: view.dashboard.brands, previous: previousBrands })
-      : changesAgainst(figures.stages, null).map((c) => ({ ...c, reason: previous.status === "failed" ? "The previous wave's figures could not be read." : c.reason }));
-  const csmChanges = csmChangesAgainst(
-    csm,
-    previous.status === "ok" ? previousCsm : null,
-    previous.status === "failed" ? "The previous wave's figures could not be read." : previous.status === "none" ? previous.reason : "",
-    { current: company && "companies" in company ? company : null, previous: previousCompanies },
-  );
+    previous.status === "ok" && compared
+      ? changesAgainst(figures.stages, previousStages, { current: view.dashboard.brands, previous: compared.view.dashboard.brands }, { current: new Map(input.variables.map((v) => [v.name, v])), previous: new Map(compared.input.variables.map((v) => [v.name, v])) })
+      : changesAgainst(figures.stages, null).map((c) => ({ ...c, reason: notCompared || c.reason }));
+  // The significance of each stage change (trackerWaveChange.attachTests, the engine's test), from the two shares it
+  // was computed from. The CSM side's changes are box shares, NPS and means: shown without a test.
+  let compareTest: BrandOverview["compareTest"] = null;
+  if (kind === "brand" && previous.status === "ok" && previousStages) {
+    const share = (stages: StageFigures[], stage: string, code: string) => stages.find((x) => x.stage === stage)?.byBrand.find((b) => b.code === code);
+    const jobs: TestJob[] = changes.flatMap((c) => {
+      const cur = share(figures.stages, c.stage, c.code);
+      const prev = share(previousStages, c.stage, c.code);
+      // StageChange carries the test on itself: the job writes it there.
+      return c.changePp !== null && cur && prev ? [{ change: c as unknown as TestJob["change"], current: cur, previous: prev }] : [];
+    });
+    const doc = await loadDocumentFile(tenantId, runId, documentId);
+    const { failed, designBased } = await attachTests(jobs, { storagePath: doc.storage_path, sourceFilename: doc.source_filename });
+    compareTest = { line: TEST_LINE, note: designBased ? `${DESIGN_NOTE} ${SRS_NOTE}` : SRS_NOTE, failed };
+  }
+  const csmChanges = csmChangesAgainst(csm, previous.status === "ok" ? previousCsm : null, notCompared, { current: company && "companies" in company ? company : null, previous: previousCompanies });
   // The recognition is the server's working detail; the screen needs only the resolved dashboard.
   const { recognition: _recognition, ...rest } = view;
   void _recognition;
@@ -219,5 +231,8 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
     csmChanges,
     timeline,
     attributes,
+    waves: waveListOf(waves, documentId),
+    compareWith: choice === "previous" || choice === "none" ? choice : choice.documentId,
+    compareTest,
   };
 }

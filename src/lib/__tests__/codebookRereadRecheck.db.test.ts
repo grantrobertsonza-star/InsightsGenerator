@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 import { PYTHON } from "./helpers/pythonEngine";
+import { automaticRecheckMessage } from "../instrumentMatchMessage";
 
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
@@ -96,7 +97,12 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("E1-F04: Read again re-checks 
   it("Read again with a list that loses code 10: no longer confirmed on wave 1 (holds 10), still confirmed on wave 3 (holds 1 and 8)", async () => {
     const p = await project();
     const r = await p.reread("1=Toyota, 8=BMW");
-    expect(r.automaticRecheck).toEqual({ withdrawn: 2, status: "done", reconfirmed: 1 });
+    // E1R-F01 control: an ordinary non-fit is a completed check, not an operational failure.
+    expect(r.automaticRecheck).toMatchObject({ withdrawn: 2, status: "done", reconfirmed: 1 });
+    expect(r.automaticRecheck?.files?.map((f) => [f.filename, f.status])).toEqual([["wave1.csv", "matched"], ["wave3.csv", "matched"]]);
+    const note = automaticRecheckMessage(r.automaticRecheck);
+    expect(note).toContain("checked again against every wave they were on (wave1.csv, wave3.csv): 1 still fits and is confirmed");
+    expect(note).not.toContain("Not checked");
     expect(await link(p.cb, "brand", p.w1)).toMatchObject({ status: "suggested", decided_by: null });
     expect(await confirmedBrand(p.run, p.w1)).toBe(false);
     expect(await link(p.cb, "brand", p.w3)).toMatchObject({ status: "confirmed", decided_by: "automatic" });
@@ -108,7 +114,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("E1-F04: Read again re-checks 
   it("a changed list that still covers every code: confirmed again on both waves", async () => {
     const p = await project();
     const r = await p.reread("1=Toyota, 8=BMW, 10=Haval, 12=Kia");
-    expect(r.automaticRecheck).toEqual({ withdrawn: 2, status: "done", reconfirmed: 2 });
+    expect(r.automaticRecheck).toMatchObject({ withdrawn: 2, status: "done", reconfirmed: 2 });
     for (const w of [p.w1, p.w3]) expect(await link(p.cb, "brand", w)).toMatchObject({ status: "confirmed", decided_by: "automatic" });
   });
 
@@ -139,5 +145,65 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("E1-F04: Read again re-checks 
     expect(r.automaticRecheck).toMatchObject({ status: "done" });
     expect(await link(p.cb, "brand", p.w1)).toMatchObject({ status: "confirmed", decided_by: "automatic" });
     expect(await confirmedBrand(p.run, p.w1)).toBe(true);
+  });
+
+  // E1R-F01: the matcher reports a wave it could not check as files[].status = "failed" instead of throwing. A
+  // disposable trigger refuses link inserts for the chosen data files only (it exists only in this test database).
+  async function refusingLinksOn<T>(files: string[], body: () => Promise<T>): Promise<T> {
+    const list = files.map((f) => `'${f}'::uuid`).join(", ");
+    await q(`create function refuse_recheck() returns trigger language plpgsql as $$ begin if NEW.data_document_id in (${list}) then raise exception 'wave recheck unavailable (test)'; end if; return NEW; end $$`);
+    await q("create trigger refuse_recheck before insert on instrument_links for each row execute function refuse_recheck()");
+    try {
+      return await body();
+    } finally {
+      await q("drop trigger refuse_recheck on instrument_links");
+      await q("drop function refuse_recheck()");
+    }
+  }
+
+  it("E1R-F01: one wave fails among successes: reported as failed with that wave named; the other wave's result stands; recovery confirms it", async () => {
+    const p = await project();
+    const r = await refusingLinksOn([p.w1], () => p.reread("1=Toyota, 8=BMW, 10=Haval, 12=Kia"));
+    const c = r.automaticRecheck;
+    expect(c).toMatchObject({ withdrawn: 2, status: "failed", reconfirmed: 1 });
+    expect(c?.status === "failed" && c.error).toMatch(/^wave1\.csv: .*wave recheck unavailable \(test\)/);
+    expect(c?.files?.map((f) => [f.filename, f.status])).toEqual([["wave1.csv", "failed"], ["wave3.csv", "matched"]]);
+    // The failed wave stays unconfirmed; the successful wave is confirmed again.
+    expect(await link(p.cb, "brand", p.w1)).toMatchObject({ status: "suggested" });
+    expect(await confirmedBrand(p.run, p.w1)).toBe(false);
+    expect(await link(p.cb, "brand", p.w3)).toMatchObject({ status: "confirmed", decided_by: "automatic" });
+    expect(await confirmedBrand(p.run, p.w3)).toBe(true);
+    const note = automaticRecheckMessage(c);
+    expect(note).not.toContain("against every wave they were on");
+    expect(note).toContain("could not be checked again on every wave. Not checked: wave1.csv (");
+    expect(note).toContain("Checked again on wave3.csv: 1 still fits and is confirmed.");
+    expect(note).toContain("To retry, choose that wave under Data file and press Match again.");
+    // Recovery: with the cause gone, matching again (what the message asks for) confirms wave 1 through the same rule.
+    const { matchCodebookToDataFiles } = await import("../instruments");
+    const again = await matchCodebookToDataFiles(tenant, p.run, p.cb);
+    expect(again.files.map((f) => f.status)).toEqual(["matched", "matched"]);
+    expect(await link(p.cb, "brand", p.w1)).toMatchObject({ status: "confirmed", decided_by: "automatic" });
+    expect(await confirmedBrand(p.run, p.w1)).toBe(true);
+  });
+
+  it("E1R-F01: every wave fails: reported as not checked on any wave, nothing confirmed; matching again after recovery confirms both", async () => {
+    const p = await project();
+    const r = await refusingLinksOn([p.w1, p.w3], () => p.reread("1=Toyota, 8=BMW, 10=Haval, 12=Kia"));
+    const c = r.automaticRecheck;
+    expect(c).toMatchObject({ withdrawn: 2, status: "failed", reconfirmed: 0 });
+    expect(c?.status === "failed" && c.error).toContain("wave1.csv: ");
+    expect(c?.status === "failed" && c.error).toContain("wave3.csv: ");
+    for (const w of [p.w1, p.w3]) {
+      expect(await link(p.cb, "brand", w)).toMatchObject({ status: "suggested" });
+      expect(await confirmedBrand(p.run, w)).toBe(false);
+    }
+    const note = automaticRecheckMessage(c);
+    expect(note).toContain("2 automatic links whose answer list changed could not be checked again on any wave. Not checked: wave1.csv (");
+    expect(note).not.toContain("Checked again on");
+    expect(note).toContain("To retry, choose each of those waves under Data file and press Match again.");
+    // Recovery: matching again, as the message asks, checks both waves with the same rule and confirms them.
+    const { matchCodebookToDataFiles } = await import("../instruments");
+    expect((await matchCodebookToDataFiles(tenant, p.run, p.cb)).files.map((f) => f.status)).toEqual(["matched", "matched"]);
+    for (const w of [p.w1, p.w3]) expect(await link(p.cb, "brand", w)).toMatchObject({ status: "confirmed", decided_by: "automatic" });
   });
 });

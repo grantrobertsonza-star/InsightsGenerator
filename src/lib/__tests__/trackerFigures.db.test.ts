@@ -153,7 +153,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("D3 brand overview figures aga
       const o = await loadBrandOverview(tenant, run, docs[1]);
       expect(o.previous.status).toBe("failed");
       expect(o.figures.stages.length).toBeGreaterThan(0);
-      expect(o.changes.every((c) => c.changePp === null && c.reason === "The previous wave's figures could not be read.")).toBe(true);
+      expect(o.changes.every((c) => c.changePp === null && c.reason === "The compared wave's figures could not be read.")).toBe(true);
     } finally {
       await q("update documents set storage_path = $2 where id = $1", [docs[0], key]);
     }

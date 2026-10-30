@@ -16,8 +16,7 @@
 import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
-import { loadTrackerDashboard } from "./trackerDashboards";
-import { loadRoleInput } from "./trackerInput";
+import { loadWaveContext, type WaveLoadOptions } from "./trackerWaveContext";
 import { selectedShareOf } from "./trackerFigures";
 import type { CrosstabResult } from "./parseStatsFile";
 import type { ResolvedDashboard } from "./trackerDashboard";
@@ -77,6 +76,9 @@ export function momentsFromResult(
   grid: BrandGrid | undefined,
   brands: { code: string; label: string }[],
   variables: Map<string, RoleVariable>,
+  /** Every moment with a recall question as a row, not only the top six: the compared wave of a wave-on-wave change
+   * (trackerPageChanges.ts), whose own top six may differ from this wave's. */
+  allRows = false,
 ): Pick<BrandMoments, "relevance" | "recall"> {
   let relevance: BrandMoments["relevance"];
   if (moments.status === "found" && result) {
@@ -97,7 +99,7 @@ export function momentsFromResult(
     const rows: Extract<BrandMoments["recall"], { status: "ok" }>["rows"] = [];
     const withoutRecall: string[] = [];
     for (const m of relevance.moments) {
-      if (rows.length >= RECALL_MOMENTS) break;
+      if (!allRows && rows.length >= RECALL_MOMENTS) break;
       if (m.share === null) continue;
       if (!rankable(m)) {
         withoutRecall.push(m.item);
@@ -134,8 +136,9 @@ export function momentVariables(moments: CategoryMoments, grid: BrandGrid | unde
  * The Moments & needs page for one data file. Throws with the reason when the file's dictionary, set-up or table
  * cannot be read; never returns an empty page for a failure.
  */
-export async function loadBrandMoments(tenantId: string, runId: string, documentId: string): Promise<BrandMoments & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
-  const [view, input] = await Promise.all([loadTrackerDashboard(tenantId, runId, documentId), loadRoleInput(tenantId, runId, documentId)]);
+export async function loadBrandMoments(tenantId: string, runId: string, documentId: string, opts: WaveLoadOptions = {}): Promise<BrandMoments & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
+  // The wave's resolved dashboard and role input, when the caller already read them (trackerWaveChange.ts).
+  const { view, input } = opts.ctx ?? (await loadWaveContext(tenantId, runId, documentId));
   const dashboard = view.dashboard;
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
   const moments = view.recognition.categoryMoments;
@@ -151,7 +154,7 @@ export async function loadBrandMoments(tenantId: string, runId: string, document
     // Computed, not saved (computeCrosstab): opening the page adds no table to the file.
     result = (await computeCrosstab(tenantId, runId, documentId, { columnVars: [], rowItems: vars.map((v) => ({ key: v, label: labelOf.get(v) || v, vars: [v] })), weightVar, design })).result;
   }
-  const { relevance, recall } = momentsFromResult(result, moments, grid, dashboard.brands, new Map(input.variables.map((v) => [v.name, v])));
+  const { relevance, recall } = momentsFromResult(result, moments, grid, dashboard.brands, new Map(input.variables.map((v) => [v.name, v])), opts.allRecallRows === true);
   return {
     documentId,
     weighted: weightVar !== null,

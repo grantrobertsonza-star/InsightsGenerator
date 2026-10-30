@@ -19,6 +19,7 @@ it no longer matches the code on disk.
 Protocol: one JSON object per line on stdin and on stdout.
   request  {"id": 1, "src": "<path to the data file>", "sourceFilename": "x.sav",
             "action": "crosstab", "args": {...}}
+           (share_change_tests reads no file; its "src" is ignored)
   response {"id": 1, "result": {...}}   or   {"id": 1, "error": "message"}
 A first line {"ready": true} is written once the engine has loaded. Anything
 the engine prints goes to stderr so it cannot corrupt the protocol.
@@ -93,11 +94,15 @@ def main() -> int:
                     raise RuntimeError(f"The statistics engine changed on disk and could not be reloaded: {exc}") from exc
                 loaded_from = current
                 print("parse_stats_worker: engine or import limits changed on disk; reloaded", file=sys.stderr)
-            with open(req["src"], "rb") as f:
-                data = f.read()
             name = req.get("sourceFilename", "upload.sav")
             action = req.get("action", "convert")
             args = req.get("args") or {}
+            if action == "share_change_tests":
+                # Arithmetic on figures already computed: no data file is read.
+                send({"id": req_id, "result": mod.share_change_tests(args)})
+                continue
+            with open(req["src"], "rb") as f:
+                data = f.read()
             if action == "dictionary":
                 result = mod.dictionary(data, name, args)
             elif action == "categories":

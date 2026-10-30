@@ -19,9 +19,8 @@
 import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
-import { loadTrackerDashboard } from "./trackerDashboards";
-import { loadRoleInput } from "./trackerInput";
-import { answersOf, selectedShareOf, stageClaims, type AnswerShare } from "./trackerFigures";
+import { loadWaveContext, type WaveLoadOptions } from "./trackerWaveContext";
+import { answerStat, answersOf, selectedShareOf, stageClaims, type AnswerShare } from "./trackerFigures";
 import type { CrosstabRequest, CrosstabResult } from "./parseStatsFile";
 import type { ResolvedDashboard } from "./trackerDashboard";
 import type { FoundQuestion, FunnelStage, PerBrandMeasure, RoleVariable, TrackerRecognition } from "./trackerRoles";
@@ -103,7 +102,14 @@ export function distributionFromResult(result: CrosstabResult | null, found: Fou
   const labels = v?.valueLabels ?? {};
   const codes = [...new Set([...Object.keys(labels), ...read.answers.map((a) => a.code)])].sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
   // A listed answer nobody gave is 0 of the known base.
-  const answers = codes.map((code) => read.answers.find((a) => a.code === code) ?? { code, label: labels[code] ?? code, share: 0, weighted: 0, n: 0 }).map((a) => ({ ...a, label: labels[a.code] ?? a.label }));
+  const answers = codes
+    .map((code): AnswerShare => {
+      const given = read.answers.find((a) => a.code === code);
+      if (given) return given;
+      const stat = answerStat(read.answers, code);
+      return { code, label: labels[code] ?? code, share: 0, weighted: 0, n: 0, ...(stat ? { stat } : {}) };
+    })
+    .map((a) => ({ ...a, label: labels[a.code] ?? a.label }));
   return { ...head, base: read.base, answers };
 }
 
@@ -111,8 +117,9 @@ export function distributionFromResult(result: CrosstabResult | null, found: Fou
  * The Category overview page for one data file. Throws with the reason when the file's dictionary, set-up or a table
  * cannot be read; never returns an empty page for a failure.
  */
-export async function loadCategoryOverview(tenantId: string, runId: string, documentId: string): Promise<CategoryOverview & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
-  const [view, input] = await Promise.all([loadTrackerDashboard(tenantId, runId, documentId), loadRoleInput(tenantId, runId, documentId)]);
+export async function loadCategoryOverview(tenantId: string, runId: string, documentId: string, opts: WaveLoadOptions = {}): Promise<CategoryOverview & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
+  // The wave's resolved dashboard and role input, when the caller already read them (trackerWaveChange.ts).
+  const { view, input } = opts.ctx ?? (await loadWaveContext(tenantId, runId, documentId));
   const dashboard = view.dashboard;
   const rec = view.recognition;
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;

@@ -169,7 +169,7 @@ type LocalWorker = {
  * older version) cannot run the new script's guard, so it is recognised by the missing or older tag
  * and replaced before it is used (Codex B31-F01). Raise this when the request or reply shape changes.
  */
-const WORKER_PROTOCOL = 6; // 3: the respondent_quality action; 4: codebook and instrument_sheet; 5: indicators; 6: value_labels
+const WORKER_PROTOCOL = 7; // 3: the respondent_quality action; 4: codebook and instrument_sheet; 5: indicators; 6: value_labels; 7: share_change_tests
 
 const WORKER_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 // Kept on globalThis so a hot reload does not leave an orphan worker behind.
@@ -623,7 +623,9 @@ export type CrosstabRequest = {
 export type Correction = "none" | "bonferroni" | "fdr";
 export type CategoryList = { variable: string; label: string; categories: { label: string; n: number }[] };
 
-export type CellBase = { n: number; w: number; nEff: number };
+/** nEffExact: the Kish effective base unrounded (engine 2026.10.30 on; share rows and the table total), for tests
+ * made outside the table such as a wave against another wave (trackerWaveChange.ts). */
+export type CellBase = { n: number; w: number; nEff: number; nEffExact?: number };
 /**
  * The NET column of one banner variable for one row: everyone with a valid answer
  * to the question and to that banner variable. Never tested, so no p, flag or letter.
@@ -879,12 +881,14 @@ export type CrosstabResult = {
  * the Python function; otherwise it runs the same code with local Python.
  */
 export async function runStatsTool<T>(
-  action: "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet" | "value_labels",
+  action: "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet" | "value_labels" | "share_change_tests",
   storagePath: string,
   sourceFilename: string,
   args: unknown = {},
 ): Promise<T> {
   if (!process.env.VERCEL_URL && !process.env.PARSE_STATS_FILE_URL) {
+    // Locally this action reads no file, so it does not go through the download below (runShareChangeTests).
+    if (action === "share_change_tests") throw new Error("share_change_tests runs through runShareChangeTests locally.");
     return runLocalStatsPython<T>(storagePath, sourceFilename, action, args);
   }
   const base = process.env.VERCEL_URL
@@ -913,4 +917,68 @@ export async function runStatsTool<T>(
     throw new Error(message || `The ${action} step failed (${response.status}).`);
   }
   return ((await response.json()) as { result: T }).result;
+}
+
+/** One share in one wave, as the engine's Cross tab computed it (R5 waves). */
+export type ShareChangeSide = {
+  /** Unrounded percentage (pctExact). */
+  pct: number | null;
+  /** Unweighted base of valid answers. */
+  n: number | null;
+  /** Kish effective base of that base, unrounded (nEffExact). */
+  nEff: number | null;
+  /** Design-based standard error in percentage points, only when a survey design was applied to the file; else null. */
+  se: number | null;
+  /** The applied design's degrees of freedom (PSUs minus strata); null without a design. */
+  designDf: number | null;
+};
+export type ShareChangeTestResult = {
+  id: string;
+  tested: boolean;
+  reason: string | null;
+  method: "pooled_effective_base" | "design" | null;
+  z: number | null;
+  p: number | null;
+  significant: boolean;
+  /** +1 a significant rise, -1 a significant fall, 0 otherwise. */
+  direction: -1 | 0 | 1;
+};
+
+/**
+ * The engine's test of a change in a share between two independent samples (api/parse-stats-file.py
+ * share_change_tests): arithmetic on figures already computed, so no data file is read. The request is signed for
+ * the file whose figures are tested (`signedFor`), as every engine request is signed for one file.
+ */
+export async function runShareChangeTests(
+  pairs: { id: string; previous: ShareChangeSide; current: ShareChangeSide }[],
+  signedFor: { storagePath: string; sourceFilename: string },
+): Promise<{ level: number; minBase: number; minEffectiveBase: number; results: ShareChangeTestResult[] }> {
+  type Reply = { level: number; minBase: number; minEffectiveBase: number; results: ShareChangeTestResult[] };
+  const args = { pairs };
+  if (process.env.VERCEL_URL || process.env.PARSE_STATS_FILE_URL) return runStatsTool<Reply>("share_change_tests", signedFor.storagePath, signedFor.sourceFilename, args);
+  const viaWorker = await callWorker<Reply>("", signedFor.sourceFilename, "share_change_tests", args);
+  if (viaWorker.ok) return viaWorker.value;
+  // No worker: the one-shot runner, which reads no input file for this action.
+  const dir = await mkdtemp(path.join(tmpdir(), "stats-"));
+  try {
+    const output = path.join(dir, "out.json");
+    const argsFile = path.join(dir, "args.json");
+    await writeFile(argsFile, JSON.stringify(args));
+    const script = path.join(process.cwd(), "scripts", "parse_stats_local.py");
+    let lastError = "";
+    for (const cmd of process.platform === "win32" ? ["python", "py", "python3"] : ["python3", "python"]) {
+      try {
+        await execFileAsync(cmd, [script, "-", signedFor.sourceFilename, output, "share_change_tests", argsFile], { maxBuffer: 10 * 1024 * 1024 });
+        return JSON.parse(await readFile(output, "utf-8")) as Reply;
+      } catch (e) {
+        const err = e as NodeJS.ErrnoException & { stderr?: string };
+        if (err.code === "ENOENT") continue;
+        lastError = (err.stderr || err.message || "").trim().split("\n").slice(-3).join(" ");
+        break;
+      }
+    }
+    throw new Error(`The significance test could not be run. ${lastError || "Python was not found."}`);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
 }

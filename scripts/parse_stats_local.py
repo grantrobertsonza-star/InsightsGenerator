@@ -4,7 +4,7 @@ plain `next dev`. Reuses that file's convert() so results are identical.
 
 Usage: python scripts/parse_stats_local.py <input> <source_filename> <output.json> [action] [args.json]
 
-action is convert (default), table, indicators, dictionary, categories, columns, crosstab, respondent_quality, codebook, instrument_sheet or value_labels.
+action is convert (default), table, indicators, dictionary, categories, columns, crosstab, respondent_quality, codebook, instrument_sheet, value_labels or share_change_tests (which reads no file).
 """
 import importlib.util
 import json
@@ -27,6 +27,11 @@ def main() -> int:
     spec = importlib.util.spec_from_file_location("parse_stats_file", target)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # raises ModuleNotFoundError if pyreadstat is missing
+    if action == "share_change_tests":
+        # Arithmetic on figures already computed: no data file is read (the input path is ignored).
+        with open(out, "w", encoding="utf-8") as f:
+            json.dump(mod.share_change_tests(args), f, allow_nan=False)
+        return 0
     with open(src, "rb") as f:
         data = f.read()
     if action == "dictionary":

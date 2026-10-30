@@ -24,6 +24,11 @@ import type { CompanyBox, CompanyNps, CsmTile, CsmTileId } from "@/lib/trackerCs
 import type { FunnelStage } from "@/lib/trackerRoles";
 import { searchVariables } from "@/lib/variableSearch";
 import { QuestionPicker, variableText } from "./QuestionPicker";
+// R5 waves (wave switching, change against a chosen wave, its significance): the pieces live in their own files.
+import type { ShareChange, WaveList } from "@/lib/trackerWaveChange";
+import { ChangeBadge } from "./ChangeBadge";
+import { WaveSelector, WaveTestNote } from "./WaveSelector";
+import { AssociationTrend } from "./AssociationTrend";
 
 export type TrackerDashboardKind = "brand" | "csm";
 
@@ -81,16 +86,22 @@ const waveTick = (p: Pick<TimelinePoint, "wave" | "waveDate">) => {
 };
 
 type Load = { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; overview: BrandOverview };
+// Each page's figures come with their change against the compared wave (R5 waves, src/lib/trackerPageChanges.ts).
+type MomentsPage = Extract<Awaited<ReturnType<typeof loadBrandMomentsAction>>, { ok: true }>["moments"];
+type AssociationsPage = Extract<Awaited<ReturnType<typeof loadBrandAssociationsAction>>, { ok: true }>["associations"];
+type AdvertisingPage = Extract<Awaited<ReturnType<typeof loadBrandAdvertisingAction>>, { ok: true }>["advertising"];
+type AudiencePage = Extract<Awaited<ReturnType<typeof loadBrandAudienceAction>>, { ok: true }>["audience"];
+type CategoryPage = Extract<Awaited<ReturnType<typeof loadCategoryOverviewAction>>, { ok: true }>["category"];
 /** Page 02's figures, loaded when the page is first opened and again after any reload of the dashboard ("idle"). */
-type MomentsLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; moments: BrandMoments };
+type MomentsLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; moments: MomentsPage };
 /** Page 03's figures, loaded the same way as page 02's. */
-type AssociationsLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; associations: BrandAssociations };
+type AssociationsLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; associations: AssociationsPage };
 /** Page 04's figures, loaded the same way as page 02's. */
-type AdvertisingLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; advertising: BrandAdvertising };
+type AdvertisingLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; advertising: AdvertisingPage };
 /** Page 05's figures, loaded the same way as page 02's. */
-type AudienceLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; audience: BrandAudience };
+type AudienceLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; audience: AudiencePage };
 /** The Category overview page's figures, loaded the same way as page 02's. */
-type CategoryLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; category: CategoryOverview };
+type CategoryLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; category: CategoryPage };
 /** A word of mouth group's colour, from its wording (presentation only; the group's identity is its code). */
 function womColour(key: string, label: string): string {
   if (key === "unaware") return "#e2e8f0";
@@ -198,8 +209,8 @@ function WaveLine({ points, colour, yMax, format, height = 130, width = 300, tes
 export default function TrackerDashboardPanel({
   kind,
   runId,
-  documentId,
-  filename,
+  documentId: openedDocumentId,
+  filename: openedFilename,
   onClose,
   closeLabel = "Close",
 }: {
@@ -210,6 +221,13 @@ export default function TrackerDashboardPanel({
   onClose: () => void;
   closeLabel?: string;
 }) {
+  // R5 waves: the wave shown (the file opened first) and what it is compared with ("previous", "none" or an earlier
+  // wave's file). Changing either reloads every page; the page, brand, Compare selection and weighting are kept.
+  const [documentId, setDocumentId] = useState(openedDocumentId);
+  const [compareWith, setCompareWith] = useState("previous");
+  // The wave list of the last answer, so the choices stay on screen while another wave loads or after one fails.
+  const [waveList, setWaveList] = useState<WaveList | null>(null);
+  const filename = waveList?.included.find((w) => w.documentId === documentId)?.filename ?? openedFilename;
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [csmTab, setCsmTab] = useState<"company" | "nps" | "drivers">("company");
   const [comparators, setComparators] = useState<string[] | null>(null);
@@ -240,42 +258,42 @@ export default function TrackerDashboardPanel({
   const loadMoments = useCallback(async () => {
     const id = ++latestMoments.current;
     setMoments({ state: "loading" });
-    const r = await loadBrandMomentsAction(runId, documentId);
+    const r = await loadBrandMomentsAction(runId, documentId, compareWith);
     if (id !== latestMoments.current) return;
     setMoments(r.ok ? { state: "ready", moments: r.moments } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
+  }, [runId, documentId, compareWith]);
 
   const loadAssociations = useCallback(async () => {
     const id = ++latestAssociations.current;
     setAssociations({ state: "loading" });
-    const r = await loadBrandAssociationsAction(runId, documentId);
+    const r = await loadBrandAssociationsAction(runId, documentId, compareWith);
     if (id !== latestAssociations.current) return;
     setAssociations(r.ok ? { state: "ready", associations: r.associations } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
+  }, [runId, documentId, compareWith]);
 
   const loadAdvertising = useCallback(async () => {
     const id = ++latestAdvertising.current;
     setAdvertising({ state: "loading" });
-    const r = await loadBrandAdvertisingAction(runId, documentId);
+    const r = await loadBrandAdvertisingAction(runId, documentId, compareWith);
     if (id !== latestAdvertising.current) return;
     setAdvertising(r.ok ? { state: "ready", advertising: r.advertising } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
+  }, [runId, documentId, compareWith]);
 
   const loadAudience = useCallback(async () => {
     const id = ++latestAudience.current;
     setAudience({ state: "loading" });
-    const r = await loadBrandAudienceAction(runId, documentId);
+    const r = await loadBrandAudienceAction(runId, documentId, compareWith);
     if (id !== latestAudience.current) return;
     setAudience(r.ok ? { state: "ready", audience: r.audience } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
+  }, [runId, documentId, compareWith]);
 
   const loadCategory = useCallback(async () => {
     const id = ++latestCategory.current;
     setCategory({ state: "loading" });
-    const r = await loadCategoryOverviewAction(runId, documentId);
+    const r = await loadCategoryOverviewAction(runId, documentId, compareWith);
     if (id !== latestCategory.current) return;
     setCategory(r.ok ? { state: "ready", category: r.category } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
+  }, [runId, documentId, compareWith]);
 
   const reload = useCallback(async () => {
     const id = ++latest.current;
@@ -292,12 +310,28 @@ export default function TrackerDashboardPanel({
     setAudience({ state: "idle" });
     latestCategory.current += 1;
     setCategory({ state: "idle" });
-    const r = await loadBrandOverviewAction(runId, documentId, kind);
+    const r = await loadBrandOverviewAction(runId, documentId, kind, compareWith);
+    // Only the answer to the latest choice is shown: an earlier wave's or comparison's late answer is dropped.
     if (id !== latest.current) return;
     if (!r.ok) return setLoad({ state: "failed", error: r.error });
     setLoad({ state: "ready", overview: r.overview });
+    setWaveList(r.overview.waves);
     setDraft(r.overview.view.choices);
-  }, [runId, documentId, kind]);
+  }, [runId, documentId, kind, compareWith]);
+
+  /** Another wave: a comparison with a wave that is not earlier than it falls back to the previous wave, said by the
+   * selector; everything else on screen is kept. */
+  function chooseWave(next: string) {
+    const order = (id: string) => waveList?.included.findIndex((w) => w.documentId === id) ?? -1;
+    if (compareWith !== "previous" && compareWith !== "none" && order(compareWith) >= order(next)) setCompareWith("previous");
+    setDocumentId(next);
+  }
+  const loadingWave = load.state === "loading" && waveList ? (waveList.included.find((w) => w.documentId === documentId)?.wave ?? "the wave") : null;
+  const waveSelector = waveList && (
+    <WaveSelector waves={waveList} documentId={documentId} compareWith={compareWith} loading={loadingWave} onWave={chooseWave} onCompare={setCompareWith} />
+  );
+  /** The wave a page's changes are against, by name; null when nothing is compared. */
+  const againstOf = (wc: { compared: { status: string; wave?: string } }) => (wc.compared.status === "ok" ? (wc.compared.wave ?? null) : null);
 
   useEffect(() => {
     // The first load of this file; reload() sets state only after the server answers.
@@ -433,6 +467,8 @@ export default function TrackerDashboardPanel({
   }
 
   const stageChange = (stage: string, code: string) => overview?.changes.find((c) => c.stage === stage && c.code === code) ?? null;
+  // The compared wave by its label, for the change marks and their spoken words.
+  const comparedWave = overview?.previous.status === "ok" ? overview.previous.wave : null;
   const previousName = overview?.previous.status === "ok" ? waveTick({ wave: overview.previous.wave, waveDate: overview.timeline.find((t) => t.documentId === (overview.previous as { documentId: string }).documentId)?.waveDate ?? null }) : null;
 
   const customise = overview && dashboard && (
@@ -621,7 +657,7 @@ export default function TrackerDashboardPanel({
   const brandChips = (weighted: boolean) => (
     <div className="flex flex-wrap gap-2.5" data-testid="tracker-chips">
       <Chip label="Brand" onClick={() => chooseAt("brand")}>{focal?.label ?? "Choose"}</Chip>
-      <Chip label="Wave">{overview?.wave ?? "Not labelled"}</Chip>
+      {waveSelector ?? <Chip label="Wave">{overview?.wave ?? "Not labelled"}</Chip>}
       <Chip label="Compare" onClick={() => setPickingComparators((v) => !v)}>{comparators ? "Selected brands" : "Suggested brands"}</Chip>
       <Chip label="Weighting" onClick={() => chooseAt("brand")}>{weighted ? "On" : "Off"}</Chip>
       <Chip label="Segment">All eligible</Chip>
@@ -670,12 +706,8 @@ export default function TrackerDashboardPanel({
         <p className="text-xs text-slate-500" data-testid="tracker-basis">
           {overview.figures.weighted ? `Weighted by ${overview.figures.weightVar}` : "Unweighted"}
           {overview.figures.effectiveBase !== null ? `, effective base ${Math.round(overview.figures.effectiveBase)}` : ""}.{" "}
-          {overview.previous.status === "ok"
-            ? `Change is against ${overview.previous.wave} (${overview.previous.filename}), in percentage points, with no significance test yet.`
-            : overview.previous.status === "failed"
-              ? `The previous wave (${overview.previous.wave}) could not be read, so no change is shown: ${overview.previous.error}`
-              : overview.previous.reason}
         </p>
+        <WaveTestNote compared={overview.previous} test={overview.compareTest} onRetry={() => void reload()} />
         {hiddenNote(blankStages.filter((id) => hidden.has(id)))}
         {!focal && dashboard.brands.length > 0 && <p className="text-xs text-slate-500">Choose your brand (the Brand chip) to see its figures in the tiles.</p>}
         <section aria-label="Your brand" className="grid grid-cols-2 gap-4 lg:grid-cols-4" data-testid="tracker-kpis">
@@ -709,7 +741,13 @@ export default function TrackerDashboardPanel({
                   <p className="text-[2rem] font-bold tabular-nums leading-none text-slate-900">{!focal ? "-" : b?.share === null || b?.share === undefined ? "n/a" : `${b.share.toFixed(1)}%`}</p>
                   {focal && (
                     <p className="text-sm text-blue-600" data-testid="tracker-kpi-change">
-                      {c?.changePp !== null && c?.changePp !== undefined ? `${signed(c.changePp)} pp vs ${previousName ?? "previous wave"}` : (c?.reason ?? "")}
+                      {c?.changePp !== null && c?.changePp !== undefined ? (
+                        <>
+                          <ChangeBadge change={c} against={comparedWave} testId="tracker-kpi-change-badge" /> <span aria-hidden="true">vs {previousName ?? "the compared wave"}</span>
+                        </>
+                      ) : (
+                        (c?.reason ?? "")
+                      )}
                     </p>
                   )}
                 </div>
@@ -738,12 +776,13 @@ export default function TrackerDashboardPanel({
                         const v = b?.share ?? null;
                         const d = pp(stageChange(s.stage, code)?.changePp ?? null);
                         return (
-                          <div key={s.stage} className="grid grid-cols-[5.5rem_minmax(0,1fr)_2.6rem] items-center gap-2 text-xs" title={b?.reason ?? (d ? `${d} vs ${previousName ?? "previous wave"}` : undefined)}>
+                          <div key={s.stage} className="grid grid-cols-[5.5rem_minmax(0,1fr)_2.6rem_2.6rem] items-center gap-2 text-xs" title={b?.reason ?? (d ? `${d} vs ${previousName ?? "the compared wave"}` : undefined)}>
                             <span className="truncate text-slate-500">{STAGE_LABEL[s.stage]}</span>
                             <span className="h-3.5 rounded bg-slate-100">
                               <span className="block h-full rounded" style={{ width: `${Math.max(0, Math.min(100, v ?? 0))}%`, background: STAGE_COLOUR[s.stage] }} />
                             </span>
                             <span className="text-right font-semibold tabular-nums text-slate-900">{v === null ? "n/a" : v.toFixed(1)}</span>
+                            <ChangeBadge change={stageChange(s.stage, code)} against={comparedWave} compact testId="tracker-compare-change" />
                           </div>
                         );
                       })}
@@ -758,7 +797,7 @@ export default function TrackerDashboardPanel({
         {focal && overview.timeline.length > 1 && (
           <Card
             title={`${focal.label} across ${overview.timeline.length === 2 ? "two" : overview.timeline.length === 3 ? "three" : overview.timeline.length} waves`}
-            subtitle="Independent samples. Changes use unrounded values; no significance claims."
+            subtitle="Independent samples. The trend lines are descriptive; changes against the compared wave are tested above."
             testId="tracker-timeline"
           >
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
@@ -814,6 +853,7 @@ export default function TrackerDashboardPanel({
         {brandChips(m ? m.weighted : overview.figures.weighted)}
         {customising && customise}
         {statusLine}
+        {m && <WaveTestNote compared={m.waveChange.compared} test={m.waveChange.test} onRetry={() => void loadMoments()} />}
         {moments.state === "loading" || moments.state === "idle" ? (
           <p className="text-sm text-slate-500" role="status">
             Calculating moments and brand recall from this file...
@@ -838,7 +878,7 @@ export default function TrackerDashboardPanel({
                 ) : (
                   <ol className="flex flex-col gap-2.5">
                     {m.relevance.moments.map((x) => (
-                      <li key={x.variable} className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)_3.5rem] items-center gap-3 text-sm" data-testid="tracker-moment" title={x.reason}>
+                      <li key={x.variable} className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)_3.5rem_3.5rem] items-center gap-3 text-sm" data-testid="tracker-moment" title={x.reason}>
                         <span className="truncate text-slate-700">{x.item}</span>
                         <span className="h-3 rounded bg-slate-100">
                           <span className="block h-full rounded bg-blue-600" style={{ width: `${Math.max(0, Math.min(100, x.share ?? 0))}%` }} />
@@ -846,6 +886,7 @@ export default function TrackerDashboardPanel({
                         <span className="text-right font-semibold tabular-nums text-slate-900" data-testid="tracker-moment-share">
                           {x.share === null ? "n/a" : pct(x.share)}
                         </span>
+                        <ChangeBadge change={m.waveChange.changes?.relevance[x.variable]} against={againstOf(m.waveChange)} compact testId="tracker-moment-change" />
                       </li>
                     ))}
                   </ol>
@@ -904,6 +945,7 @@ export default function TrackerDashboardPanel({
                                         data-code={code}
                                       >
                                         {v === null ? <span className="text-slate-400">n/a</span> : pct(v)}
+                                        {c?.variable && <ChangeBadge change={m.waveChange.changes?.recall[`${c.variable}|${code}`]} against={againstOf(m.waveChange)} compact arrowOnly testId="tracker-recall-change" />}
                                       </td>
                                     );
                                   })}
@@ -957,6 +999,7 @@ export default function TrackerDashboardPanel({
         {brandChips(a ? a.weighted : overview.figures.weighted)}
         {customising && customise}
         {statusLine}
+        {a && <WaveTestNote compared={a.waveChange.compared} test={a.waveChange.test} onRetry={() => void loadAssociations()} />}
         {associations.state === "loading" || associations.state === "idle" ? (
           <p className="text-sm text-slate-500" role="status">
             Calculating brand associations from this file...
@@ -988,7 +1031,7 @@ export default function TrackerDashboardPanel({
                       </li>
                     ))}
                   </ul>
-                  <div className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_3.5rem] gap-x-3 text-sm">
+                  <div className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_3.5rem_3.5rem] gap-x-3 text-sm">
                     <span />
                     <div className="relative h-5 text-[11px] text-slate-400" aria-hidden="true">
                       {ticks.map((t) => (
@@ -998,6 +1041,7 @@ export default function TrackerDashboardPanel({
                       ))}
                     </div>
                     <span className="text-right text-[11px] font-medium text-slate-500">{focal ? (brandLabel.get(focal.code) ?? focal.code) : ""}</span>
+                    <span className="text-right text-[11px] font-medium text-slate-500">{againstOf(a.waveChange) ? "Change" : ""}</span>
                     {a.profile.attributes.map((r) => {
                       const cells = plotted.map((code) => ({ code, cell: r.cells.find((c) => c.code === code) }));
                       const mine = focal ? r.cells.find((c) => c.code === focal.code) : undefined;
@@ -1029,6 +1073,7 @@ export default function TrackerDashboardPanel({
                           <span className="py-2 text-right font-semibold tabular-nums text-slate-900" data-testid="tracker-association-focal" title={mine?.reason}>
                             {!mine ? "-" : mine.share === null ? <span className="text-slate-400">n/a</span> : pct(mine.share)}
                           </span>
+                          <span className="py-2 text-right">{mine?.variable && <ChangeBadge change={a.waveChange.changes?.[`${mine.variable}|${mine.code}`]} against={againstOf(a.waveChange)} compact testId="tracker-association-change" />}</span>
                         </div>
                       );
                     })}
@@ -1055,6 +1100,7 @@ export default function TrackerDashboardPanel({
             </Card>
           )
         )}
+        {a && a.trend && a.trend.waves.length > 1 && <AssociationTrend trend={a.trend} />}
       </>
     );
   })();
@@ -1087,6 +1133,7 @@ export default function TrackerDashboardPanel({
         {brandChips(a ? a.weighted : overview.figures.weighted)}
         {customising && customise}
         {statusLine}
+        {a && <WaveTestNote compared={a.waveChange.compared} test={a.waveChange.test} onRetry={() => void loadAdvertising()} />}
         {advertising.state === "loading" || advertising.state === "idle" ? (
           <p className="text-sm text-slate-500" role="status">
             Calculating advertising recall and word of mouth from this file...
@@ -1118,7 +1165,7 @@ export default function TrackerDashboardPanel({
                       {a.recall.brands.map((b) => {
                         const isFocal = b.code === focal?.code;
                         return (
-                          <li key={b.code} className={`grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)_3.5rem_5.5rem] items-center gap-3 rounded-md text-sm ${isFocal ? "bg-blue-50 font-semibold" : ""}`} data-testid="tracker-ad-recall-row" data-code={b.code} title={b.reason}>
+                          <li key={b.code} className={`grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)_3.5rem_3.5rem_5.5rem] items-center gap-3 rounded-md text-sm ${isFocal ? "bg-blue-50 font-semibold" : ""}`} data-testid="tracker-ad-recall-row" data-code={b.code} title={b.reason}>
                             <span className={`truncate ${isFocal ? "text-blue-700" : "text-slate-700"}`}>{brandLabel.get(b.code) ?? b.code}</span>
                             <span className="h-3 rounded bg-slate-100">
                               <span className="block h-full rounded" style={{ width: `${Math.max(0, Math.min(100, b.yes ?? 0))}%`, background: isFocal ? FOCAL_COLOUR : "#94a3b8" }} />
@@ -1126,6 +1173,7 @@ export default function TrackerDashboardPanel({
                             <span className="text-right tabular-nums text-slate-900" data-testid="tracker-ad-recall-yes">
                               {b.yes === null ? <span className="text-slate-400">n/a</span> : pct(b.yes)}
                             </span>
+                            <ChangeBadge change={a.waveChange.changes?.recall[b.code]} against={againstOf(a.waveChange)} compact testId="tracker-ad-recall-change" />
                             <span className="text-right text-[11px] font-normal tabular-nums text-slate-500" data-testid="tracker-ad-recall-not-sure">
                               {a.recall.status === "ok" && a.recall.keepsNotSure ? (b.notSure === null ? "" : `not sure ${pct(b.notSure)}`) : ""}
                             </span>
@@ -1195,7 +1243,13 @@ export default function TrackerDashboardPanel({
                       const mine = focal ? a.wom.brands.find((b) => b.code === focal.code) : undefined;
                       return mine?.groups ? (
                         <p className="mt-3 text-xs text-slate-700" data-testid="tracker-wom-focal">
-                          <span className="font-semibold text-blue-700">{focal!.label}:</span> {mine.groups.map((g) => `${g.label} ${pct(g.share)}`).join(" | ")}
+                          <span className="font-semibold text-blue-700">{focal!.label}:</span>{" "}
+                          {mine.groups.map((g, i) => (
+                            <span key={g.key}>
+                              {i > 0 && " | "}
+                              {g.label} {pct(g.share)} <ChangeBadge change={a.waveChange.changes?.wom[`${mine.code}|${g.key}`]} against={againstOf(a.waveChange)} compact testId="tracker-wom-change" />
+                            </span>
+                          ))}
                         </p>
                       ) : null;
                     })()}
@@ -1223,6 +1277,12 @@ export default function TrackerDashboardPanel({
       ? `${brandName} recent acquirers ("${acq.label}", n=${acq.n === null ? "n/a" : acq.n.toLocaleString()}) vs all eligible category respondents (n=${a?.categoryN?.toLocaleString() ?? "n/a"})`
       : `All eligible category respondents (n=${a?.categoryN?.toLocaleString() ?? "n/a"})`;
     // Paired bars: the acquirers (the client's colour) and the category (grey), each with its value.
+    // Each row's change for both groups, by its key (an age answer code or a media variable).
+    const changeOf = (testId: string, which: "acquirers" | "category", key: string) => {
+      const ch = a?.waveChange.changes;
+      if (!ch) return undefined;
+      return (testId.includes("-age-") ? ch.age : ch.media)[which][key];
+    };
     const paired = (rows: ProfileRow[], testId: string) => (
       <ol className="flex flex-col gap-3">
         {rows.map((r) => (
@@ -1237,13 +1297,14 @@ export default function TrackerDashboardPanel({
                   ["category", r.category, "#94a3b8"],
                 ] as const
               ).map(([which, g, colour]) => (
-                <span key={which} className="grid grid-cols-[minmax(0,1fr)_3.5rem] items-center gap-2" title={g.reason}>
+                <span key={which} className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem] items-center gap-2" title={g.reason}>
                   <span className="h-2.5 rounded bg-slate-100">
                     <span className="block h-full rounded" style={{ width: `${Math.max(0, Math.min(100, g.share ?? 0))}%`, background: colour }} />
                   </span>
                   <span className="text-right text-xs tabular-nums text-slate-900" data-testid={`${testId}-${which}`}>
                     {g.share === null ? <span className="text-slate-400">n/a</span> : pct(g.share)}
                   </span>
+                  <ChangeBadge change={changeOf(testId, which, r.key)} against={a ? againstOf(a.waveChange) : null} compact testId={`${testId}-change`} />
                 </span>
               ))}
             </span>
@@ -1285,6 +1346,7 @@ export default function TrackerDashboardPanel({
         {brandChips(a ? a.weighted : overview.figures.weighted)}
         {customising && customise}
         {statusLine}
+        {a && <WaveTestNote compared={a.waveChange.compared} test={a.waveChange.test} onRetry={() => void loadAudience()} />}
         {audience.state === "loading" || audience.state === "idle" ? (
           <p className="text-sm text-slate-500" role="status">
             Calculating the audience profile and media use from this file...
@@ -1353,7 +1415,7 @@ export default function TrackerDashboardPanel({
     const pct = (v: number) => `${v.toFixed(1)}%`;
     const weighting = c ? (c.weighted ? `Weighted by ${c.weightVar}` : "Unweighted") : "";
     const STAGE_WORD: Record<string, string> = { awareness: "Recognised", consideration: "Considered", acquisition: "Acquired" };
-    const shares = (d: Distribution, testId: string) =>
+    const shares = (d: Distribution, testId: string, changes?: Record<string, ShareChange>) =>
       d.status !== "ok" ? (
         <UnavailableNote state={d} testId={`${testId}-unavailable`} />
       ) : d.answers.length === 0 ? (
@@ -1361,7 +1423,7 @@ export default function TrackerDashboardPanel({
       ) : (
         <ol className="flex flex-col gap-2">
           {d.answers.map((a) => (
-            <li key={a.code} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_3.5rem] items-center gap-2 text-sm" data-testid={`${testId}-row`} data-code={a.code}>
+            <li key={a.code} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_3.5rem_3.5rem] items-center gap-2 text-sm" data-testid={`${testId}-row`} data-code={a.code}>
               <span className="truncate text-slate-700" title={a.label}>
                 {a.label}
               </span>
@@ -1371,6 +1433,7 @@ export default function TrackerDashboardPanel({
               <span className="text-right text-xs font-semibold tabular-nums text-slate-900" data-testid={`${testId}-share`}>
                 {a.share === null ? <span className="text-slate-400">n/a</span> : pct(a.share)}
               </span>
+              <ChangeBadge change={changes?.[a.code]} against={c ? againstOf(c.waveChange) : null} compact testId={`${testId}-change`} />
             </li>
           ))}
         </ol>
@@ -1389,6 +1452,7 @@ export default function TrackerDashboardPanel({
         {brandChips(c ? c.weighted : overview.figures.weighted)}
         {customising && customise}
         {statusLine}
+        {c && <WaveTestNote compared={c.waveChange.compared} test={c.waveChange.test} onRetry={() => void loadCategory()} />}
         {category.state === "loading" || category.state === "idle" ? (
           <p className="text-sm text-slate-500" role="status">
             Calculating the category overview from this file...
@@ -1425,6 +1489,11 @@ export default function TrackerDashboardPanel({
                             {r.mean.toFixed(1)}
                           </span>
                         )}
+                        {r.status === "ok" && c.waveChange.changes?.repertoire[r.stage] && (
+                          <span className="block text-[11px] tabular-nums text-slate-500" data-testid="tracker-category-repertoire-change" title={c.waveChange.changes.repertoire[r.stage].reason ?? "A mean: shown without a significance test."}>
+                            {c.waveChange.changes.repertoire[r.stage].change === null ? "not compared" : `${(c.waveChange.changes.repertoire[r.stage].change as number) >= 0 ? "+" : ""}${(c.waveChange.changes.repertoire[r.stage].change as number).toFixed(2)} brands, not tested`}
+                          </span>
+                        )}
                       </dd>
                     </div>
                   ))}
@@ -1440,14 +1509,14 @@ export default function TrackerDashboardPanel({
                 subtitle={c.decisionStyle.status === "ok" ? `Single response; all who answered "${c.decisionStyle.label}"${c.decisionStyle.base !== null ? `, n=${c.decisionStyle.base.toLocaleString()}` : ""}. ${weighting}.` : "Single response."}
                 testId="tracker-category-decision"
               >
-                {shares(c.decisionStyle, "tracker-category-decision")}
+                {shares(c.decisionStyle, "tracker-category-decision", c.waveChange.changes?.decisionStyle)}
               </Card>
               <Card
                 title="Most recent acquisition channel"
                 subtitle={c.acquisitionChannel.status === "ok" ? `Single response among those who answered "${c.acquisitionChannel.label}" (the question's own routing decides who was asked)${c.acquisitionChannel.base !== null ? `, n=${c.acquisitionChannel.base.toLocaleString()}` : ""}. ${weighting}.` : "Single response."}
                 testId="tracker-category-channel"
               >
-                {shares(c.acquisitionChannel, "tracker-category-channel")}
+                {shares(c.acquisitionChannel, "tracker-category-channel", c.waveChange.changes?.acquisitionChannel)}
               </Card>
             </section>
           )
@@ -1533,7 +1602,7 @@ export default function TrackerDashboardPanel({
 
   /** Every company side by side: each headline and its change since the previous wave (D3b). */
   const companyTable = companyInfo && overview && (
-    <Card title="By company" subtitle={`${companyInfo.label}. Change since the previous wave in points, no significance test yet.`} testId="tracker-csm-companies">
+    <Card title="By company" subtitle={`${companyInfo.label}. Change against the compared wave in points; not tested for significance.`} testId="tracker-csm-companies">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[36rem] text-xs">
           <thead>
@@ -1651,7 +1720,7 @@ export default function TrackerDashboardPanel({
           ) : (
             <Chip label="Company">All customers</Chip>
           )}
-          <Chip label="Wave">{overview.wave ?? "Not labelled"}</Chip>
+          {waveSelector ?? <Chip label="Wave">{overview.wave ?? "Not labelled"}</Chip>}
           <Chip label="Segment">All segments</Chip>
           <Chip label="" onClick={() => chooseAt("overallSatisfaction")}>{overview.figures.weighted ? "Weighted" : "Unweighted"}</Chip>
           <span className="ml-auto text-xs text-slate-500">{baseN !== null ? `${scopeLabel} base n = ${baseN.toLocaleString()}` : ""}</span>
@@ -1819,6 +1888,7 @@ export default function TrackerDashboardPanel({
         )}
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex max-w-[84rem] flex-col gap-5 px-6 py-6">
+            {load.state !== "ready" && waveSelector && <div className="flex flex-wrap items-center gap-2.5" data-testid="wave-selector-row">{waveSelector}</div>}
             {load.state === "loading" && (
               <p className="text-sm text-slate-500" role="status">
                 Calculating the dashboard from this file...

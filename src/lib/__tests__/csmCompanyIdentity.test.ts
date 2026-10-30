@@ -29,7 +29,7 @@ describe("CSM company changes need the same company in both waves", () => {
   it("code reused for another company: no box or mean change, with the reason (Codex's repro: +20 points before)", () => {
     const [all, fnb] = csmChangesAgainst(stay(60, 4.2, "FNB"), stay(40, 3.9, "Capitec"), "", { current: companies("FNB"), previous: companies("Capitec") });
     expect(all.changePp).toBe(0);
-    expect(fnb).toMatchObject({ code: "1", previous: null, changePp: null, meanChange: null, reason: "Company code 1 was Capitec in the previous wave, so it is not compared." });
+    expect(fnb).toMatchObject({ code: "1", previous: null, changePp: null, meanChange: null, reason: "Company code 1 was Capitec in the compared wave, so it is not compared." });
   });
   it("companies unknown in either wave: not compared, never assumed the same", () => {
     for (const ctx of [null, { current: companies("FNB"), previous: null }, { current: null, previous: companies("FNB") }]) {
@@ -43,7 +43,7 @@ describe("CSM company changes need the same company in both waves", () => {
   });
   it("a code missing from the previous wave's company list: not compared", () => {
     const fnb = csmChangesAgainst(stay(60, 4.2, "FNB"), stay(40, 3.9, "FNB"), "", { current: companies("FNB"), previous: { variable: "company", companies: [] } })[1];
-    expect(fnb).toMatchObject({ changePp: null, reason: "Company code 1 is not in the previous wave's company list." });
+    expect(fnb).toMatchObject({ changePp: null, reason: "Company code 1 is not in the compared wave's company list." });
   });
   it("recovery: the same inputs with the mapping corrected compare again", () => {
     const wrong = csmChangesAgainst(stay(60, 4.2, "FNB"), stay(40, 3.9, "Capitec"), "", { current: companies("FNB"), previous: companies("Capitec") })[1];

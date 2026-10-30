@@ -2949,6 +2949,92 @@ def _p_two_sided_design(z: float, dsg) -> float:
     return _p_two_sided_t(z, df)
 
 
+SHARE_CHANGE_MAX_PAIRS = 5000
+
+
+def share_change_tests(args: dict) -> dict:
+    """Change in a share between two independent samples (R5 waves, Grant 30 October 2026: one wave of a tracker
+    against another). Each side is a share already computed by crosstab() on its own file: the unrounded percentage
+    (pctExact), the unweighted base (n), the Kish effective base of that base from the weights (nEffExact), and, when
+    a survey design was applied to that file, the share's linearised standard error (seExact, percentage points) and
+    the design's degrees of freedom (PSUs minus strata). Nothing is read from a file here.
+
+    The test is the one this engine already uses between banner columns, applied to two independent samples:
+    - no design on either side: the two-proportion z-test with the share pooled under the null hypothesis, on the
+      effective bases (_pooled_prop_se), two-sided normal p (_p_two_sided). The design effect is the weights' only
+      (Kish), so it assumes simple random sampling within each wave;
+    - a design on both sides: the difference's standard error is sqrt(se1^2 + se2^2), the samples being independent,
+      with a Student t reference on the summed design degrees of freedom (_p_two_sided_t), as _p_two_sided_design does
+      for one design; a share of exactly 0% or 100% on either side has no design variance and is not tested, as in
+      the column test;
+    - a design on one side only: not tested (the two variances are not on the same footing), with the reason.
+    The column test's base rules apply on both sides: an unweighted base under MIN_BASE_RELIABLE or an effective base
+    under MIN_EFFECTIVE_BASE is not tested. Two-sided at SIG_LEVEL, not adjusted for multiple comparisons. A pair that
+    is not tested says why; it is never reported as "no significant change"."""
+    pairs = args.get("pairs")
+    if not isinstance(pairs, list):
+        raise ValueError("share_change_tests needs a list of pairs.")
+    if len(pairs) > SHARE_CHANGE_MAX_PAIRS:
+        raise ValueError(f"Too many comparisons in one request ({len(pairs)}; at most {SHARE_CHANGE_MAX_PAIRS}).")
+
+    def side(raw):
+        if not isinstance(raw, dict):
+            return None
+        def num(k):
+            v = raw.get(k)
+            return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)) else None
+        return {"pct": num("pct"), "n": num("n"), "nEff": num("nEff"), "se": num("se"), "df": num("designDf")}
+
+    out = []
+    for pair in pairs:
+        pid = pair.get("id") if isinstance(pair, dict) else None
+        a, b = side((pair or {}).get("previous")), side((pair or {}).get("current"))
+
+        def untested(reason, method=None):
+            out.append({"id": pid, "tested": False, "reason": reason, "method": method, "z": None, "p": None, "significant": False, "direction": 0})
+
+        if a is None or b is None or a["pct"] is None or b["pct"] is None:
+            untested("A share is not available in one of the two waves.")
+            continue
+        if a["n"] is None or b["n"] is None or a["nEff"] is None or b["nEff"] is None:
+            untested("The bases of one of the two waves are not known.")
+            continue
+        if a["n"] < MIN_BASE_RELIABLE or b["n"] < MIN_BASE_RELIABLE:
+            untested(f"A base under {MIN_BASE_RELIABLE} respondents in one of the two waves is not tested.")
+            continue
+        if a["nEff"] < MIN_EFFECTIVE_BASE or b["nEff"] < MIN_EFFECTIVE_BASE:
+            untested(f"An effective base under {MIN_EFFECTIVE_BASE} in one of the two waves is not tested.")
+            continue
+        p1, p2 = a["pct"] / 100.0, b["pct"] / 100.0
+        designed = [x["se"] is not None and x["df"] is not None for x in (a, b)]
+        if designed[0] != designed[1]:
+            untested("A survey design is applied in one wave and not the other, so the two variances are not comparable.")
+            continue
+        if designed[0]:
+            if p1 * (1 - p1) == 0 or p2 * (1 - p2) == 0:
+                untested("A share of 0% or 100% has no design-based variance, so it is not tested.", "design")
+                continue
+            se = math.sqrt((a["se"] / 100.0) ** 2 + (b["se"] / 100.0) ** 2)
+            df = a["df"] + b["df"]
+            if se <= 0 or df <= 0:
+                untested("The design-based standard error could not be formed.", "design")
+                continue
+            z = (p2 - p1) / se
+            p = _p_two_sided_t(z, df)
+            method = "design"
+        else:
+            se = _pooled_prop_se(p1, a["nEff"], p2, b["nEff"])
+            if se <= 0:
+                untested("Both waves are at 0% or both at 100%, so there is nothing to test.", "pooled_effective_base")
+                continue
+            z = (p2 - p1) / se
+            p = _p_two_sided(z)
+            method = "pooled_effective_base"
+        sig = p < SIG_LEVEL
+        out.append({"id": pid, "tested": True, "reason": None, "method": method, "z": z, "p": p, "significant": bool(sig), "direction": (1 if z > 0 else -1) if sig else 0})
+    return {"level": SIG_LEVEL, "minBase": MIN_BASE_RELIABLE, "minEffectiveBase": MIN_EFFECTIVE_BASE, "results": out}
+
+
 def _se_prop(p, n_eff):
     return math.sqrt(p * (1 - p) / n_eff)
 
@@ -4963,10 +5049,20 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         # D3AR-F01): with an answer list, the highest declared substantive answer or observed answer, so a declared
         # top nobody chose still counts and a non-answer (6 = Don't know) never does; without one, the highest answer
         # observed, said so (scaleStated false).
-        declared = [float(n) for n in (_num_or_none(k) for k in vl.keys()) if n is not None and float(n) not in non_answers(var)]
+        excluded = non_answers(var)
+        declared = [float(n) for n in (_num_or_none(k) for k in vl.keys()) if n is not None and float(n) not in excluded]
         top = max(declared + [float(finite.max())]) if declared else float(finite.max())
+        # The answer domain (claude/answer-domain.md; Codex T2-F01): with an answer list, every declared substantive
+        # code (non-answers left out by _non_answer_codes, as above) together with every observed answer, so a scale
+        # point nobody chose still sets the scale's range and length; without one, the observed answers only, said so
+        # (source "observed"). Summarised (range, number of codes, whole numbers) rather than listed, since a long
+        # numeric variable can have thousands of codes. driverPerformance.ts reads the performance measure from it.
+        domain = sorted(set(declared) | set(codes)) if declared else codes
+        answer_domain = {"source": "declared" if declared else "observed", "min": domain[0], "max": domain[-1],
+                         "count": len(domain), "integers": all(float(c).is_integer() for c in domain)}
         return {"name": var, "label": labels.get(var) or var, "min": float(finite.min()), "max": float(finite.max()),
-                "distinct": len(codes), "valueLabels": shown, "scaleTop": top, "scaleStated": bool(declared)}
+                "distinct": len(codes), "valueLabels": shown, "scaleTop": top, "scaleStated": bool(declared),
+                "answerDomain": answer_domain}
 
     skipped = []
     y_arr, why = numeric(outcome)
@@ -5651,7 +5747,9 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             sel = float(wv[vm & sel_mask].sum())
             counts_exact.append(sel)
             counts.append(round(sel, 1))
-            bases.append({"n": n, "w": round(sw, 1), "nEff": round(n_eff, 1)})
+            # nEffExact: the Kish effective base unrounded, so a test made outside this table (share_change_tests,
+            # a wave against another wave) uses the same effective base this table's own tests use.
+            bases.append({"n": n, "w": round(sw, 1), "nEff": round(n_eff, 1), "nEffExact": n_eff})
             ncell.append(int((vm & sel_mask & w_ok).sum()))
             pj = sel / sw if sw > 0 else float("nan")
             suppressed = n < MIN_BASE_SUPPRESS
@@ -5735,7 +5833,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             "total": {"count": round(tot_sel, 1), "pct": None if math.isnan(pt) else round(pt * 100, 1),
                       "countExact": tot_sel, "pctExact": None if math.isnan(pt) else pt * 100,
                       "nCell": int((valid_mask & sel_mask & w_ok).sum()),
-                      "base": {"n": tot_n, "w": round(tot_w, 1), "nEff": round(tot_eff, 1)}},
+                      "base": {"n": tot_n, "w": round(tot_w, 1), "nEff": round(tot_eff, 1), "nEffExact": tot_eff}},
         }
 
     def add_row_pct(row, block_of_col):
@@ -6593,7 +6691,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         "blocks": blocks,
         "columns": columns,
         "nets": net_cols,
-        "total": {"n": tn, "w": round(tw, 1), "nEff": round(te, 1)},
+        "total": {"n": tn, "w": round(tw, 1), "nEff": round(te, 1), "nEffExact": te},
         "questions": questions,
         "skipped": skipped,
         "notes": {
@@ -6690,7 +6788,7 @@ _SIGNED_PATH = re.compile(
     re.IGNORECASE,
 )
 _SIGNATURE_LIFETIME_SECONDS = 300
-_SIGNED_ACTIONS = {"convert", "table", "indicators", "dictionary", "categories", "columns", "crosstab", "respondent_quality", "codebook", "instrument_sheet", "value_labels"}
+_SIGNED_ACTIONS = {"convert", "table", "indicators", "dictionary", "categories", "columns", "crosstab", "respondent_quality", "codebook", "instrument_sheet", "value_labels", "share_change_tests"}
 
 
 def verify_parse_request(secret, header, action, bucket, storage_path, now=None):
@@ -6752,6 +6850,11 @@ class handler(BaseHTTPRequestHandler):
                 self._send_json(401, {"error": "Unauthorized"})
                 return
 
+            if action == "share_change_tests":
+                # Arithmetic on figures the app already holds: signed for the file whose figures are tested, but
+                # nothing is downloaded or read.
+                self._send_json(200, {"result": share_change_tests(body.get("args") or {})})
+                return
             file_bytes = _storage_download(bucket, storage_path)
             if action == "dictionary":
                 self._send_json(200, {"result": dictionary(file_bytes, source_filename, body.get("args") or {})})

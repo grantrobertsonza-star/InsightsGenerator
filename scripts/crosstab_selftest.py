@@ -983,6 +983,15 @@ check("D2b: driver columns drop 6 = Don't know", [r[0] for r in _dc["x"]] == [1.
 check("D2b: the scale top is the declared 5, unchosen, never the non-answer 6", _sat.get("scaleTop") == 5.0 and _sat.get("scaleStated") is True and _sat["max"] == 4.0, str(_sat))
 _dn = psf.driver_columns(_wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3], "q": [1, 2, 4]}), 0, True)}), "n.xlsx", {"outcome": "y", "predictors": ["q"]})["predictors"][0]
 check("D2b: without an answer list the scale top is the highest answer, said so", _dn.get("scaleTop") == 4.0 and _dn.get("scaleStated") is False, str(_dn))
+# Codex T2-F01 (30 October 2026): each predictor carries its answer domain, so the performance measure is read from the
+# declared scale, not from the answers that happen to be present. Declared 1 to 5 (and 6 = Don't know) answered 1 to 4
+# and 6: domain 1 to 5, five codes, declared. Declared 0 to 10 answered only 0 and 1: domain 0 to 10, eleven codes.
+# Without an answer list: the observed answers, said so.
+check("T2-F01: declared domain keeps the unchosen 5 and drops 6 = Don't know", _sat.get("answerDomain") == {"source": "declared", "min": 1.0, "max": 5.0, "count": 5, "integers": True}, str(_sat.get("answerDomain")))
+_lab3 = pd.DataFrame({"variable": ["nps"] * 11, "label": ["Recommend"] * 11, "value": list(range(11)), "value_label": [str(i) for i in range(11)]})
+_d10 = psf.driver_columns(_wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3, 4], "nps": [0, 1, 0, 1]}), 0, True), "Labels": (_lab3, 0, True)}), "d10.xlsx", {"outcome": "y", "predictors": ["nps"]})["predictors"][0]
+check("T2-F01: a declared 0 to 10 scale answered only 0 and 1 keeps its eleven-point domain", _d10.get("answerDomain") == {"source": "declared", "min": 0.0, "max": 10.0, "count": 11, "integers": True} and _d10["max"] == 1.0, str(_d10))
+check("T2-F01: without an answer list the domain is the observed answers, said so", _dn.get("answerDomain") == {"source": "observed", "min": 1.0, "max": 4.0, "count": 3, "integers": True}, str(_dn.get("answerDomain")))
 
 # Decision 9 (29 October 2026): title rows above a CSV, TSV or Excel header. First part: up to 14 leading rows holding
 # at most one written value are set aside by detection. Second part: the researcher's header row (headerRowsSkipped,
@@ -1077,6 +1086,109 @@ _pad = psf.read_table(_title_book([["Respondents"], ["Wave 1"], ["id", "score"],
 check("decision 9: a zero-padded identifier below two title rows keeps its own padding", [r["id"] for r in _pad["rows"]] == ["0007", "0012"], str(_pad["rows"]))
 _pad3 = psf.read_table(_title_book([["Respondents"], ["Prepared by", "Acme"], ["id", "score"], [7, 5], [12, 6]], id_format="0000"), "pad3.xlsx", {"headerRowsSkipped": 2})
 check("decision 9: a zero-padded identifier below a chosen header row keeps its own padding", [r["id"] for r in _pad3["rows"]] == ["0007", "0012"], str(_pad3["rows"]))
+
+
+# ---- R5 waves: change in a share between two independent waves (share_change_tests) ----
+# References written out here, never the engine's own output: a hand-computed pooled z for known counts, statsmodels'
+# proportions_ztest when installed, Kish effective bases from the weights, and a with-replacement Taylor variance.
+def _wave_side(res, key):
+    q = [x for x in res["questions"] if x["key"] == key][0]
+    yes = [r for r in q["rows"] if r.get("rawCode") == "1"][0]
+    return {"pct": yes["pctExact"][0], "n": yes["base"][0]["n"], "nEff": yes["base"][0]["nEffExact"], "se": None, "designDf": None}
+
+def _wave_file(y, wt, extra=None):
+    d = pd.DataFrame({"y": y.astype(float), "wt": wt, **(extra or {})})
+    pth = os.path.join(tmp, f"wave{len(os.listdir(tmp))}.sav")
+    pyreadstat.write_sav(d, pth, variable_value_labels={"y": {0: "No", 1: "Yes"}})
+    return open(pth, "rb").read()
+
+def _wave_table(b, weight, design=None):
+    req = {"columnVars": [], "weightVar": weight, "rowItems": [{"key": "y", "label": "Y", "vars": ["y"]}]}
+    if design:
+        req["design"] = design
+    return psf.crosstab(b, "w.sav", req)
+
+# 1. Known counts, unweighted: 200 of 500 against 276 of 600. Hand: p0 = 476/1100.
+_t = psf.share_change_tests({"pairs": [{"id": "k", "previous": {"pct": 40.0, "n": 500, "nEff": 500, "se": None, "designDf": None},
+                                         "current": {"pct": 46.0, "n": 600, "nEff": 600, "se": None, "designDf": None}}]})["results"][0]
+_p0 = 476 / 1100
+_z_hand = (0.46 - 0.40) / math.sqrt(_p0 * (1 - _p0) * (1 / 500 + 1 / 600))
+_p_hand = math.erfc(abs(_z_hand) / math.sqrt(2))
+check("R5 waves: pooled z for 200/500 against 276/600 equals the hand value", _t["tested"] and abs(_t["z"] - _z_hand) < 1e-12, f"{_t} vs {_z_hand}")
+check("R5 waves: two-sided p for known counts equals the hand value (z 1.9999, p 0.0455)", abs(_t["p"] - _p_hand) < 1e-12 and abs(_z_hand - 1.9999) < 1e-4 and abs(_p_hand - 0.0455) < 1e-4 and _t["significant"] and _t["direction"] == 1, f"{_t}")
+try:
+    from statsmodels.stats.proportion import proportions_ztest
+    _zs, _ps = proportions_ztest([276, 200], [600, 500])
+    check("R5 waves: equals statsmodels proportions_ztest on the same counts", abs(_zs - _t["z"]) < 1e-9 and abs(_ps - _t["p"]) < 1e-9, f"{_zs} {_ps}")
+except ImportError:
+    print("SKIP R5 waves: statsmodels not installed, the hand value above is the reference")
+
+# 2. Effective base below n: two weighted waves read by the engine's own crosstab, tested on their Kish bases.
+_rw = np.random.default_rng(530)
+_ya = (_rw.random(700) < 0.35).astype(int); _wa = np.exp(_rw.normal(0, 0.7, 700))
+_yb = (_rw.random(650) < 0.41).astype(int); _wb_ = np.exp(_rw.normal(0, 0.7, 650))
+_A, _B = _wave_file(_ya, _wa), _wave_file(_yb, _wb_)
+_sa, _sb = _wave_side(_wave_table(_A, "wt"), "y"), _wave_side(_wave_table(_B, "wt"), "y")
+_kish = lambda wt: wt.sum() ** 2 / (wt ** 2).sum()
+check("R5 waves: the effective base is Kish's (sum w)^2 / sum w^2, below n", abs(_sa["nEff"] - _kish(_wa)) < 1e-6 and _sa["nEff"] < 700 - 50 and abs(_sb["nEff"] - _kish(_wb_)) < 1e-6, f"{_sa['nEff']} vs {_kish(_wa)}")
+check("R5 waves: the weighted share equals numpy's", abs(_sa["pct"] - 100 * (_wa * _ya).sum() / _wa.sum()) < 1e-9 and abs(_sb["pct"] - 100 * (_wb_ * _yb).sum() / _wb_.sum()) < 1e-9)
+_tw = psf.share_change_tests({"pairs": [{"id": "w", "previous": _sa, "current": _sb}]})["results"][0]
+_pa, _pb, _na, _nb = _sa["pct"] / 100, _sb["pct"] / 100, _kish(_wa), _kish(_wb_)
+_pp = (_pa * _na + _pb * _nb) / (_na + _nb)
+_zw = (_pb - _pa) / math.sqrt(_pp * (1 - _pp) * (1 / _na + 1 / _nb))
+_pp_n = (_pa * 700 + _pb * 650) / 1350
+_z_naive = (_pb - _pa) / math.sqrt(_pp_n * (1 - _pp_n) * (1 / 700 + 1 / 650))
+check("R5 waves: weighted test uses the effective bases (hand z), smaller than the z on raw n", abs(_tw["z"] - _zw) < 1e-9 and abs(_tw["z"]) < abs(_z_naive), f"{_tw['z']} vs {_zw}, raw-n z {_z_naive}")
+
+# 3. Weight rescaling: every weight times 3.7 (and wave B's times 0.2) gives the same shares, bases and test.
+_sa2 = _wave_side(_wave_table(_wave_file(_ya, _wa * 3.7), "wt"), "y")
+_sb2 = _wave_side(_wave_table(_wave_file(_yb, _wb_ * 0.2), "wt"), "y")
+_tw2 = psf.share_change_tests({"pairs": [{"id": "w", "previous": _sa2, "current": _sb2}]})["results"][0]
+check("R5 waves: rescaling the weights changes no share, effective base, z or p", abs(_sa2["pct"] - _sa["pct"]) < 1e-9 and abs(_sa2["nEff"] - _sa["nEff"]) < 1e-6 and abs(_tw2["z"] - _tw["z"]) < 1e-9 and abs(_tw2["p"] - _tw["p"]) < 1e-12, f"{_tw2} vs {_tw}")
+
+# 4. Base rules and states: under 30 respondents, an effective base under 30, a missing share, one-sided design.
+_small = psf.share_change_tests({"pairs": [
+    {"id": "n", "previous": {"pct": 40.0, "n": 29, "nEff": 29, "se": None, "designDf": None}, "current": {"pct": 90.0, "n": 600, "nEff": 600, "se": None, "designDf": None}},
+    {"id": "e", "previous": {"pct": 40.0, "n": 300, "nEff": 29.5, "se": None, "designDf": None}, "current": {"pct": 90.0, "n": 600, "nEff": 600, "se": None, "designDf": None}},
+    {"id": "m", "previous": {"pct": None, "n": 300, "nEff": 300, "se": None, "designDf": None}, "current": {"pct": 90.0, "n": 600, "nEff": 600, "se": None, "designDf": None}},
+    {"id": "d", "previous": {"pct": 40.0, "n": 300, "nEff": 300, "se": 2.5, "designDf": 40}, "current": {"pct": 90.0, "n": 600, "nEff": 600, "se": None, "designDf": None}},
+    {"id": "z", "previous": {"pct": 0.0, "n": 300, "nEff": 300, "se": None, "designDf": None}, "current": {"pct": 0.0, "n": 600, "nEff": 600, "se": None, "designDf": None}},
+]})["results"]
+check("R5 waves: a base under 30, an effective base under 30, a missing share, a one-sided design and 0% against 0% are each untested with a reason, never 'not significant'",
+      all((not r["tested"]) and r["reason"] and r["p"] is None and r["significant"] is False for r in _small)
+      and "under 30 respondents" in _small[0]["reason"] and "effective base" in _small[1]["reason"] and "not available" in _small[2]["reason"] and "one wave and not the other" in _small[3]["reason"], json.dumps(_small))
+
+# 5. A survey design in both waves: the engine's linearised standard error of each share (one stage, PSUs with
+# replacement, no strata), hand-computed here, combined as sqrt(se1^2 + se2^2), with a t reference on the summed
+# design degrees of freedom (PSUs minus strata in each wave).
+def _taylor_se(y, wt, psu):
+    pr = (wt * y).sum() / wt.sum()
+    zi = wt * (y - pr) / wt.sum()
+    tot = pd.Series(zi).groupby(psu).sum().to_numpy()
+    m = len(tot)
+    return math.sqrt(m / (m - 1) * ((tot - tot.mean()) ** 2).sum()), m
+_psa, _psb = np.repeat(np.arange(35), 20), np.repeat(np.arange(30), 20)
+_ya5 = (_rw.random(700) < 0.30 + 0.004 * _psa).astype(int); _yb5 = (_rw.random(600) < 0.38 + 0.004 * _psb).astype(int)
+_wa5, _wb5 = np.exp(_rw.normal(0, 0.4, 700)), np.exp(_rw.normal(0, 0.4, 600))
+_dA = _wave_table(_wave_file(_ya5, _wa5, {"psu": _psa.astype(float)}), "wt", {"psu": "psu"})
+_dB = _wave_table(_wave_file(_yb5, _wb5, {"psu": _psb.astype(float)}), "wt", {"psu": "psu"})
+def _design_side(res):
+    q = res["questions"][0]
+    yes = [r for r in q["rows"] if r.get("rawCode") == "1"][0]
+    du = res["notes"]["designUsed"]
+    return {"pct": yes["pctExact"][0], "n": yes["base"][0]["n"], "nEff": yes["base"][0]["nEffExact"], "se": yes["seExact"][0], "designDf": du["nPsu"] - du["nStrata"]}
+_dsa, _dsb = _design_side(_dA), _design_side(_dB)
+_sea, _ma = _taylor_se(_ya5, _wa5, _psa)
+_seb, _mb = _taylor_se(_yb5, _wb5, _psb)
+check("R5 waves: each wave's design-based share SE equals the hand Taylor value", abs(_dsa["se"] / 100 - _sea) < 1e-9 and abs(_dsb["se"] / 100 - _seb) < 1e-9 and _dsa["designDf"] == _ma - 1 and _dsb["designDf"] == _mb - 1, f"{_dsa} {_sea}")
+_td = psf.share_change_tests({"pairs": [{"id": "d", "previous": _dsa, "current": _dsb}]})["results"][0]
+_zd = (_dsb["pct"] - _dsa["pct"]) / 100 / math.sqrt(_sea ** 2 + _seb ** 2)
+try:
+    from scipy import stats as _st
+    _pd_ref = 2 * _st.t.sf(abs(_zd), (_ma - 1) + (_mb - 1))
+except ImportError:
+    _pd_ref = None
+check("R5 waves: design-based test is (p2-p1)/sqrt(se1^2+se2^2) with a t reference on the summed design df", _td["tested"] and _td["method"] == "design" and abs(_td["z"] - _zd) < 1e-9 and (_pd_ref is None or abs(_td["p"] - _pd_ref) < 1e-8), f"{_td} vs z {_zd} p {_pd_ref}")
 
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

@@ -23,8 +23,7 @@
 import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
-import { loadTrackerDashboard } from "./trackerDashboards";
-import { loadRoleInput } from "./trackerInput";
+import { loadWaveContext, type WaveLoadOptions } from "./trackerWaveContext";
 import { overviewMeasures, selectedAnswerOf, selectedShareOf } from "./trackerFigures";
 import type { CrosstabRequest, CrosstabResult } from "./parseStatsFile";
 import type { ResolvedDashboard } from "./trackerDashboard";
@@ -129,8 +128,9 @@ const BRANDS_AT_ONCE = 4;
  * The Brand associations page for one data file. Throws with the reason when the file's dictionary, set-up or a
  * table cannot be read; never returns an empty page for a failure.
  */
-export async function loadBrandAssociations(tenantId: string, runId: string, documentId: string): Promise<BrandAssociations & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
-  const [view, input] = await Promise.all([loadTrackerDashboard(tenantId, runId, documentId), loadRoleInput(tenantId, runId, documentId)]);
+export async function loadBrandAssociations(tenantId: string, runId: string, documentId: string, opts: WaveLoadOptions = {}): Promise<BrandAssociations & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
+  // The wave's resolved dashboard and role input, when the caller already read them (trackerWaveChange.ts).
+  const { view, input } = opts.ctx ?? (await loadWaveContext(tenantId, runId, documentId));
   const dashboard = view.dashboard;
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
   const out = { documentId, weighted: weightVar !== null, weightVar, dashboard: { brands: dashboard.brands, focalBrand: dashboard.focalBrand } };
@@ -154,7 +154,7 @@ export async function loadBrandAssociations(tenantId: string, runId: string, doc
     const awareTable = (await computeCrosstab(tenantId, runId, documentId, { columnVars: [], rowItems: rowItems(awareVars), weightVar, design })).result;
     bases = awareBasesFromResult(awareTable, awareness, dashboard.brands, variables);
     const todo = bases
-      .filter((b) => !b.reason && b.n !== null && b.n > 0)
+      .filter((b) => !b.reason && b.n !== null && b.n > 0 && (!opts.onlyBrands || opts.onlyBrands.includes(b.code)))
       .map((b) => ({ base: b, vars: grid.items.map((it) => it.byBrand.find((x) => x.code === b.code)?.variable).filter((v): v is string => !!v) }))
       .filter((t) => t.vars.length > 0);
     for (let i = 0; i < todo.length; i += BRANDS_AT_ONCE) {

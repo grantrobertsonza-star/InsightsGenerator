@@ -22,9 +22,8 @@
 import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
-import { loadTrackerDashboard } from "./trackerDashboards";
-import { loadRoleInput } from "./trackerInput";
-import { answersOf, selectedAnswerOf, selectedShareOf, stageClaims } from "./trackerFigures";
+import { loadWaveContext, type WaveLoadOptions } from "./trackerWaveContext";
+import { answerStat, answersOf, type ShareStat, selectedAnswerOf, selectedShareOf, stageClaims } from "./trackerFigures";
 import type { CrosstabRequest, CrosstabResult } from "./parseStatsFile";
 import type { ResolvedDashboard } from "./trackerDashboard";
 import type { FoundList, FoundQuestion, RoleVariable, TrackerRecognition } from "./trackerRoles";
@@ -39,7 +38,7 @@ export function smallBaseLevel(n: number): "ok" | "small" | "very_small" {
 }
 
 /** A figure for the two groups compared: the recent acquirers and all eligible respondents. */
-export type GroupShare = { share: number | null; base: number | null; reason?: string };
+export type GroupShare = { share: number | null; base: number | null; reason?: string; stat?: ShareStat };
 export type ProfileRow = { key: string; label: string; acquirers: GroupShare; category: GroupShare };
 
 export type BrandAudience = {
@@ -99,7 +98,8 @@ export function ageRowsFromResults(category: CrosstabResult, acquirers: Crosstab
     const a = r.answers.find((x) => x.code === code);
     // An answer on the list that nobody in the group gave is 0 of a known base; a suppressed one is not available.
     if (a && a.share === null) return { share: null, base: r.base, reason: "Suppressed for a small base." };
-    return { share: a ? (a.share as number) : 0, base: r.base };
+    const stat = answerStat(r.answers, code);
+    return { share: a ? (a.share as number) : 0, base: r.base, ...(stat ? { stat } : {}) };
   };
   return codes.map((code) => ({ key: code, label: labels[code] ?? all.answers.find((a) => a.code === code)?.label ?? code, acquirers: read(sub, code, acquirersMissing), category: read(all, code, null) }));
 }
@@ -120,8 +120,9 @@ export function mediaRowsFromResults(category: CrosstabResult, acquirers: Crosst
  * The Audience & media page for one data file. Throws with the reason when the file's dictionary, set-up or a table
  * cannot be read; never returns an empty page for a failure.
  */
-export async function loadBrandAudience(tenantId: string, runId: string, documentId: string): Promise<BrandAudience & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
-  const [view, input] = await Promise.all([loadTrackerDashboard(tenantId, runId, documentId), loadRoleInput(tenantId, runId, documentId)]);
+export async function loadBrandAudience(tenantId: string, runId: string, documentId: string, opts: WaveLoadOptions = {}): Promise<BrandAudience & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
+  // The wave's resolved dashboard and role input, when the caller already read them (trackerWaveChange.ts).
+  const { view, input } = opts.ctx ?? (await loadWaveContext(tenantId, runId, documentId));
   const dashboard = view.dashboard;
   const rec = view.recognition;
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;

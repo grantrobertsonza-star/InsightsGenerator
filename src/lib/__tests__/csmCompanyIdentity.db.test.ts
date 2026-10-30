@@ -98,7 +98,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("E1-F01: a reused company code
     const code1 = o.csmChanges.filter((c) => c.code === "1");
     expect(code1.length).toBe(4);
     for (const c of code1) {
-      expect(c, c.id).toMatchObject({ previous: null, changePp: null, meanChange: null, reason: "Company code 1 was Different Bank in the previous wave, so it is not compared." });
+      expect(c, c.id).toMatchObject({ previous: null, changePp: null, meanChange: null, reason: "Company code 1 was Different Bank in the compared wave, so it is not compared." });
     }
     const stay2 = o.csmChanges.find((c) => c.id === "stay" && c.code === "2")!;
     expect(stay2.changePp).toBeCloseTo(ref("continue5", "t2b", 2, 2).expected - ref("continue5", "t2b", 1, 2).expected, 6);
