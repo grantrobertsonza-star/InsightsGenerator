@@ -1,9 +1,10 @@
 # CSM dashboard extension: journey, emotions, preference, reasons, competitive and noncustomers (R6)
 
 Owner of the rules: `src/lib/csmExtension.ts` and the modules it names. Specification: the CSM packs of 30 October
-2026 (`fixtures/packs-2026-10-30/csm`), `Banking_CSM_Claude_Instructions.docx` and
-`Telecoms_CSM_Claude_Instructions.docx` (identical apart from the sector), each sector's brief, questionnaires
-(Company, Channel, Noncustomer expectations) and 02 Dashboard and Analysis Guide. Handover:
+2026: the separate pack (`fixtures/packs-2026-10-30/csm`, updated to Grant's second version of 15:20: six emotions,
+call-centre and IVR diagnostics, pooled All_Waves files) and the combined pack (`fixtures/packs-2026-10-30/csm-combined`:
+company and channel answers on one customer row). Each sector's brief, questionnaires, dashboard guide and
+03 implementation instructions, and the combined import guide. Handover:
 `claude/batchR6csmext-handover-2026-10-30.md`.
 
 The added sections sit in the CSM dashboard's own section navigation after Company, Channels, NPS & loyalty and
@@ -34,6 +35,17 @@ Figures are computed on request and never saved, like every tracker dashboard pa
 - **Existing views.** `trackerOverview.loadBrandOverview` compares a wave only with earlier waves of the same grain
   (`wavesOfSameGrain`), so a Relationship file's previous wave and trend are Relationship files, never the same
   project's Channel or Noncustomer file. A brand tracker (no CSM grain markers) keeps all its waves.
+
+- **Combined files** (the combined pack): one customer row per wave with channel blocks `ch01_` to `ch04_` (the block's
+  channel code). The grain is Relationship (one customer per row); the blocks are its channel experiences. Keys add:
+  a used block carries its own channel code and an experience_id, an unused block is blank, a block is used exactly
+  when `channel_used_c0k` is 1, experience IDs are unique. A combined file and a separate Channel file labelled with the
+  same wave are the same customers in two representations: refused together (link problem), never pooled.
+- **Pooled All_Waves files** (both packs): the wave column holds several waves; linked customer files must hold the same
+  ones. Keys are wave + respondent_id. Figures are read for one wave (a Data wave choice, default the latest the data
+  hold); every population adds the wave by raw code. A wave not in the data is refused.
+- **Existing recognition on combined files**: the channel blocks are never a brand list (by answer lists or by names)
+  and never a company CSM role (`trackerRoles.recogniseTracker`), so the Company tiles read the company questions.
 
 ## Fields (`csmExtensionRoles.ts`)
 
@@ -92,9 +104,12 @@ benchmark's channel. Descriptive only; no causal, ROI, churn or ranking claim.
 
 ## Emotions, preference and reasons for staying (`csmExperience.ts`)
 
-Emotions at the journey grain (recent tasks, one customer once) and the channel grain (the Channel file, latest
+Six emotions (reassured, valued, frustrated, anxious, angry, disappointed; a first-pack file has four and the other two
+are Not measured) at the journey grain (recent tasks, one customer once) and the channel grain (a Channel file, or a
+combined file's channel blocks: per channel the block's users, all channels the blocks pooled code by code; latest
 experience per customer per channel; records and distinct customers shown), each emotion its own figure on its own
-valid base (mean and the five intensity labels); never inverted or combined. Verbatims are the file's own text beside
+valid base (mean, very or extremely, and the five intensity labels); never inverted or combined; very or extremely
+angry, disappointed, frustrated or anxious is a negative outcome. Verbatims are the file's own text beside
 the record's own ratings. Preference (agreement): experiences in three months (customer), the whole task (journey),
 this channel experience (channel record), each labelled by recall and grain. Reasons for staying: each reason's share
 of all current customers (multiple response, need not add to 100), None and Do not know, the primary reason
@@ -110,6 +125,13 @@ alternative provider's satisfaction only for a personally experienced task in 30
 Never: focal CSAT, NPS, experienced performance or emotions for noncustomers. Current customers' performance of the
 focal provider on the same six aspects is a separate column, labelled as another population and period; no gap,
 change or ranking is computed, and nothing is pooled.
+
+## Not in these sections
+
+The call-centre and IVR diagnostics of the second pack (live agent screen, queue wait, total call time and agent
+satisfaction, first-transfer, ownership, promises with 9 not yet due, patience, urgency, IVR performance) belong to
+the Channels view, which this branch does not build. Their published references are reproduced through the same
+statistic reading (tests), so the readings are ready for that view.
 
 ## Export (`csmExtensionExport.ts`)
 
@@ -133,8 +155,10 @@ stay, dimmed, marked "Updating". Filters belong to one file; another file starts
 
 ## Tests
 
-`csmExtensionReference.db.test.ts` (every published reference value, both sectors, all waves, actual loaders, real
-engine and database), `csmExtensionBehaviour.db.test.ts` (independent pandas values for figures without a published
+`csmExtensionReference.db.test.ts` (every published reference value of the separate pack, both sectors, all waves,
+actual loaders, real engine and database), `csmExtensionCombined.db.test.ts` (every Reference_Metrics.csv row of the
+combined pack, the sections on the combined file, the pooled file by wave, both representations refused together,
+the Company tiles), `csmExtensionRecognition.test.ts` (the recogniser on both packs' workbooks), `csmExtensionBehaviour.db.test.ts` (independent pandas values for figures without a published
 reference, keys and grains, sample separation, the earlier CSM fixtures Not measured with existing figures unchanged,
 weight rescaling, failure cases), `csmExtensionKeys.test.ts` (pure rules), `csmExtensionSections.test.tsx`
 (mounted screens), `e2e/ui/tracker-csm-extension.check.mjs` (browser, production build, screenshots under

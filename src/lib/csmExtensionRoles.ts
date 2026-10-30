@@ -55,7 +55,15 @@ export function csmGrainOf(variableNames: Iterable<string>, sheetName: string | 
   if (fromSheet && fromSheet !== structural) {
     return { grain: null, reason: `The data sheet "${sheetName}" names the ${fromSheet} family, but the file's fields are those of the ${structural} family.` };
   }
-  const evidence = structural === "channel" ? "experience_id and channel fields" : structural === "noncustomer" ? "current_focal_use and focal_company fields" : "one record per respondent_id, no channel or noncustomer fields";
+  const blocks = channelBlocksOf(names);
+  const evidence =
+    structural === "channel"
+      ? "experience_id and channel fields"
+      : structural === "noncustomer"
+        ? "current_focal_use and focal_company fields"
+        : blocks.length
+          ? `one record per respondent_id with channel blocks ${blocks.map(blockPrefix).join(", ")} (combined company and channel file)`
+          : "one record per respondent_id, no channel or noncustomer fields";
   return { grain: structural, sampleType: SAMPLE_TYPE_OF[structural], evidence: fromSheet ? `${evidence}; data sheet "${sheetName}"` : evidence };
 }
 
@@ -113,10 +121,13 @@ export function fieldOf(variables: RoleVariable[], name: string, expect: FieldKi
   }
 }
 
-/** The four emotions, kept separate: never inverted or combined into an index (pack instructions). */
-export const EMOTIONS = ["reassured", "valued", "frustrated", "anxious"] as const;
+/** The six emotions (the second pack of 30 October 2026 added angry and disappointed), kept separate: never inverted
+ * or combined into an index. A file from the first pack has four; the other two are Not measured there. */
+export const EMOTIONS = ["reassured", "valued", "frustrated", "anxious", "angry", "disappointed"] as const;
 export type Emotion = (typeof EMOTIONS)[number];
-export const EMOTION_TEXT: Record<Emotion, string> = { reassured: "Reassured", valued: "Valued", frustrated: "Frustrated", anxious: "Anxious" };
+export const EMOTION_TEXT: Record<Emotion, string> = { reassured: "Reassured", valued: "Valued", frustrated: "Frustrated", anxious: "Anxious", angry: "Angry", disappointed: "Disappointed" };
+/** High intensity (4 or 5) of these is a negative outcome, never a favourable one. */
+export const NEGATIVE_EMOTIONS: readonly Emotion[] = ["frustrated", "anxious", "angry", "disappointed"];
 
 const SCALE5: FieldKind = { kind: "scale", lo: 1, hi: 5 };
 const BINARY: FieldKind = { kind: "binary" };
@@ -161,12 +172,14 @@ export function relationshipFields(variables: RoleVariable[]) {
 }
 export type RelationshipFields = ReturnType<typeof relationshipFields>;
 
-/** The extension's fields in a Channel file. */
-export function channelFields(variables: RoleVariable[]) {
-  const f = (name: string, k: FieldKind) => fieldOf(variables, name, k);
+/** The extension's fields of a latest channel experience: in a Channel file (no prefix), or in one channel block of
+ * a combined file (prefix ch01_ to ch04_, the block's channel code). */
+export function channelFields(variables: RoleVariable[], prefix = "") {
+  const f = (name: string, k: FieldKind) => fieldOf(variables, `${prefix}${name}`, k);
   return {
     channel: f("channel", { kind: "codes", required: [] }),
-    company: f("company", { kind: "codes", required: [] }),
+    company: fieldOf(variables, "company", { kind: "codes", required: [] }),
+    experienceId: f("experience_id", { kind: "text" }),
     emotions: Object.fromEntries(EMOTIONS.map((e) => [e, f(`channel_${e}5`, SCALE5)])) as Record<Emotion, Field>,
     emotionWhy: f("channel_emotion_why_text", { kind: "text" }),
     preference: f("channel_preference5", SCALE5),
@@ -174,6 +187,17 @@ export function channelFields(variables: RoleVariable[]) {
 }
 export type ChannelFields = ReturnType<typeof channelFields>;
 
+/** The channel blocks of a combined file (company and channel answers on one customer row, the combined pack): the
+ * codes k with a ch0k_channel field, in code order. Empty for any other file. */
+export function channelBlocksOf(variableNames: Iterable<string>): string[] {
+  const out: string[] = [];
+  for (const n of variableNames) {
+    const m = /^ch0(\d)_channel$/.exec(n);
+    if (m) out.push(m[1]);
+  }
+  return out.sort();
+}
+export const blockPrefix = (code: string) => `ch0${code}_`;
 /** The fields of the focal-noncustomer supplement. */
 export function noncustomerFields(variables: RoleVariable[]) {
   const f = (name: string, k: FieldKind) => fieldOf(variables, name, k);
@@ -199,7 +223,7 @@ export type NoncustomerFields = ReturnType<typeof noncustomerFields>;
  * preference, emotions, reasons for staying and the noncustomer supplement. The existing CSM recogniser never reads
  * them as a company role (trackerRoles.recogniseTracker). */
 const EXTENSION_FIELD =
-  /^(journey_(recent30|id|task|start_days_ago|last_days_ago|channel_c\d+|digital_mode|sequence|contacts|multichannel|transferred|repeat_info|status|completed|csat5|reassured5|valued5|frustrated5|anxious5|emotion_why_text|preference5)|benchmark_(recent_same_task30|provider|task|days_ago|channel|csat5|gap5)|stay_reason_r\d+|stay_(none|dk|primary)|experience_preference5|channel_(reassured|valued|frustrated|anxious|preference)5|channel_emotion_why_text|focal_(company|awareness|consider5)|current_focal_use|expect_(preferred_channel|level_d\d+|importance_d\d+|reason_text)|alternative_(recent30|task|days_ago|channel|csat5))$/;
+  /^(journey_(recent30|id|task|start_days_ago|last_days_ago|channel_c\d+|digital_mode|sequence|contacts|multichannel|transferred|repeat_info|status|completed|csat5|reassured5|valued5|frustrated5|anxious5|angry5|disappointed5|emotion_why_text|preference5)|benchmark_(recent_same_task30|provider|task|days_ago|channel|csat5|gap5)|stay_reason_r\d+|stay_(none|dk|primary)|experience_preference5|(ch\d\d_)?channel_(reassured|valued|frustrated|anxious|angry|disappointed|preference)5|(ch\d\d_)?channel_emotion_why_text|focal_(company|awareness|consider5)|current_focal_use|expect_(preferred_channel|level_d\d+|importance_d\d+|reason_text)|alternative_(recent30|task|days_ago|channel|csat5))$/;
 export const isCsmExtensionField = (name: string) => EXTENSION_FIELD.test(name);
 
 /** The found variable's name, or null. */

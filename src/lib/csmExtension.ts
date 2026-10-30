@@ -11,7 +11,8 @@
 // A file whose keys fail its checks, or that cannot be linked to the wave's customers, is not used and says why.
 import { loadTrackerDashboard } from "./trackerDashboards";
 import { GRAIN_TEXT, SAMPLE_TYPE_TEXT, relationshipFields, type CsmGrain, type CsmSampleType } from "./csmExtensionRoles";
-import { loadCsmWaveFiles, type CsmFile } from "./csmExtensionKeys";
+import { loadCsmWaveFiles, type CsmFile, type Row } from "./csmExtensionKeys";
+import { codeFilter } from "./csmExtensionMetrics";
 import { journeyPopulation, loadBenchmark, loadJourneySection, type Benchmark, type JourneyFilters, type JourneySection } from "./csmJourney";
 import { loadExperienceSection, type ExperienceSection } from "./csmExperience";
 import { loadNoncustomerSection, type NoncustomerSection } from "./csmNoncustomer";
@@ -33,6 +34,8 @@ export type CsmExtensionView = {
   linkProblems: string[];
   notUsed: string[];
   channelNames: { code: string; label: string }[];
+  /** The wave values the customer data hold: several for a pooled All_Waves file (filters.dataWave is the one read). */
+  dataWaves: string[];
   /** The task and journey channel filters' options (the Relationship file's answer lists), for every section. */
   options: { tasks: { code: string; label: string }[]; journeyChannels: { code: string; label: string }[] };
   filters: CsmExtensionFilters;
@@ -51,14 +54,15 @@ export function parseExtensionRequest(raw: unknown): { ok: true; section: CsmExt
   const r = raw as Record<string, unknown>;
   if (!CSM_EXTENSION_SECTIONS.includes(r.section as CsmExtensionSectionId)) return bad;
   const code = (v: unknown): string | null | undefined => (v === null || v === undefined || v === "" ? null : typeof v === "string" && CODE.test(v) ? v : undefined);
-  const filters = { company: code(r.company), task: code(r.task), journeyChannel: code(r.journeyChannel) };
+  const filters = { company: code(r.company), task: code(r.task), journeyChannel: code(r.journeyChannel), dataWave: code(r.dataWave) };
   if (Object.values(filters).some((v) => v === undefined)) return bad;
   return { ok: true, section: r.section as CsmExtensionSectionId, filters: filters as CsmExtensionFilters };
 }
 
 /** A channel's name: the Channel file's answer list, else the Relationship file's journey channel wording. */
 function channelNamesOf(relationship: CsmFile | null, channel: CsmFile | null): { code: string; label: string }[] {
-  const fromChannel = channel?.variables.find((v) => v.name === "channel")?.valueLabels;
+  // A Channel file's channel answer list, else a combined file's block channel list (ch01_channel holds the list).
+  const fromChannel = channel?.variables.find((v) => v.name === "channel")?.valueLabels ?? relationship?.variables.find((v) => v.name === "ch01_channel")?.valueLabels;
   if (fromChannel && Object.keys(fromChannel).length) return Object.entries(fromChannel).map(([code, label]) => ({ code, label }));
   const out: { code: string; label: string }[] = [];
   for (const c of ["1", "2", "3", "4"]) {
@@ -96,30 +100,40 @@ export async function loadCsmExtension(tenantId: string, runId: string, document
   const channelNames = channelNamesOf(rel.file, ch.file);
   const channelName = (code: string) => channelNames.find((c) => c.code === code)?.label ?? `Channel ${code}`;
 
+  // A pooled All_Waves file is read one wave at a time (the packs: default to one wave; never pooled silently): the
+  // requested wave, else the latest the data hold. A wave file holds one wave and needs no wave filter.
+  const pooled = wave.dataWaves.length > 1;
+  if (filters.dataWave && !wave.dataWaves.includes(filters.dataWave)) throw new Error(`Wave ${filters.dataWave} is not in the wave column of these files (${wave.dataWaves.join(", ") || "none"}).`);
+  const dataWave = pooled ? (filters.dataWave ?? [...wave.dataWaves].sort((a, b) => Number(a) - Number(b)).at(-1)!) : null;
+  filters = { ...filters, dataWave };
+
   const rf = rel.file ? relationshipFields(rel.file.variables) : null;
   const options = {
     tasks: rf && rf.task.status === "found" ? rf.task.answers : [],
     journeyChannels: rf ? rf.journeyChannels.flatMap((x, i) => (x.status === "found" ? [{ code: String(i + 1), label: channelName(String(i + 1)) }] : [])) : [],
   };
-  const out: CsmExtensionView = { options, wave: wave.wave, openGrain: wave.open.grain, openReason: wave.open.reason ?? null, weighted, files, absent: wave.absent, linkProblems: wave.linkProblems, notUsed: wave.notUsed, channelNames, filters, section };
+  const out: CsmExtensionView = { options, dataWaves: wave.dataWaves, wave: wave.wave, openGrain: wave.open.grain, openReason: wave.open.reason ?? null, weighted, files, absent: wave.absent, linkProblems: wave.linkProblems, notUsed: wave.notUsed, channelNames, filters, section };
   const relReason = absentOf("relationship", rel) ?? "No Relationship file is linked to this wave.";
   if (section === "journey") {
     out.journey = rel.file ? await loadJourneySection(tenantId, runId, rel.file, weighting(rel.file), filters, channelName) : { status: "not_measured", reason: relReason };
   } else if (section === "experience") {
-    const pop = rel.file ? journeyPopulation(rel.file, filters, channelName) : { journeyFilters: [], text: "", select: () => false };
+    const pop = rel.file ? journeyPopulation(rel.file, filters, channelName) : { companyFilters: [], journeyFilters: [], text: "", select: () => false };
+    const inWave = (r: Row) => dataWave === null || String(r.wave) === dataWave;
+    const channelBase = [...(dataWave !== null ? [codeFilter("wave", dataWave)] : []), ...(filters.company !== null ? [codeFilter("company", filters.company)] : [])];
     out.experience = await loadExperienceSection(
       tenantId,
       runId,
       rel.file,
       ch.file,
       weighting,
-      { company: filters.company, journeyFilters: pop.journeyFilters, populationText: pop.text, select: pop.select },
-      { company: filters.company, channelName },
+      { companyFilters: pop.companyFilters, journeyFilters: pop.journeyFilters, populationText: pop.text, select: pop.select },
+      { company: filters.company, baseFilters: channelBase, select: (r) => inWave(r) && (filters.company === null || String(r.company) === filters.company), channelName },
       { relationship: relReason, channel: absentOf("channel", ch) },
+      wave.channel === null,
     );
   } else {
     const benchmark = rel.file ? await loadBenchmark(tenantId, runId, rel.file, weighting(rel.file), journeyPopulation(rel.file, { ...filters, journeyChannel: null }, channelName).journeyFilters, channelName) : { status: "not_measured" as const, reason: relReason };
-    const noncustomer = await loadNoncustomerSection(tenantId, runId, nc.file, rel.file, rel.file ? weighting(rel.file) : null, absentOf("noncustomer", nc));
+    const noncustomer = await loadNoncustomerSection(tenantId, runId, nc.file, rel.file, rel.file ? weighting(rel.file) : null, absentOf("noncustomer", nc), dataWave);
     out.competitive = { benchmark, noncustomer };
   }
   return out;

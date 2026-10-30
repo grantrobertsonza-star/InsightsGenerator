@@ -146,3 +146,57 @@ test("CSM extension: journey, emotions and preference, competitive and noncustom
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// The combined pack (company and channel answers on one customer row, channel blocks ch01_ to ch04_): one file,
+// labelled Wave 1. The Company tiles read the company questions only; the channel emotions come from the blocks.
+test("CSM extension: the combined company and channel file", async ({ page }, testInfo) => {
+  test.setTimeout(15 * 60_000);
+  const combined = path.resolve("fixtures/packs-2026-10-30/csm-combined/banking");
+  const csv = readFileSync(path.join(combined, "reference", "Reference_Metrics.csv"), "utf8").replace(/^﻿/, "").split(/\r?\n/).filter(Boolean);
+  const cols = csv[0].split(",");
+  const rows = csv.slice(1).map((l) => Object.fromEntries(l.split(",").map((c, i) => [cols[i], c])));
+  const cref = (section, source, statistic, channel = "0") => Number(rows.find((r) => r.wave === "1" && r.section === section && r.company === "0" && r.channel === channel && r.source_variable === source && r.statistic === statistic).expected);
+  const name = "Banking_CSM_Combined_Wave_1.xlsx";
+  const dir = mkdtempSync(path.join(tmpdir(), "csm-comb-"));
+  const shot = async (n) => {
+    if (process.env.SHOT_DIR) await page.screenshot({ path: path.join(process.env.SHOT_DIR, n) });
+  };
+  try {
+    const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
+    const ui = await bind({ page, target, testInfo });
+    const run = await ui.createRun({ name: `csm-combined-${Date.now()}` });
+    await page.goto(`${run.url}?section=upload`, { waitUntil: "networkidle" });
+    const file = path.join(dir, name);
+    copyFileSync(path.join(combined, "data", name), file);
+    await addFiles(page, [file], "Raw data");
+    await expect(page.getByTestId("add-files-error")).toHaveCount(0);
+    await page.getByRole("button", { name: /^Import data/ }).first().click();
+    const setup = await openSource(page, name, "Setup");
+    const wave = setup.getByLabel(`Wave: ${name}`);
+    await expect(wave).toBeEnabled({ timeout: 3 * 60_000 });
+    await wave.fill("Wave 1");
+    await wave.blur();
+    await expect(async () => {
+      await page.reload({ waitUntil: "networkidle" });
+      await page.getByRole("button", { name: /^Import data/ }).first().click();
+      const again = await openSource(page, name, "Setup");
+      await expect(again.getByLabel(`Wave: ${name}`)).toHaveValue("Wave 1", { timeout: 10_000 });
+    }).toPass({ timeout: 4 * 60_000 });
+    const section = () => page.getByTestId("analytics-section").filter({ visible: true });
+    await page.goto(run.url, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /^Analytics/ }).first().click();
+    await section().getByTestId("analytics-file-select").selectOption({ label: `Wave 1: ${name}` });
+    await section().getByTestId("tracker-dashboards").getByRole("button", { name: /^CSM dashboard/ }).click({ timeout: 60_000 });
+    const dash = page.getByRole("dialog", { name: "CSM dashboard" });
+    await expect(dash.getByTestId("tracker-csm-tile").filter({ hasText: "Overall satisfaction" })).toContainText(`${cref("Company", "company_csat5", "t2b").toFixed(1)}%`, { timeout: 4 * 60_000 });
+    await shot("08-combined-company.png");
+    await dash.getByRole("tab", { name: "Emotions and preference" }).click();
+    const e = dash.getByTestId("csmx-section-experience");
+    await expect(e.getByTestId("csmx-channel-emotions")).toContainText("Channel blocks of the combined file", { timeout: 5 * 60_000 });
+    await expect(e.locator('[data-testid="csmx-channel-emotion-table"] [data-emotion="reassured"]')).toContainText(cref("Channel", "channel_reassured5", "mean5").toFixed(2));
+    await expect(e.locator('[data-testid="csmx-journey-emotion-table"] [data-emotion="angry"]')).toContainText(cref("Company", "journey_angry5", "mean5").toFixed(2));
+    await shot("09-combined-emotions.png");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

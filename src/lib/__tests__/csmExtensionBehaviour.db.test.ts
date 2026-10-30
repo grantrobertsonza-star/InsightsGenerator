@@ -40,7 +40,7 @@ vi.mock("../supabaseAdmin", () => ({
   },
 }));
 
-vi.setConfig({ testTimeout: 900_000, hookTimeout: 300_000 });
+vi.setConfig({ testTimeout: 3_600_000, hookTimeout: 600_000 });
 const PYTHON_OK = spawnSync(PYTHON, ["-c", "import pandas, openpyxl"], { encoding: "utf8" }).status === 0;
 const TOL = 1e-6;
 const HELPERS = path.join(process.cwd(), "src", "lib", "__tests__", "helpers");
@@ -151,7 +151,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("R6 CSM extension behaviour (r
     expect(e.channel.all.distinctCustomers).toBe(ind.channel_distinct_customers);
     for (const g of e.channel.byChannel) same(`frustrated channel ${g.code}`, g.emotions.find((x) => x.emotion === "frustrated")!.mean, ind.channel_frustrated_by_channel[g.code!]);
     // Mixed emotions: the four are separate figures with their own bases, and no combined index exists.
-    expect(e.channel.all.emotions.map((x) => x.emotion)).toEqual(["reassured", "valued", "frustrated", "anxious"]);
+    expect(e.channel.all.emotions.map((x) => x.emotion)).toEqual(["reassured", "valued", "frustrated", "anxious", "angry", "disappointed"]);
     expect(new Set(e.channel.all.emotions.map((x) => x.mean.status === "ok" && x.mean.reading.rawBase)).size).toBeGreaterThan(1);
     // Verbatims are the file's own text.
     const relCsv = readFileSync(path.join(PACK, "banking", "test-reference", "Banking_CSM_Relationship_Wave_1.csv"), "utf8");

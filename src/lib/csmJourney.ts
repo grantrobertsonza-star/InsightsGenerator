@@ -26,7 +26,8 @@ import { found, relationshipFields, type Field } from "./csmExtensionRoles";
 import type { CsmFile, Row } from "./csmExtensionKeys";
 import { codeFilter, codeCounts, distributionOf, figureOf, rangeFilter, readCountMean, tableOrReason, tabulate, type CsmDistribution, type CsmFigure } from "./csmExtensionMetrics";
 
-export type JourneyFilters = { company: string | null; task: string | null; journeyChannel: string | null };
+/** dataWave: the wave read from a pooled All_Waves file (null for a wave file, which holds one wave). */
+export type JourneyFilters = { company: string | null; task: string | null; journeyChannel: string | null; dataWave?: string | null };
 
 export type PathRow = { path: string; text: string; contacts: number; share: number; weighted: number; raw: number };
 
@@ -170,7 +171,9 @@ export function journeyPopulation(file: CsmFile, filters: JourneyFilters, channe
   }
   if (filters.journeyChannel !== null && !["1", "2", "3", "4"].includes(filters.journeyChannel)) throw new Error(`Channel code ${filters.journeyChannel} is not a journey channel.`);
   if (filters.journeyChannel !== null && f.journeyChannels[Number(filters.journeyChannel) - 1].status !== "found") throw new Error(`The file has no journey_channel_c0${filters.journeyChannel}, so the channel filter cannot be applied.`);
-  const companyFilters: CrosstabFilter[] = filters.company !== null ? [codeFilter("company", filters.company)] : [];
+  // The customers of one wave (a pooled file) and one company: every population of every section starts here.
+  const dataWave = filters.dataWave ?? null;
+  const companyFilters: CrosstabFilter[] = [...(dataWave !== null ? [codeFilter("wave", dataWave)] : []), ...(filters.company !== null ? [codeFilter("company", filters.company)] : [])];
   const recentVar = found(f.recent);
   const journeyFilters: CrosstabFilter[] = [
     ...(recentVar ? [codeFilter(recentVar, 1)] : []),
@@ -180,6 +183,7 @@ export function journeyPopulation(file: CsmFile, filters: JourneyFilters, channe
   ];
   const text = [
     "Recent tasks (journey_recent30 = 1)",
+    dataWave !== null ? `wave ${dataWave} of the pooled file` : null,
     filters.company !== null ? `company ${labelOf(f.company, filters.company)}` : null,
     filters.task !== null ? `task ${labelOf(f.task, filters.task)}` : null,
     filters.journeyChannel !== null ? `tasks that used ${channelName(filters.journeyChannel)}` : null,
@@ -187,6 +191,7 @@ export function journeyPopulation(file: CsmFile, filters: JourneyFilters, channe
     .filter(Boolean)
     .join(", ");
   const select = (r: Row) =>
+    (dataWave === null || String(r.wave) === dataWave) &&
     (filters.company === null || String(r.company) === filters.company) &&
     (filters.task === null || String(r.journey_task) === filters.task) &&
     (filters.journeyChannel === null || String(r[`journey_channel_c0${filters.journeyChannel}`]) === "1");

@@ -1,10 +1,11 @@
 // R6 CSM extension: emotions, experience-led preference and reasons for staying (claude/csm-extension.md,
 // "Emotions, preference and reasons for staying").
-//   - Emotions at two grains, never mixed: the journey grain (Relationship file, recent tasks, one customer once)
-//     and the channel grain (Channel file, latest experience per customer per channel; a customer with several
-//     channels counts once per channel, so event n and distinct customers are both shown). Reassured, valued,
-//     frustrated and anxious are each their own figure on their own valid 1 to 5 base (mean and the five intensity
-//     labels); they are never inverted or combined into an index.
+//   - Emotions at two grains, never mixed: the journey grain (Relationship or combined file, recent tasks, one
+//     customer once) and the channel grain (a Channel file, or a combined file's channel blocks: the latest experience
+//     per customer per channel; a customer with several channels counts once per channel, so records and distinct
+//     customers are both shown). Reassured, valued, frustrated, anxious, angry and disappointed are each their own
+//     figure on their own valid 1 to 5 base (mean and the five intensity labels); never inverted or combined into an
+//     index, and high anger or disappointment is never favourable.
 //   - Preference is agreement (1 to 5): top two is Agree or Strongly agree, not satisfaction. Each is labelled by
 //     its recall and grain: experiences in the past three months (customer), the whole recent task (journey), this
 //     latest channel experience (channel record).
@@ -14,12 +15,15 @@
 //     genuine preference who also cite each constraint. Continuing use is never called loyalty.
 //   - Verbatims are the file's own text beside the record's own ratings, never written or edited here.
 import type { CrosstabFilter } from "./parseStatsFile";
-import { EMOTIONS, EMOTION_TEXT, channelFields, found, relationshipFields, type Emotion, type Field } from "./csmExtensionRoles";
+import { EMOTIONS, EMOTION_TEXT, NEGATIVE_EMOTIONS, blockPrefix, channelBlocksOf, channelFields, found, relationshipFields, type Emotion, type Field } from "./csmExtensionRoles";
 import type { CsmFile, Row } from "./csmExtensionKeys";
-import { codeFilter, columnOf, distributionOf, figureOf, tableOrReason, tabulate, type ColumnRef, type CsmDistribution, type CsmFigure } from "./csmExtensionMetrics";
+import { columnOf, distributionOf, figureOf, readDistribution, readStatistic, tableOrReason, tabulate, type ColumnRef, type CsmDistribution, type CsmFigure } from "./csmExtensionMetrics";
 import type { CrosstabResult } from "./parseStatsFile";
 
-export type EmotionFigure = { emotion: Emotion; mean: CsmFigure; distribution: CsmDistribution };
+/** high: Very or Extremely (4 or 5) among valid 1 to 5; for a negative emotion a high negative intensity, never a
+ * favourable outcome. */
+export type EmotionFigure = { emotion: Emotion; mean: CsmFigure; high: CsmFigure; distribution: CsmDistribution };
+const highMeta = (grain: string, e: Emotion) => ({ id: `${grain}-${e}-high`, label: `${EMOTION_TEXT[e]}: very or extremely`, definition: `Very or Extremely ${e} (4 or 5) among valid 1 to 5 answers to this item, ${grain} grain.${NEGATIVE_EMOTIONS.includes(e) ? " A high negative intensity, not a favourable outcome." : ""}` });
 export type Verbatim = { id: string; text: string; ratings: { emotion: Emotion; code: string | null; label: string | null }[]; context: string };
 export type ChannelGrain = {
   code: string | null;
@@ -33,7 +37,7 @@ export type ChannelGrain = {
 
 export type ExperienceSection = {
   journey: { status: "ok"; populationText: string; emotions: EmotionFigure[]; preference: CsmFigure; verbatims: Verbatim[] } | { status: "not_measured"; reason: string };
-  channel: { status: "ok"; filename: string; all: ChannelGrain; byChannel: ChannelGrain[]; verbatims: Verbatim[] } | { status: "not_measured"; reason: string };
+  channel: { status: "ok"; filename: string; /** Where the channel records come from. */ source: string; all: ChannelGrain; byChannel: ChannelGrain[]; verbatims: Verbatim[] } | { status: "not_measured"; reason: string };
   experiencePreference: CsmFigure;
   reasons: {
     shares: CsmFigure[];
@@ -52,6 +56,7 @@ function emotionFigures(fields: Record<Emotion, Field>, table: CrosstabResult | 
   return EMOTIONS.map((e) => ({
     emotion: e,
     mean: figureOf({ id: `${grain}-${e}`, label: EMOTION_TEXT[e], definition: `Mean intensity of feeling ${e} (1 Not at all to 5 Extremely) among valid answers to this item only, ${grain} grain.` }, fields[e], table, "mean5", column),
+    high: figureOf(highMeta(grain, e), fields[e], table, "t2b", column),
     distribution: distributionOf({ id: `${grain}-${e}-dist`, label: EMOTION_TEXT[e], definition: `Share at each intensity among valid answers to this item, ${grain} grain.` }, fields[e], table, INTENSITY, column),
   }));
 }
@@ -85,9 +90,12 @@ export async function loadExperienceSection(
   relationship: CsmFile | null,
   channel: CsmFile | null,
   weighting: (f: CsmFile) => string | null,
-  journeyFilters: { company: string | null; journeyFilters: CrosstabFilter[]; populationText: string; select: (r: Row) => boolean },
-  channelFilter: { company: string | null; channelName: (code: string) => string },
+  journeyFilters: { companyFilters: CrosstabFilter[]; journeyFilters: CrosstabFilter[]; populationText: string; select: (r: Row) => boolean },
+  channelFilter: ChannelFilter,
   absentReason: { relationship?: string; channel?: string },
+  /** False when a separate Channel file is labelled with the same wave as a combined file: the blocks are then not
+   * used either (one representation, never both or a silent choice between them). */
+  blocksAllowed = true,
 ): Promise<ExperienceSection> {
   const notMeasured = (reason: string) => ({ status: "not_measured" as const, reason });
   const rf = relationship ? relationshipFields(relationship.variables) : null;
@@ -112,44 +120,12 @@ export async function loadExperienceSection(
     }
   }
 
-  // Channel grain.
+  // Channel grain: a separate Channel file, or the channel blocks of a combined file (never both: the wave's files
+  // refuse that pairing before this point).
   let channelOut: ExperienceSection["channel"] = notMeasured(absentReason.channel ?? "No Channel file is linked to this wave.");
-  if (channel) {
-    const cf = channelFields(channel.variables);
-    const vars = [...EMOTIONS.map((e) => found(cf.emotions[e])), found(cf.preference)].filter((x): x is string => !!x);
-    if (cf.channel.status !== "found") channelOut = notMeasured(cf.channel.reason);
-    else if (vars.length === 0) channelOut = notMeasured("No channel emotion or channel preference question is in this file.");
-    else {
-      if (channelFilter.company !== null && !(cf.company.status === "found" && cf.company.answers.some((a) => a.code === channelFilter.company))) {
-        throw new Error(`Answer code ${channelFilter.company} is not in the company answer list of ${channel.filename}.`);
-      }
-      const filters = channelFilter.company !== null ? [codeFilter("company", channelFilter.company)] : [];
-      const t = await tableOrReason(() => tabulate(tenantId, runId, channel.documentId, vars, weighting(channel), filters, "channel"), "No channel record meets the company filter");
-      const prefMeta = meta("channelPreference", "This channel experience gives a reason to choose the provider (channel record)", "Agree or Strongly agree (4 or 5) among valid 1 to 5 answers about this latest channel experience. Agreement, not satisfaction.");
-      const inCompany = (r: Row) => channelFilter.company === null || String(r.company) === channelFilter.company;
-      const counts = (code: string | null) => {
-        const rows = channel.rows.filter((r) => inCompany(r) && (code === null || String(r.channel) === code) && EMOTIONS.some((e) => {
-          const v = cf.emotions[e].status === "found" ? r[(cf.emotions[e] as { variable: string }).variable] : null;
-          return typeof v === "number" && v >= 1 && v <= 5;
-        }));
-        return { records: rows.length, distinctCustomers: new Set(rows.map((r) => String(r.respondent_id))).size };
-      };
-      const grain = (code: string | null, label: string, column: ColumnRef | null): ChannelGrain => {
-        const tbl = column === null ? { notMeasured: `No ${label} records in this population.` } : t;
-        const col = column ?? "total";
-        return { code, label, emotions: emotionFigures(cf.emotions, tbl, "channel", col), preference: figureOf(prefMeta, cf.preference, tbl, "t2b", col), ...counts(code) };
-      };
-      const byChannel = cf.channel.answers.map((a) => grain(a.code, channelFilter.channelName(a.code), "questions" in t ? columnOf(t, "channel", a.code) : "total"));
-      const why = found(cf.emotionWhy);
-      channelOut = {
-        status: "ok",
-        filename: channel.filename,
-        all: grain(null, "All channel records", "total"),
-        byChannel,
-        verbatims: why ? verbatimsOf(channel.rows, why, cf.emotions, inCompany, (r) => `Latest ${channelFilter.channelName(String(r.channel))} experience`) : [],
-      };
-    }
-  }
+  const blocks = relationship ? channelBlocksOf(relationship.variables.map((v) => v.name)) : [];
+  if (channel) channelOut = await channelFileGrain(tenantId, runId, channel, weighting(channel), channelFilter);
+  else if (relationship && blocks.length && blocksAllowed) channelOut = await channelBlockGrain(tenantId, runId, relationship, blocks, weighting(relationship), channelFilter);
 
   // Customer grain: experience-led preference and reasons for staying (every current customer).
   const reasonsDefault: ExperienceSection["reasons"] = { shares: [], none: { ...meta("stayNone", "None of these", ""), status: "not_measured", reason: "Not measured." }, dontKnow: { ...meta("stayDk", "Do not know", ""), status: "not_measured", reason: "Not measured." }, primary: { ...meta("stayPrimary", "Main reason", ""), status: "not_measured", reason: "Not measured." }, coexist: [] };
@@ -157,7 +133,7 @@ export async function loadExperienceSection(
     const reason = absentReason.relationship ?? "No Relationship file is linked to this wave.";
     return { journey, channel: channelOut, experiencePreference: { ...meta("experiencePreference", "Experiences give a reason to choose the provider", ""), status: "not_measured", reason }, reasons: reasonsDefault };
   }
-  const companyFilters = journeyFilters.company !== null ? [codeFilter("company", journeyFilters.company)] : [];
+  const companyFilters = journeyFilters.companyFilters;
   const reasonVars = [...rf.stayReasons, rf.stayNone, rf.stayDk, rf.stayPrimary, rf.experiencePreference].map(found).filter((x): x is string => !!x);
   const t = reasonVars.length ? await tableOrReason(() => tabulate(tenantId, runId, relationship.documentId, reasonVars, weighting(relationship), companyFilters), "No customers meet the company filter") : { notMeasured: "No reasons-for-staying or experience preference question is in this file." };
   const preferenceVar = found(rf.stayReasons[0]);
@@ -186,5 +162,106 @@ export async function loadExperienceSection(
         ),
       ),
     },
+  };
+}
+
+/** The channel grain's population: the company and, for a pooled file, the wave, by raw code (engine filters), and the
+ * same rule for the rows (records, distinct customers, verbatims). */
+export type ChannelFilter = { company: string | null; baseFilters: CrosstabFilter[]; select: (r: Row) => boolean; channelName: (code: string) => string };
+
+const PREFERENCE_META = {
+  id: "channelPreference",
+  label: "This channel experience gives a reason to choose the provider (channel record)",
+  definition: "Agree or Strongly agree (4 or 5) among valid 1 to 5 answers about this latest channel experience. Agreement, not satisfaction.",
+};
+const validIntensity = (v: unknown) => typeof v === "number" && v >= 1 && v <= 5;
+
+async function channelFileGrain(tenantId: string, runId: string, channel: CsmFile, weightVar: string | null, cfilter: ChannelFilter): Promise<ExperienceSection["channel"]> {
+  const cf = channelFields(channel.variables);
+  const vars = [...EMOTIONS.map((e) => found(cf.emotions[e])), found(cf.preference)].filter((x): x is string => !!x);
+  if (cf.channel.status !== "found") return { status: "not_measured", reason: cf.channel.reason };
+  if (vars.length === 0) return { status: "not_measured", reason: "No channel emotion or channel preference question is in this file." };
+  if (cfilter.company !== null && !(cf.company.status === "found" && cf.company.answers.some((a) => a.code === cfilter.company))) {
+    throw new Error(`Answer code ${cfilter.company} is not in the company answer list of ${channel.filename}.`);
+  }
+  const t = await tableOrReason(() => tabulate(tenantId, runId, channel.documentId, vars, weightVar, cfilter.baseFilters, "channel"), "No channel record meets the company filter");
+  const counts = (code: string | null) => {
+    const rows = channel.rows.filter((r) => cfilter.select(r) && (code === null || String(r.channel) === code) && EMOTIONS.some((e) => cf.emotions[e].status === "found" && validIntensity(r[(cf.emotions[e] as { variable: string }).variable])));
+    return { records: rows.length, distinctCustomers: new Set(rows.map((r) => `${String(r.wave ?? "")}|${String(r.respondent_id)}`)).size };
+  };
+  const grain = (code: string | null, label: string, column: ColumnRef | null): ChannelGrain => {
+    const tbl = column === null ? { notMeasured: `No ${label} records in this population.` } : t;
+    const col = column ?? "total";
+    return { code, label, emotions: emotionFigures(cf.emotions, tbl, "channel", col), preference: figureOf(PREFERENCE_META, cf.preference, tbl, "t2b", col), ...counts(code) };
+  };
+  const why = found(cf.emotionWhy);
+  return {
+    status: "ok",
+    filename: channel.filename,
+    source: "Channel file (one record per customer per channel)",
+    all: grain(null, "All channel records", "total"),
+    byChannel: cf.channel.answers.map((a) => grain(a.code, cfilter.channelName(a.code), "questions" in t ? columnOf(t, "channel", a.code) : "total")),
+    verbatims: why ? verbatimsOf(channel.rows, why, cf.emotions, cfilter.select, (r) => `Latest ${cfilter.channelName(String(r.channel))} experience`) : [],
+  };
+}
+
+/**
+ * The channel grain from a combined file's channel blocks (the combined pack: one customer row with ch01_ to ch04_
+ * blocks). Channel k is block ch0k_ (its users with a valid answer, the customer's own weight once); all channels
+ * pools the blocks code by code, so a customer using several channels counts once per channel, the same unit as a
+ * Channel file. The blocks are never joined into a journey.
+ */
+async function channelBlockGrain(tenantId: string, runId: string, file: CsmFile, blocks: string[], weightVar: string | null, cfilter: ChannelFilter): Promise<ExperienceSection["channel"]> {
+  const byBlock = blocks.map((k) => ({ k, cf: channelFields(file.variables, blockPrefix(k)) }));
+  const vars = byBlock.flatMap(({ cf }) => [...EMOTIONS.map((e) => found(cf.emotions[e])), found(cf.preference)]).filter((x): x is string => !!x);
+  if (vars.length === 0) return { status: "not_measured", reason: "No channel emotion or channel preference question is in this file's channel blocks." };
+  const t = await tableOrReason(() => tabulate(tenantId, runId, file.documentId, vars, weightVar, cfilter.baseFilters), "No customer meets the company filter");
+  const pooledFigure = (meta: { id: string; label: string; definition: string }, fields: Field[], statistic: "mean5" | "t2b", tbl: typeof t): CsmFigure => {
+    const present = fields.filter((f): f is Extract<Field, { status: "found" }> => f.status === "found");
+    if (present.length === 0) return { ...meta, status: "not_measured", reason: fields[0]?.status === "not_measured" ? fields[0].reason : "Not in this file." };
+    if (!("questions" in tbl)) return "notMeasured" in tbl ? { ...meta, status: "not_measured", reason: tbl.notMeasured } : { ...meta, status: "failed", error: tbl.failed };
+    const qs = present.map((f) => tbl.questions.find((q) => q.key === f.variable)).filter((q): q is NonNullable<typeof q> => !!q);
+    if (qs.length !== present.length) return { ...meta, status: "failed", error: "A channel block's question was not tabulated." };
+    return { ...meta, status: "ok", variable: present.map((f) => f.variable).join(" + "), reading: readStatistic(qs, "total", statistic) };
+  };
+  const pooledDistribution = (meta: { id: string; label: string; definition: string }, fields: Field[], tbl: typeof t): CsmDistribution => {
+    const present = fields.filter((f): f is Extract<Field, { status: "found" }> => f.status === "found");
+    if (present.length === 0 || !("questions" in tbl)) return { ...meta, status: "not_measured", reason: present.length === 0 ? "Not in this file." : "notMeasured" in tbl ? tbl.notMeasured : (tbl as { failed: string }).failed };
+    const qs = present.map((f) => tbl.questions.find((q) => q.key === f.variable)).filter((q): q is NonNullable<typeof q> => !!q);
+    return { ...meta, status: "ok", variable: present.map((f) => f.variable).join(" + "), ...readDistribution(qs, "total", INTENSITY) };
+  };
+  const grainOf = (code: string | null, label: string, parts: typeof byBlock): ChannelGrain => {
+    const emotions = EMOTIONS.map((e) => ({
+      emotion: e,
+      mean: pooledFigure({ id: `channel-${e}`, label: EMOTION_TEXT[e], definition: `Mean intensity of feeling ${e} (1 Not at all to 5 Extremely) among valid answers to this item only, latest channel experience (channel blocks of the combined file).` }, parts.map((p) => p.cf.emotions[e]), "mean5", t),
+      high: pooledFigure(highMeta("channel", e), parts.map((p) => p.cf.emotions[e]), "t2b", t),
+      distribution: pooledDistribution({ id: `channel-${e}-dist`, label: EMOTION_TEXT[e], definition: "Share at each intensity among valid answers, latest channel experience." }, parts.map((p) => p.cf.emotions[e]), t),
+    }));
+    const preference = pooledFigure(PREFERENCE_META, parts.map((p) => p.cf.preference), "t2b", t);
+    let records = 0;
+    const people = new Set<string>();
+    for (const r of file.rows) {
+      if (!cfilter.select(r)) continue;
+      for (const p of parts) {
+        if (EMOTIONS.some((e) => p.cf.emotions[e].status === "found" && validIntensity(r[(p.cf.emotions[e] as { variable: string }).variable]))) {
+          records++;
+          people.add(`${String(r.wave ?? "")}|${String(r.respondent_id)}`);
+        }
+      }
+    }
+    return { code, label, emotions, preference, records, distinctCustomers: people.size };
+  };
+  const verbatims: Verbatim[] = [];
+  for (const { k, cf } of byBlock) {
+    const why = found(cf.emotionWhy);
+    if (why) verbatims.push(...verbatimsOf(file.rows, why, cf.emotions, cfilter.select, () => `Latest ${cfilter.channelName(k)} experience`).slice(0, 2));
+  }
+  return {
+    status: "ok",
+    filename: file.filename,
+    source: "Channel blocks of the combined file (one block per customer per used channel)",
+    all: grainOf(null, "All channel experiences", byBlock),
+    byChannel: byBlock.map((b) => grainOf(b.k, cfilter.channelName(b.k), [b])),
+    verbatims,
   };
 }

@@ -48,3 +48,52 @@ export async function insertPack(
   }
   return { run, docs };
 }
+
+/** The combined pack (company and channel answers on one customer row; fixtures/packs-2026-10-30/csm-combined). */
+export const COMBINED = path.join(process.cwd(), "fixtures", "packs-2026-10-30", "csm-combined");
+export type CombinedRef = { wave: number; section: string; company: number; channel: number; variable: string; statistic: string; expected: number | null; numerator: number; weighted_base: number; raw_base: number; unit: string; record_basis: string; source_variable: string };
+/** reference/Reference_Metrics.csv of a combined sector, parsed (numbers as numbers, blank expected as null). */
+export function combinedReferences(sector: Sector): CombinedRef[] {
+  const text = readFileSync(path.join(COMBINED, sector, "reference", "Reference_Metrics.csv"), "utf8").replace(/^\uFEFF/, "");
+  const [head, ...lines] = text.split(/\r?\n/).filter((l) => l.length > 0);
+  const cols = head.split(",");
+  return lines.map((line) => {
+    const cells: string[] = [];
+    let cur = "";
+    let quoted = false;
+    for (const ch of line) {
+      if (ch === '"') quoted = !quoted;
+      else if (ch === "," && !quoted) {
+        cells.push(cur);
+        cur = "";
+      } else cur += ch;
+    }
+    cells.push(cur);
+    const r = Object.fromEntries(cols.map((c, i) => [c, cells[i]]));
+    const num = (k: string) => (r[k] === "" || r[k] === undefined ? null : Number(r[k]));
+    return { wave: num("wave")!, section: r.section, company: num("company")!, channel: num("channel")!, variable: r.variable, statistic: r.statistic, expected: num("expected"), numerator: num("numerator")!, weighted_base: num("weighted_base")!, raw_base: num("raw_base")!, unit: r.unit, record_basis: r.record_basis, source_variable: r.source_variable };
+  });
+}
+
+/** Any list of files inserted as raw data files of one new project, each with its wave label. */
+export async function insertFiles(db: DisposableDb, tenant: string, storage: Map<string, Buffer>, projectName: string, files: { file: string; wave: string; bytes?: Buffer }[]): Promise<{ run: string; docs: string[] }> {
+  const q = async (sql: string, p: unknown[] = []) => (await db.pool.query(sql, p)).rows;
+  const run = (await q("insert into runs (tenant_id, project_name) values ($1, $2) returning id", [tenant, projectName]))[0].id as string;
+  const docs: string[] = [];
+  for (const [i, f] of files.entries()) {
+    const name = path.basename(f.file);
+    const key = `${tenant}/${run}/${randomUUID()}-${name}`;
+    storage.set(key, f.bytes ?? readFileSync(f.file));
+    docs.push((await q(
+      `insert into documents (tenant_id, run_id, kind, ingestion_type, source_filename, storage_path, data_setup, uploaded_at)
+       values ($1, $2, 'table', 'raw', $3, $4, $5, now() + ($6 || ' minutes')::interval) returning id`,
+      [tenant, run, name, key, JSON.stringify({ layout: "rows_are_cases", unit: "respondents", method: "survey", accepted: true, wave: f.wave, waveDate: null }), String(i)],
+    ))[0].id as string);
+  }
+  return { run, docs };
+}
+
+/** A combined sector's wave file and its noncustomer supplement. */
+export const combinedFile = (sector: Sector, wave: number | "all") =>
+  path.join(COMBINED, sector, "data", `${SECTORS[sector]}_CSM_Combined_${wave === "all" ? "All_Waves" : `Wave_${wave}`}.xlsx`);
+export const combinedNoncustomerFile = (sector: Sector, wave: number) => path.join(COMBINED, sector, "supplemental_noncustomers", `${SECTORS[sector]}_CSM_Noncustomer_Wave_${wave}.xlsx`);

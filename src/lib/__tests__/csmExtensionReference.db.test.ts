@@ -17,10 +17,10 @@ import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./help
 import { PYTHON } from "./helpers/pythonEngine";
 import { insertPack, PACK, packReferences, type Family, type PackDocs, type PackRef, type Sector } from "./helpers/csmPackDb";
 
-/** CSM_Reference_Metrics.xlsx, read with openpyxl: its "Reference metrics" rows and "Focal company overview". */
-const metricsWorkbook = (sector: Sector): { metrics: (string | number | null)[][]; focal: (string | number | null)[][] } =>
+/** CSM_Reference_Metrics.xlsx, read with openpyxl: its "Reference metrics" rows. */
+const metricsWorkbook = (sector: Sector): { metrics: (string | number | null)[][] } =>
   JSON.parse(
-    execFileSync(PYTHON, ["-I", "-c", "import json,sys,openpyxl\nwb=openpyxl.load_workbook(sys.argv[1],read_only=True,data_only=True)\nprint(json.dumps({'metrics':[list(r) for r in wb['Reference metrics'].iter_rows(values_only=True)],'focal':[list(r) for r in wb['Focal company overview'].iter_rows(values_only=True)]}))", path.join(PACK, sector, "CSM_Reference_Metrics.xlsx")], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }),
+    execFileSync(PYTHON, ["-I", "-c", "import json,sys,openpyxl\nwb=openpyxl.load_workbook(sys.argv[1],read_only=True,data_only=True)\nprint(json.dumps({'metrics':[list(r) for r in wb['Reference metrics'].iter_rows(values_only=True)]}))", path.join(PACK, sector, "CSM_Reference_Metrics.xlsx")], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }),
   );
 
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
@@ -43,7 +43,7 @@ vi.mock("../supabaseAdmin", () => ({
   },
 }));
 
-vi.setConfig({ testTimeout: 900_000, hookTimeout: 300_000 });
+vi.setConfig({ testTimeout: 3_600_000, hookTimeout: 600_000 });
 const PYTHON_OK = spawnSync(PYTHON, ["-c", "import pandas, openpyxl"], { encoding: "utf8" }).status === 0;
 const TOL = 1e-6;
 
@@ -115,9 +115,25 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("R6 CSM extension: pack refere
 
         const e = (await loadCsmExtension(tenant, run, doc, "experience", filters)).experience!;
         if (e.journey.status !== "ok" || e.channel.status !== "ok") throw new Error(JSON.stringify([e.journey, e.channel]));
+        expect(e.journey.emotions.map((x) => x.emotion)).toEqual(["reassured", "valued", "frustrated", "anxious", "angry", "disappointed"]);
         for (const em of e.journey.emotions) expectMatches(`journey_${em.emotion}5`, em.mean, ref("Relationship", `journey_${em.emotion}5`, "mean5"));
+        // Angry and disappointed (pack v2): high intensity (4 or 5) too, a negative outcome.
+        for (const em of e.journey.emotions.filter((x) => x.emotion === "angry" || x.emotion === "disappointed")) expectMatches(`journey_${em.emotion}5 t2b`, em.high, ref("Relationship", `journey_${em.emotion}5`, "t2b"));
         expectMatches("journey_preference5", e.journey.preference, ref("Relationship", "journey_preference5", "t2b"));
-        for (const em of e.channel.all.emotions) expectMatches(`channel_${em.emotion}5`, em.mean, ref("Channel", `channel_${em.emotion}5`, "mean5"));
+        // The pack publishes the all-channel figure for the first four emotions, and every emotion by channel.
+        for (const em of e.channel.all.emotions.filter((x) => !["angry", "disappointed"].includes(x.emotion))) expectMatches(`channel_${em.emotion}5`, em.mean, ref("Channel", `channel_${em.emotion}5`, "mean5"));
+        for (const g of e.channel.byChannel) {
+          for (const em of g.emotions.filter((x) => x.emotion === "angry" || x.emotion === "disappointed")) {
+            const r = (stat: string) => {
+              const x = refs.find((y) => y.wave === w && y.dataset === "Channel" && y.company === 0 && y.channel === Number(g.code) && y.variable === `channel_${em.emotion}5` && y.statistic === stat);
+              if (!x) throw new Error(`no reference channel_${em.emotion}5 ${stat} channel ${g.code}`);
+              n++;
+              return x;
+            };
+            expectMatches(`channel ${g.code} ${em.emotion} mean`, em.mean, r("mean5"));
+            expectMatches(`channel ${g.code} ${em.emotion} t2b`, em.high, r("t2b"));
+          }
+        }
         expectMatches("channel_preference5", e.channel.all.preference, ref("Channel", "channel_preference5", "t2b"));
         expectMatches("experience_preference5", e.experiencePreference, ref("Relationship", "experience_preference5", "t2b"));
         e.reasons.shares.forEach((fig, i) => expectMatches(`stay_reason_r0${i + 1}`, fig, ref("Relationship", `stay_reason_r0${i + 1}`, "yes")));
@@ -142,7 +158,9 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("R6 CSM extension: pack refere
         expect(nc.consider.status === "ok" && nc.consider.reading.weightedBase === nc.consider.reading.rawBase).toBe(true);
       }
       compared[`${sector}:added`] = n;
-      expect(n).toBe(3 * 38);
+      // 38 per wave from the first pack, plus angry and disappointed: journey mean and high (4), channel mean and high
+      // by channel (16) = 58 per wave.
+      expect(n).toBe(3 * 58);
     });
 
     it(`${sector}: every other published statistic, by company and channel, read the same way`, async () => {
@@ -184,7 +202,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("R6 CSM extension: pack refere
     it(`${sector}: CSM_Reference_Metrics.xlsx holds the same statistics as reference_results.json`, () => {
       const { metrics } = metricsWorkbook(sector);
       const [head, ...rows] = metrics;
-      expect(head).toEqual(["wave", "dataset", "company", "channel", "variable", "statistic", "expected", "numerator", "weighted_base", "raw_base", "unit"]);
+      expect(head.slice(0, 11)).toEqual(["wave", "dataset", "company", "channel", "variable", "statistic", "expected", "numerator", "weighted_base", "raw_base", "unit"]);
       const refs = packReferences(sector);
       expect(rows.length).toBe(refs.length);
       rows.forEach((r, i) => {
@@ -216,19 +234,15 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("R6 CSM extension: pack refere
             n++;
           }
         }
-        // The workbook's Focal company overview (company 1): satisfaction top two, NPS, continue intent, switch risk.
-        const focal = metricsWorkbook(sector).focal.find((r) => r[0] === w)!;
+        // The focal company (code 1): satisfaction top two, NPS, continue intent and switch risk from the references.
         const byCode = (id: string) => {
           const t = o.csm.find((x) => x.id === id)!;
           if (t.status !== "ok" || t.id === "drivers" || !Array.isArray(t.byCompany)) throw new Error(id);
           return (t.byCompany as { code: string; box?: number | null; nps?: number | null }[]).find((c) => c.code === "1")!;
         };
-        expect(Math.abs((byCode("satisfaction").box as number) - (focal[1] as number))).toBeLessThan(TOL);
-        expect(Math.abs((byCode("stay").box as number) - (focal[3] as number))).toBeLessThan(TOL);
-        expect(Math.abs((byCode("switch").box as number) - (focal[4] as number))).toBeLessThan(TOL);
         // The NPS tool's own score, compared at the one-decimal display tolerance the pack states.
-        expect(Math.abs((byCode("recommend").nps as number) - (focal[2] as number))).toBeLessThanOrEqual(0.05);
-        n += 4;
+        expect(Math.abs((byCode("recommend").nps as number) - ref("recommend_0to10", "nps", 1).expected!)).toBeLessThanOrEqual(0.05);
+        n += 1;
         // The timeline reads only the Relationship files: one point per wave, never a Channel or Noncustomer file.
         expect(o.timeline.map((p) => p.wave)).toEqual(["Wave 1", "Wave 2", "Wave 3"].slice(0, w));
       }

@@ -3,19 +3,20 @@
 // definition, the valid raw and weighted bases, the low-base flag and a data note. Pure, so the screen can build the
 // file from the figures it shows, and the rows equal the screen's figures by construction.
 //
-// Synthetic-data label: the CSM demonstration packs' file names follow "<Sector>_CSM_<Family>_Wave_<n>"; a section
+// Synthetic-data label: the CSM demonstration packs' file names follow "<Sector>_CSM_<Family>_Wave_<n>" or
+// "<Sector>_CSM_<Family>_All_Waves" (families Relationship, Channel, Noncustomer, Combined); a section
 // computed from such files is labelled "Synthetic demonstration data (CSM pack)". Other files carry no label, since
 // the files themselves do not say whether they are synthetic.
 import type { CsmExtensionView } from "./csmExtension";
 import type { CsmDistribution, CsmFigure } from "./csmExtensionMetrics";
 
 export const EXPORT_COLUMNS = [
-  "section", "figure", "label", "grain", "sample_type", "wave", "company_filter", "task_filter", "channel_filter", "population", "statistic", "value", "unit",
+  "section", "figure", "label", "grain", "sample_type", "wave", "data_wave", "company_filter", "task_filter", "channel_filter", "population", "statistic", "value", "unit",
   "raw_base", "weighted_base", "nonresponse_excluded", "low_base", "status", "reason", "definition", "source_file", "data_note",
 ] as const;
 export type ExportRow = Record<(typeof EXPORT_COLUMNS)[number], string>;
 
-const PACK_NAME = /_CSM_(Relationship|Channel|Noncustomer)_Wave_\d+\.xlsx$/i;
+const PACK_NAME = /_CSM_(Relationship|Channel|Noncustomer|Combined)_(Wave_\d+|All_Waves)\.xlsx$/i;
 const UNIT: Record<string, string> = { t2b: "percent", top: "percent", b2b: "percent", yes: "percent", ease: "percent", risk: "percent", nps: "score", mean5: "scale points (1 to 5)", mean7: "scale points (1 to 7)", mean_gap: "scale points" };
 const LOW: Record<string, string> = { ok: "", small: "below 50: interpret with care", very_small: "below 30: descriptive only" };
 
@@ -25,7 +26,7 @@ export function exportRows(view: CsmExtensionView): ExportRow[] {
   const note = (grain: string) => (PACK_NAME.test(fileOf(grain)?.filename ?? "") ? "Synthetic demonstration data (CSM pack)" : "");
   const companyText = view.filters.company ?? "all";
   const base = (section: string, grain: string, sampleType: string, population: string, extra: Partial<ExportRow> = {}) => ({
-    section, grain, sample_type: sampleType, wave: view.wave ?? "", company_filter: companyText, task_filter: view.filters.task ?? "all", channel_filter: view.filters.journeyChannel ?? "all", population, source_file: fileOf(grain)?.filename ?? "", data_note: note(grain), ...extra,
+    section, grain, sample_type: sampleType, wave: view.wave ?? "", data_wave: view.filters.dataWave ?? "", company_filter: companyText, task_filter: view.filters.task ?? "all", channel_filter: view.filters.journeyChannel ?? "all", population, source_file: fileOf(grain)?.filename ?? "", data_note: note(grain), ...extra,
   });
   const fig = (b: ReturnType<typeof base>, f: CsmFigure) => {
     const common = { figure: f.id, label: f.label, definition: f.definition };
@@ -60,6 +61,7 @@ export function exportRows(view: CsmExtensionView): ExportRow[] {
       const b = base("Emotions and preference", "relationship", C, e.journey.populationText);
       for (const em of e.journey.emotions) {
         fig(b, em.mean);
+        fig(b, em.high);
         dist(b, em.distribution);
       }
       fig(b, e.journey.preference);
@@ -67,7 +69,10 @@ export function exportRows(view: CsmExtensionView): ExportRow[] {
     if (e.channel.status === "ok") {
       for (const g of [e.channel.all, ...e.channel.byChannel]) {
         const b = base("Emotions and preference", "channel", C, `${g.label} (channel records; each customer once per channel)`, { channel_filter: g.code ?? "all" });
-        for (const em of g.emotions) fig(b, em.mean);
+        for (const em of g.emotions) {
+          fig(b, em.mean);
+          fig(b, em.high);
+        }
         fig(b, g.preference);
       }
     }

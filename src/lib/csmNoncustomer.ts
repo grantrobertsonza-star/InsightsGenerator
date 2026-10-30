@@ -39,7 +39,7 @@ function aspectLabel(customerLabel: string | null, expectLabel: string): string 
   return expectLabel.replace(/^expected focal performance\s+/i, "");
 }
 
-export async function loadNoncustomerSection(tenantId: string, runId: string, file: CsmFile | null, relationship: CsmFile | null, customerWeight: string | null, absent: string | undefined): Promise<NoncustomerSection> {
+export async function loadNoncustomerSection(tenantId: string, runId: string, file: CsmFile | null, relationship: CsmFile | null, customerWeight: string | null, absent: string | undefined, dataWave: string | null = null): Promise<NoncustomerSection> {
   if (!file) return { status: "not_measured", reason: absent ?? "No Noncustomer file is linked to this wave." };
   const f = noncustomerFields(file.variables);
   for (const req of [f.focalCompany, f.currentFocalUse]) if (req.status !== "found") return { status: "not_measured", reason: req.reason };
@@ -47,8 +47,11 @@ export async function loadNoncustomerSection(tenantId: string, runId: string, fi
   if (focalCodes.length !== 1) return { status: "not_measured", reason: focalCodes.length === 0 ? "focal_company is blank in every record, so the focal provider is unknown." : `focal_company holds ${focalCodes.length} codes (${focalCodes.join(", ")}); the supplement must be about one focal provider.` };
   const focalCode = focalCodes[0];
   const focalLabel = (f.focalCompany.status === "found" ? f.focalCompany.answers.find((a) => a.code === focalCode)?.label : null) ?? `Company ${focalCode}`;
-  const sample = [codeFilter("current_focal_use", 0), codeFilter("focal_company", focalCode)];
-  const inSample = file.rows.filter((r) => String(r.current_focal_use) === "0" && String(r.focal_company) === focalCode).length;
+  // A pooled customer file is read for one wave; the noncustomers of that wave only, when their file holds several.
+  const waveFilter = dataWave !== null && new Set(file.rows.map((r) => String(r.wave))).size > 1 ? [codeFilter("wave", dataWave)] : [];
+  const sample = [...waveFilter, codeFilter("current_focal_use", 0), codeFilter("focal_company", focalCode)];
+  const inWave = (r: (typeof file.rows)[number]) => waveFilter.length === 0 || String(r.wave) === dataWave;
+  const inSample = file.rows.filter((r) => inWave(r) && String(r.current_focal_use) === "0" && String(r.focal_company) === focalCode).length;
   const meta = (id: string, label: string, definition: string) => ({ id, label, definition });
   const vars = [f.awareness, f.consider, f.preferredChannel, ...f.expectLevel, ...f.expectImportance, f.alternativeRecent].map(found).filter((x): x is string => !!x);
   // Unit weight: no weight variable, so every record counts 1.
@@ -70,7 +73,7 @@ export async function loadNoncustomerSection(tenantId: string, runId: string, fi
   if (relationship && rf) {
     const cv = rf.drivers.map(found).filter((x): x is string => !!x);
     if (cv.length && rf.company.status === "found" && rf.company.answers.some((a) => a.code === focalCode)) {
-      customerTable = await tableOrReason(() => tabulate(tenantId, runId, relationship.documentId, cv, customerWeight, [codeFilter("company", focalCode)]), `No current customer of ${focalLabel}`);
+      customerTable = await tableOrReason(() => tabulate(tenantId, runId, relationship.documentId, cv, customerWeight, [...(dataWave !== null ? [codeFilter("wave", dataWave)] : []), codeFilter("company", focalCode)]), `No current customer of ${focalLabel}`);
       customerProfile = { status: "ok", filename: relationship.filename, text: `Current customers of ${focalLabel}: performance in the past three months (retrospective), ${customerWeight ? "weighted" : "unweighted"}. A separate population and period from the noncustomers' expectations; no gap is computed.` };
     } else customerProfile = { status: "not_measured", reason: cv.length ? `The Relationship file's company list has no code ${focalCode}.` : "The Relationship file has no company performance ratings." };
   }
@@ -79,7 +82,7 @@ export async function loadNoncustomerSection(tenantId: string, runId: string, fi
     status: "ok",
     filename: file.filename,
     focal: { code: focalCode, label: focalLabel },
-    records: { inFile: file.rows.length, inSample, leftOut: file.rows.length - inSample },
+    records: { inFile: file.rows.filter(inWave).length, inSample, leftOut: file.rows.filter(inWave).length - inSample },
     awareness: figureOf(meta("awareness", `Aware of ${focalLabel}`, "Heard of the focal provider before the interview: 1 among valid 0 and 1 (99 excluded and disclosed), all focal noncustomers."), f.awareness, t, "yes"),
     consider: figureOf(meta("consider", `Would consider ${focalLabel}`, "Probably or Definitely yes (4 or 5) among valid 1 to 5, asked only of those aware. Consideration is not trial or use."), f.consider, t, "t2b"),
     preferredChannel: distributionOf(meta("preferredChannel", "Preferred channel for a future task", "A stated preference, not measured channel use."), f.preferredChannel, t, null),

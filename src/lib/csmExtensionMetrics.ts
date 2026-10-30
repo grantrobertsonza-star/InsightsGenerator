@@ -91,6 +91,26 @@ function rawOf(row: CrosstabRow, column: ColumnRef): number | null {
   return row.nCell?.[column] ?? null;
 }
 
+type Question = CrosstabResult["questions"][number];
+
+/**
+ * The answer codes of one question, or of several questions summed code by code (the latest experiences of the four
+ * channel blocks of a combined file pooled into one all-channel figure: each block is its own experience, so their
+ * counts add; a person who used several channels counts once per channel, as in a Channel file).
+ */
+function countsOf(question: Question | Question[], column: ColumnRef): CodeCount[] {
+  const qs = Array.isArray(question) ? question : [question];
+  const byCode = new Map<string, CodeCount>();
+  for (const q of qs) {
+    for (const c of codeCounts(q, column)) {
+      const x = byCode.get(c.code);
+      if (!x) byCode.set(c.code, { ...c });
+      else byCode.set(c.code, { ...x, weighted: x.weighted === null || c.weighted === null ? null : x.weighted + c.weighted, raw: x.raw === null || c.raw === null ? null : x.raw + c.raw });
+    }
+  }
+  return [...byCode.values()];
+}
+
 const NUMERATOR: Partial<Record<CsmStatistic, (c: number) => number>> = {
   t2b: (c) => (c >= 4 ? 1 : 0),
   top: (c) => (c === 5 ? 1 : 0),
@@ -102,7 +122,7 @@ const NUMERATOR: Partial<Record<CsmStatistic, (c: number) => number>> = {
 };
 
 /** The statistic of one question in one column. Pure. */
-export function readStatistic(question: CrosstabResult["questions"][number], column: ColumnRef, statistic: CsmStatistic): CsmReading {
+export function readStatistic(question: Question | Question[], column: ColumnRef, statistic: CsmStatistic): CsmReading {
   const domain = DOMAIN[statistic];
   let w = 0;
   let num = 0;
@@ -110,7 +130,7 @@ export function readStatistic(question: CrosstabResult["questions"][number], col
   let nonresponse = 0;
   let outside = 0;
   let withheld = false;
-  for (const c of codeCounts(question, column)) {
+  for (const c of countsOf(question, column)) {
     const code = Number(c.code);
     const inDomain = c.code.trim() !== "" && Number.isInteger(code) && code >= domain.lo && code <= domain.hi;
     if (!inDomain) {
@@ -137,8 +157,8 @@ export function readStatistic(question: CrosstabResult["questions"][number], col
 
 /** The share of each listed code among the answers with those codes (an outcome or answer distribution whose
  * domain is the listed codes, so a pending code listed is in the base). Pure. */
-export function readDistribution(question: CrosstabResult["questions"][number], column: ColumnRef, codes: string[]): { rows: { code: string; label: string; share: number | null; weighted: number; raw: number }[]; weightedBase: number; rawBase: number; nonresponse: number; outsideDomain: number; baseLevel: "ok" | "small" | "very_small" } {
-  const counts = codeCounts(question, column);
+export function readDistribution(question: Question | Question[], column: ColumnRef, codes: string[]): { rows: { code: string; label: string; share: number | null; weighted: number; raw: number }[]; weightedBase: number; rawBase: number; nonresponse: number; outsideDomain: number; baseLevel: "ok" | "small" | "very_small" } {
+  const counts = countsOf(question, column);
   const inList = counts.filter((c) => codes.includes(c.code));
   const weightedBase = inList.reduce((s, c) => s + (c.weighted ?? 0), 0);
   const rawBase = inList.reduce((s, c) => s + (c.raw ?? 0), 0);

@@ -6,7 +6,7 @@
 // are claude/tracker-packs-role-spec-2026-10-28.md.
 
 import { isZeroToTenScale } from "./descriptiveFindings";
-import { isCsmExtensionField } from "./csmExtensionRoles";
+import { channelBlocksOf, csmGrainOf, isCsmExtensionField } from "./csmExtensionRoles";
 import { brandFrameFromNames, DESIGN_VARIABLE, nameFamilies, nameWords, numberedBrandsWithoutNames, wordingOf } from "./trackerNameFamilies";
 
 /** One variable as the recogniser reads it: what the data file and a confirmed codebook say about it. */
@@ -258,7 +258,12 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   // constructs (csmExtensionRoles.ts), never a role here: journey or alternative-provider satisfaction is not the
   // company's overall satisfaction, and the benchmark's channel list is not a brand list.
   const usable = variables.filter((v) => !v.weightLike && !v.text && !DESIGN_VARIABLE.test(v.label) && !isCsmExtensionField(v.name));
-  const frame = findBrandFrame(usable);
+  // R6 CSM extension: a combined CSM file's channel blocks (ch01_ to ch04_) repeat one channel questionnaire per block,
+  // so each block's task reason list is named in the other blocks' wording; it is never the brand list, and its block
+  // prefixes (named for channels) are not brand codes in names. Nor are the blocks' ratings a company CSM role (the
+  // blocks' ten-item service battery is the channel's, not the company's drivers).
+  const frameInput = channelBlocksOf(usable.map((v) => v.name)).length ? usable.filter((v) => !/^ch0\d_/.test(v.name)) : usable;
+  const frame = findBrandFrame(frameInput);
   const questions: TrackerRecognition["questions"] = [];
   const measures: PerBrandMeasure[] = [];
   const grids: BrandGrid[] = [];
@@ -310,7 +315,7 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   // A raw file with no answer lists (D2): the brands from the names and labels of the questions asked per brand.
   let brandFrame = frame;
   if (!frame) {
-    const named = recogniseFromNames(usable, measures, grids, otherLists);
+    const named = recogniseFromNames(frameInput, measures, grids, otherLists);
     if (named) brandFrame = named;
     else if (numberedBrandsWithoutNames(usable)) {
       questions.push({ id: "brand-names", text: "This file numbers its brands in the variable names (for example _b01 to _b10) without naming them. Add its codebook or labels file so the brands can be named." });
@@ -335,7 +340,11 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
     }
   }
 
-  const csm = recogniseCsm(usable, questions, !!brandFrame);
+  // R6 CSM extension: company ratings come from current customers' relationship records only. A Channel file (one
+  // record per customer per channel; its agent and call ratings say "overall satisfaction" too) and the noncustomer
+  // supplement never give a company CSM role (csmGrainOf decides the grain by structure).
+  const grain = csmGrainOf(variables.map((v) => v.name), null).grain;
+  const csm = recogniseCsm(grain === "channel" || grain === "noncustomer" ? [] : frameInput, questions, !!brandFrame);
   const isBrand = !!brandFrame && measures.filter((m) => m.stage && ["awareness", "unaided_awareness", "consideration", "shortlist", "first_choice", "usage"].includes(m.stage)).length >= 2;
   const isCsm = !!csm.overallSatisfaction && !!csm.recommend0to10;
   const type = isBrand && isCsm ? "brand_and_csm" : isBrand ? "brand" : isCsm ? "csm" : "unknown";

@@ -123,6 +123,7 @@ function EmotionTable({ emotions, testId }: { emotions: EmotionFigure[]; testId:
         <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500">
           <th className="py-1 font-semibold">Emotion</th>
           <th className="py-1 text-right font-semibold">Mean (1 to 5)</th>
+          <th className="py-1 text-right font-semibold">Very or extremely</th>
           <th className="py-1 pl-4 font-semibold">Intensity: Not at all, A little, Moderately, Very, Extremely</th>
           <th className="py-1 text-right font-semibold">Base</th>
         </tr>
@@ -134,6 +135,9 @@ function EmotionTable({ emotions, testId }: { emotions: EmotionFigure[]; testId:
             {e.mean.status === "ok" ? (
               <>
                 <td className="py-2 text-right tabular-nums">{mean(e.mean.reading.value)}</td>
+                <td className="py-2 text-right tabular-nums" title={e.high.definition}>
+                  {e.high.status === "ok" ? pct(e.high.reading.value) : "n/a"}
+                </td>
                 <td className="py-2 pl-4">
                   {e.distribution.status === "ok" ? (
                     <span className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100" title={e.distribution.rows.map((r) => `${r.label} ${pct(r.share)}`).join(", ")}>
@@ -146,7 +150,7 @@ function EmotionTable({ emotions, testId }: { emotions: EmotionFigure[]; testId:
                 <td className="py-2 text-right text-[11px] text-slate-500">n = {int(e.mean.reading.rawBase)} · w {w1(e.mean.reading.weightedBase)}</td>
               </>
             ) : (
-              <td colSpan={3} className="py-2 text-xs text-slate-500">
+              <td colSpan={4} className="py-2 text-xs text-slate-500">
                 Not measured: {e.mean.status === "not_measured" ? e.mean.reason : e.mean.error}
               </td>
             )}
@@ -176,27 +180,30 @@ type Load = { state: "loading"; previous: CsmExtensionView | null } | { state: "
 
 export function CsmExtensionSections({ runId, documentId, section, company, companyLabel }: { runId: string; documentId: string; section: CsmExtensionSectionId; company: string | null; companyLabel: string }) {
   // Filters belong to one file: a task code is an answer of that file's list, so another file starts with none.
-  const [chosen, setChosen] = useState<{ documentId: string; task: string; journeyChannel: string }>({ documentId, task: "", journeyChannel: "" });
-  const task = chosen.documentId === documentId ? chosen.task : "";
-  const journeyChannel = chosen.documentId === documentId ? chosen.journeyChannel : "";
-  const setTask = (v: string) => setChosen({ documentId, task: v, journeyChannel });
-  const setJourneyChannel = (v: string) => setChosen({ documentId, task, journeyChannel: v });
+  const [chosen, setChosen] = useState<{ documentId: string; task: string; journeyChannel: string; dataWave: string }>({ documentId, task: "", journeyChannel: "", dataWave: "" });
+  const mine = chosen.documentId === documentId;
+  const task = mine ? chosen.task : "";
+  const journeyChannel = mine ? chosen.journeyChannel : "";
+  const dataWave = mine ? chosen.dataWave : "";
+  const setTask = (v: string) => setChosen({ documentId, task: v, journeyChannel, dataWave });
+  const setJourneyChannel = (v: string) => setChosen({ documentId, task, journeyChannel: v, dataWave });
+  const setDataWave = (v: string) => setChosen({ documentId, task, journeyChannel, dataWave: v });
   const [sample, setSample] = useState<"current_customers" | "focal_noncustomers">("current_customers");
   const [retry, setRetry] = useState(0);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const seq = useRef(0);
-  const requestKey = JSON.stringify([documentId, section, company, task, journeyChannel, retry]);
+  const requestKey = JSON.stringify([documentId, section, company, task, journeyChannel, dataWave, retry]);
 
   useEffect(() => {
     const mine = ++seq.current;
     const done = (result: Answer["result"]) => {
       if (mine === seq.current) setAnswer({ key: requestKey, section, result });
     };
-    loadCsmExtensionAction(runId, documentId, { section, company, task: task || null, journeyChannel: journeyChannel || null }).then(
+    loadCsmExtensionAction(runId, documentId, { section, company, task: task || null, journeyChannel: journeyChannel || null, dataWave: dataWave || null }).then(
       (r) => done(r.ok ? { ok: true, view: r.view } : { ok: false, error: r.error }),
       (e) => done({ ok: false, error: e instanceof Error ? e.message : String(e) }),
     );
-  }, [runId, documentId, section, company, task, journeyChannel, requestKey]);
+  }, [runId, documentId, section, company, task, journeyChannel, dataWave, requestKey]);
 
   const current = answer?.key === requestKey ? answer : null;
   const previous = !current && answer?.section === section && answer.result.ok ? answer.result.view : null;
@@ -256,6 +263,9 @@ export function CsmExtensionSections({ runId, documentId, section, company, comp
             <span className="text-slate-500">Company </span>
             <span className="font-medium text-slate-900">{companyLabel}</span>
           </span>
+        )}
+        {view.dataWaves.length > 1 && (
+          <Select label="Data wave" value={view.filters.dataWave ?? ""} onChange={setDataWave} options={view.dataWaves.map((w) => ({ code: w, label: `Wave ${w} of ${view.dataWaves.length} (pooled file)` }))} testId="csmx-data-wave" />
         )}
         {customersOnly && view.options.tasks.length > 0 && (
           <Select label="Task" value={task} onChange={setTask} options={[{ code: "", label: "All tasks" }, ...view.options.tasks]} testId="csmx-task" />
@@ -418,12 +428,12 @@ function ExperienceView({ view }: { view: CsmExtensionView }) {
   if (!e) return null;
   return (
     <>
-      <p className="text-xs text-slate-500">Reassured, valued, frustrated and anxious are shown separately on their own bases; they are never combined into one score. Positive and negative feelings can be mixed.</p>
+      <p className="text-xs text-slate-500">Reassured, valued, frustrated, anxious, angry and disappointed are shown separately on their own bases; they are never combined into one score. Positive and negative feelings can be mixed; a high share very or extremely angry, disappointed, frustrated or anxious is a negative outcome.</p>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card title="Emotions: the whole recent task" subtitle={e.journey.status === "ok" ? `Journey grain, one customer once. ${e.journey.populationText}.` : "Journey grain"} testId="csmx-journey-emotions">
           {e.journey.status === "ok" ? <EmotionTable emotions={e.journey.emotions} testId="csmx-journey-emotion-table" /> : <NotMeasured reason={e.journey.reason} />}
         </Card>
-        <Card title="Emotions: the latest channel experience" subtitle="Channel grain: one record per customer per channel used in 30 days, so a customer can appear in several channels." testId="csmx-channel-emotions">
+        <Card title="Emotions: the latest channel experience" subtitle={`Channel grain: one record per customer per channel used in 30 days, so a customer can appear in several channels.${e.channel.status === "ok" ? ` From the ${e.channel.source}.` : ""}`} testId="csmx-channel-emotions">
           {e.channel.status === "ok" ? (
             <>
               <EmotionTable emotions={e.channel.all.emotions} testId="csmx-channel-emotion-table" />

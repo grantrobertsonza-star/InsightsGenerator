@@ -12,7 +12,10 @@
 //   - one latest row per customer and channel; experience_id unique;
 //   - every channel record's customer is in the same wave's Relationship file, with the same weight;
 //   - noncustomer IDs never coincide with customer IDs, so the samples cannot be unioned by key;
-//   - the wave column, when present, holds one value, the same in the linked files.
+//   - the wave column, when present, holds the same values in the linked customer files (one for a wave file,
+//     several for a pooled All_Waves file, whose figures are then read for one chosen wave);
+//   - a combined file's channel blocks follow their routes, and a combined file is never used beside a separate
+//     Channel file of the same wave (the pack: choose one representation).
 // Files are linked only by the wave label the researcher set (Import data), never by row position or upload order.
 // A wave with two files of one grain is ambiguous and that grain is not used.
 import { loadDocumentFile, loadVariableDictionaryWithStatus } from "./crosstabs";
@@ -24,7 +27,7 @@ import { codeNamesDiffer } from "./trackerFigures";
 import { loadRoleInput } from "./trackerInput";
 import type { RoleVariable } from "./trackerRoles";
 import { loadProjectWaves } from "./waveFiles";
-import { csmGrainOf, type CsmGrain, type CsmSampleType } from "./csmExtensionRoles";
+import { channelBlocksOf, csmGrainOf, type CsmGrain, type CsmSampleType } from "./csmExtensionRoles";
 
 export type Row = Record<string, TableCell>;
 
@@ -47,42 +50,73 @@ function textId(v: TableCell): string | null {
   return typeof v === "string" && v.trim() !== "" ? v : null;
 }
 
-/** Keys of one file by its grain. Pure. */
-export function checkKeys(rows: Row[], grain: CsmGrain): KeyCheck & { ids: Set<string> } {
+/** A person's key within the file: wave and text respondent_id (the wave matters in a pooled All_Waves file). */
+function personKey(r: Row): string | null {
+  const id = textId(r.respondent_id);
+  if (id === null) return null;
+  return Object.hasOwn(r, "wave") ? `${String(r.wave ?? "")}|${id}` : id;
+}
+const shown = (key: string) => (key.includes("|") ? `${key.split("|")[1]} (wave ${key.split("|")[0]})` : key);
+
+/**
+ * Keys of one file by its grain. Pure. `blocks` are a combined file's channel block codes: each used block must
+ * carry its own channel code and an experience_id (an unused block is blank throughout), experience IDs are unique,
+ * and a block is used exactly when the customer's channel_used flag says so.
+ */
+export function checkKeys(rows: Row[], grain: CsmGrain, blocks: string[] = []): KeyCheck & { ids: Set<string> } {
   const problems: string[] = [];
   const ids = new Set<string>();
   const notText: string[] = [];
   const dupes: string[] = [];
   for (const [i, r] of rows.entries()) {
-    const id = textId(r.respondent_id);
-    if (id === null) {
+    const key = personKey(r);
+    if (key === null) {
       notText.push(`row ${i + 1}`);
       continue;
     }
-    if (grain !== "channel" && ids.has(id)) dupes.push(id);
-    ids.add(id);
+    if (grain !== "channel" && ids.has(key)) dupes.push(shown(key));
+    ids.add(key);
   }
   if (notText.length) problems.push(`respondent_id is missing or not text in ${notText.length} record${notText.length === 1 ? "" : "s"} (${listed(notText)}); IDs must be kept as text so leading zeroes survive.`);
-  if (dupes.length) problems.push(`respondent_id repeats in ${dupes.length} record${dupes.length === 1 ? "" : "s"} (${listed(dupes)}); one record per person is required in this file.`);
+  if (dupes.length) problems.push(`respondent_id repeats in ${dupes.length} record${dupes.length === 1 ? "" : "s"} (${listed(dupes)}); one record per person and wave is required in this file.`);
+  const experiences = new Set<string>();
+  const expDupes: string[] = [];
+  const seeExperience = (e: string | null, who: string) => {
+    if (e === null) expDupes.push(`${who} (no experience_id)`);
+    else if (experiences.has(e)) expDupes.push(e);
+    else experiences.add(e);
+  };
   if (grain === "channel") {
     const pairs = new Set<string>();
     const pairDupes: string[] = [];
-    const experiences = new Set<string>();
-    const expDupes: string[] = [];
     for (const r of rows) {
-      const id = textId(r.respondent_id);
-      if (id === null) continue;
-      const pair = `${id}|${String(r.channel)}`;
-      if (pairs.has(pair)) pairDupes.push(`${id} in channel ${String(r.channel)}`);
+      const key = personKey(r);
+      if (key === null) continue;
+      const pair = `${key}|${String(r.channel)}`;
+      if (pairs.has(pair)) pairDupes.push(`${shown(key)} in channel ${String(r.channel)}`);
       pairs.add(pair);
-      const e = textId(r.experience_id);
-      if (e === null) expDupes.push(`${id} (no experience_id)`);
-      else if (experiences.has(e)) expDupes.push(e);
-      else experiences.add(e);
+      seeExperience(textId(r.experience_id), shown(key));
     }
     if (pairDupes.length) problems.push(`More than one latest record for a customer in one channel: ${listed(pairDupes)}.`);
-    if (expDupes.length) problems.push(`experience_id is missing or repeated: ${listed(expDupes)}.`);
   }
+  if (blocks.length) {
+    const routes: string[] = [];
+    for (const r of rows) {
+      const key = personKey(r);
+      if (key === null) continue;
+      for (const k of blocks) {
+        const e = textId(r[`ch0${k}_experience_id`]);
+        const code = r[`ch0${k}_channel`];
+        const used = e !== null || (code !== null && code !== undefined && code !== "");
+        const flag = r[`channel_used_c0${k}`];
+        if (used && String(code) !== k) routes.push(`${shown(key)} block ch0${k}_ holds channel ${String(code ?? "blank")}`);
+        if (flag !== undefined && flag !== null && String(flag) !== (used ? "1" : "0")) routes.push(`${shown(key)} block ch0${k}_ is ${used ? "used" : "blank"} but channel_used_c0${k} is ${String(flag)}`);
+        if (used) seeExperience(e, `${shown(key)} ch0${k}_`);
+      }
+    }
+    if (routes.length) problems.push(`Channel blocks disagree with their routes: ${listed(routes)}.`);
+  }
+  if (expDupes.length) problems.push(`experience_id is missing or repeated: ${listed(expDupes)}.`);
   return { ok: problems.length === 0, checked: true, records: rows.length, distinctPeople: ids.size, problems, ids };
 }
 
@@ -90,13 +124,13 @@ export function checkKeys(rows: Row[], grain: CsmGrain): KeyCheck & { ids: Set<s
 export function checkChannelLink(channelRows: Row[], relationshipRows: Row[]): string[] {
   const byId = new Map<string, Row>();
   for (const r of relationshipRows) {
-    const id = textId(r.respondent_id);
-    if (id !== null) byId.set(id, r);
+    const key = personKey(r);
+    if (key !== null) byId.set(key, r);
   }
   const orphans: string[] = [];
   const weightDiffers: string[] = [];
   for (const e of channelRows) {
-    const id = textId(e.respondent_id);
+    const id = personKey(e);
     if (id === null) continue;
     const c = byId.get(id);
     if (!c) orphans.push(id);
@@ -143,6 +177,8 @@ export type CsmWaveFiles = {
   linkProblems: string[];
   /** Other files with this wave label that are not a CSM grain or could not be read, each with why. */
   notUsed: string[];
+  /** The wave values the customer data hold: one for a wave file, several for a pooled All_Waves file. */
+  dataWaves: string[];
 };
 
 async function readFile(tenantId: string, runId: string, documentId: string, filename: string): Promise<{ file: CsmFile } | { grain: null; reason: string }> {
@@ -156,7 +192,7 @@ async function readFile(tenantId: string, runId: string, documentId: string, fil
   const g = csmGrainOf(input.variables.map((v) => v.name), table?.sheetName ?? null);
   if (g.grain === null) return { grain: null, reason: g.reason };
   const keys: KeyCheck = table
-    ? (({ ids: _ids, ...k }) => (void _ids, k))(checkKeys(table.rows, g.grain))
+    ? (({ ids: _ids, ...k }) => (void _ids, k))(checkKeys(table.rows, g.grain, g.grain === "relationship" ? channelBlocksOf(input.variables.map((v) => v.name)) : []))
     : { ok: true, checked: false, records: null, distinctPeople: null, problems: [] };
   return {
     file: {
@@ -210,7 +246,7 @@ export async function loadCsmWaveFiles(tenantId: string, runId: string, document
       read.push({ c, r: { grain: null, reason: `${c.filename} could not be read: ${e instanceof Error ? e.message : String(e)}` } });
     }
   }
-  const out: CsmWaveFiles = { wave: open?.wave ?? null, open: { documentId, grain: null }, relationship: null, channel: null, noncustomer: null, absent: {}, linkProblems: [], notUsed: [] };
+  const out: CsmWaveFiles = { wave: open?.wave ?? null, open: { documentId, grain: null }, relationship: null, channel: null, noncustomer: null, absent: {}, linkProblems: [], notUsed: [], dataWaves: [] };
   const byGrain: Record<CsmGrain, CsmFile[]> = { relationship: [], channel: [], noncustomer: [] };
   const unreadable: string[] = [];
   for (const { c, r } of read) {
@@ -231,9 +267,19 @@ export async function loadCsmWaveFiles(tenantId: string, runId: string, document
   // The wave the data say, and the sector the company lists say.
   const present = [out.relationship, out.channel, out.noncustomer].filter((f): f is CsmFile => f !== null);
   const valuesByFile = present.map((f) => ({ f, v: waveValues(f.rows) })).filter((x) => x.v.length > 0);
-  for (const { f, v } of valuesByFile) if (v.length > 1) out.linkProblems.push(`${f.filename} holds more than one wave value in its wave column (${v.join(", ")}).`);
-  const distinct = new Set(valuesByFile.filter((x) => x.v.length === 1).map((x) => x.v[0]));
-  if (distinct.size > 1) out.linkProblems.push(`The files labelled ${open?.wave} hold different wave values in their wave columns (${valuesByFile.map((x) => `${x.f.filename}: ${x.v.join(", ")}`).join("; ")}).`);
+  // A pooled All_Waves file holds several wave values; linked files must hold the same ones (a pooled customer file
+  // with pooled channel records), never one wave beside a pooled file.
+  const customerWaves = valuesByFile.filter((x) => x.f.grain !== "noncustomer");
+  if (new Set(customerWaves.map((x) => x.v.join(","))).size > 1) out.linkProblems.push(`The files labelled ${open?.wave} hold different wave values in their wave columns (${customerWaves.map((x) => `${x.f.filename}: ${x.v.join(", ")}`).join("; ")}).`);
+  const nc = valuesByFile.find((x) => x.f.grain === "noncustomer");
+  const customerSet = customerWaves[0]?.v ?? [];
+  if (nc && customerSet.length && nc.v.some((w) => !customerSet.includes(w))) out.linkProblems.push(`${nc.f.filename} holds wave ${nc.v.join(", ")}, which the customer files labelled ${open?.wave} do not.`);
+  out.dataWaves = (out.relationship ? waveValues(out.relationship.rows) : customerSet).filter((w) => w !== "");
+  // A combined file carries the channel experiences itself: a separate Channel file beside it is the same
+  // customers in the other representation, so the two are never used together.
+  if (out.relationship && out.channel && channelBlocksOf(out.relationship.variables.map((v) => v.name)).length) {
+    out.linkProblems.push(`${out.relationship.filename} is a combined company and channel file and ${out.channel.filename} is a separate Channel file for the same wave: choose one representation (the pack: never both).`);
+  }
   if (out.relationship) {
     for (const other of [out.channel, out.noncustomer]) {
       if (other && (!other.rowsRead || !out.relationship.rowsRead)) out.linkProblems.push(`${other.filename} cannot be linked to ${out.relationship.filename}: the rows of ${!other.rowsRead ? other.filename : out.relationship.filename} are not read (only CSV, TSV and Excel files are), so its keys are unchecked.`);

@@ -140,7 +140,7 @@ describe("statistics read from the engine's rows (domains, non-answers, pending)
 
 describe("the server boundary", () => {
   it("accepts a section and numeric codes; refuses anything else", () => {
-    expect(parseExtensionRequest({ section: "journey", company: "1", task: null, journeyChannel: "" })).toEqual({ ok: true, section: "journey", filters: { company: "1", task: null, journeyChannel: null } });
+    expect(parseExtensionRequest({ section: "journey", company: "1", task: null, journeyChannel: "" })).toEqual({ ok: true, section: "journey", filters: { company: "1", task: null, journeyChannel: null, dataWave: null } });
     expect(parseExtensionRequest({ section: "nope" }).ok).toBe(false);
     expect(parseExtensionRequest({ section: "journey", company: "FNB" }).ok).toBe(false);
     expect(parseExtensionRequest(null).ok).toBe(false);

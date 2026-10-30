@@ -30,6 +30,7 @@ function baseView(section: CsmExtensionView["section"], over: Partial<CsmExtensi
     linkProblems: [],
     notUsed: [],
     channelNames: [{ code: "1", label: "Call centre" }, { code: "3", label: "Digital self service" }],
+    dataWaves: ["1"],
     options: { tasks: [{ code: "1", label: "Payment or transfer" }, { code: "4", label: "Problem complaint or fraud concern" }], journeyChannels: [{ code: "1", label: "Call centre" }] },
     filters: { company: null, task: null, journeyChannel: null },
     section,
@@ -133,7 +134,7 @@ describe("CSM extension sections (mounted)", () => {
 
   it("Journey: bases, pending beside completion, the population change labelled, Not measured with its reason", async () => {
     root = await mount({ section: "journey", company: "1", companyLabel: "FNB" });
-    expect(calls[0].request).toEqual({ section: "journey", company: "1", task: null, journeyChannel: null });
+    expect(calls[0].request).toEqual({ section: "journey", company: "1", task: null, journeyChannel: null, dataWave: null });
     expect(text()).toContain("Calculating this section");
     await answer(0, journeyView(74.801697));
     await settle();
@@ -158,7 +159,7 @@ describe("CSM extension sections (mounted)", () => {
     await answer(0, journeyView(74.8));
     await settle();
     await choose("csmx-task", "4");
-    expect(calls[1].request).toEqual({ section: "journey", company: null, task: "4", journeyChannel: null });
+    expect(calls[1].request).toEqual({ section: "journey", company: null, task: "4", journeyChannel: null, dataWave: null });
     await choose("csmx-task", "1");
     expect(calls[2].request.task).toBe("1");
     // The newest request answers first, then the older one arrives late.
