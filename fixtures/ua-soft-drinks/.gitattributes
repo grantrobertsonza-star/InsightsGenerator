@@ -1,0 +1,4 @@
+*.csv -text
+*.txt -text
+*.docx -text
+*.xlsx -text
