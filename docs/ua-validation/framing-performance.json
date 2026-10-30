@@ -1,0 +1,12 @@
+{
+  "bytes": 16777239,
+  "chunkBytes": 8192,
+  "beforeSeconds": 13.9856942,
+  "afterSeconds": 0.0570547000000006,
+  "messages": {
+    "before": 1,
+    "after": 1
+  },
+  "exactlyEquivalent": true,
+  "scope": "Framing and JSON parsing only, same 16 MB synthetic reply; excludes computation, storage and browser time."
+}

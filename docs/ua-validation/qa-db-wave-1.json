@@ -1,0 +1,2378 @@
+[
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Ever consumption",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 4475.958841,
+      "value": 89.519177,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "footprint:q05_ever_use:percent:1:0",
+      "value": 89.51917678419233,
+      "numerator": 4475.958841,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "P12M consumption",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 3988.311509,
+      "value": 79.76623,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "footprint:q06_use_recency:percent:1_2:1",
+      "value": 79.76623014809351,
+      "numerator": 3988.311509,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "P3M consumption",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 3371.486674,
+      "value": 67.429733,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "footprint:q06_use_recency:percent:1:2",
+      "value": 67.4297334530281,
+      "numerator": 3371.4866739999998,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "P3M personal purchase",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 3003.847295,
+      "value": 60.076946,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "footprint:q07_purchase_p3m:percent:1:3",
+      "value": 60.07694587596922,
+      "numerator": 3003.847295,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Never consumed",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 524.041161,
+      "value": 10.480823,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "footprint:q05_ever_use:percent:0:4",
+      "value": 10.480823215807671,
+      "numerator": 524.041161,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Postponed specific purchase",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 777.532078,
+      "value": 15.550642,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "future:q35_deferred:percent:1:267",
+      "value": 15.550641553779746,
+      "numerator": 777.5320780000001,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Outstanding postponed purchase",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 413.711286,
+      "value": 8.274226,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "future:q36_status:percent:1:268",
+      "value": 8.27422571669031,
+      "numerator": 413.711286,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Use intent top two",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 2228.326295,
+      "value": 44.566526,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "future:q32_intent_use:percent:4_5:265",
+      "value": 44.566525882173394,
+      "numerator": 2228.326295,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Purchase intent top two",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 2027.062352,
+      "value": 40.541247,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "future:q32_intent_purchase:percent:4_5:266",
+      "value": 40.5412470237835,
+      "numerator": 2027.062352,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Mean consumption occasions per P3M user",
+      "eligible": 3381,
+      "valid": 3381,
+      "base": 3371.486674,
+      "numerator": 60248.484859,
+      "value": 17.870005,
+      "unit": "occasions"
+    },
+    "actual": {
+      "id": "repertoire:q11_use_count:mean:numeric:6",
+      "value": 17.870005337295307,
+      "numerator": 60248.484859,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 3381,
+        "w": 3371.4866739999998,
+        "nEff": 3218.5182098451846
+      },
+      "validBase": {
+        "n": 3381,
+        "w": 3371.4866739999998,
+        "nEff": 3218.5182098451846
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Mean consumption litres per P3M user",
+      "eligible": 3381,
+      "valid": 3381,
+      "base": 3371.486674,
+      "numerator": 26647.894117,
+      "value": 7.9039,
+      "unit": "litres"
+    },
+    "actual": {
+      "id": "repertoire:q12_use_litres:mean:numeric:7",
+      "value": 7.903900176171957,
+      "numerator": 26647.894116590003,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 3381,
+        "w": 3371.4866739999998,
+        "nEff": 3218.5182098451846
+      },
+      "validBase": {
+        "n": 3381,
+        "w": 3371.4866739999998,
+        "nEff": 3218.5182098451846
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Mean shopping trips per P3M buyer",
+      "eligible": 3005,
+      "valid": 3005,
+      "base": 3003.847295,
+      "numerator": 32762.552806,
+      "value": 10.906864,
+      "unit": "trips"
+    },
+    "actual": {
+      "id": "repertoire:q11_purchase_count:mean:numeric:8",
+      "value": 10.90686362803273,
+      "numerator": 32762.552806,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 3005,
+        "w": 3003.847295,
+        "nEff": 2861.6642572371347
+      },
+      "validBase": {
+        "n": 3005,
+        "w": 3003.847295,
+        "nEff": 2861.6642572371347
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Mean purchased litres per P3M buyer",
+      "eligible": 3005,
+      "valid": 3005,
+      "base": 3003.847295,
+      "numerator": 68308.086565,
+      "value": 22.740199,
+      "unit": "litres"
+    },
+    "actual": {
+      "id": "repertoire:q12_purchase_litres:mean:numeric:9",
+      "value": 22.74019943658621,
+      "numerator": 68308.08656535001,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 3005,
+        "w": 3003.847295,
+        "nEff": 2861.6642572371347
+      },
+      "validBase": {
+        "n": 3005,
+        "w": 3003.847295,
+        "nEff": 2861.6642572371347
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Mean spend per answering P3M buyer",
+      "eligible": 3005,
+      "valid": 2890,
+      "base": 2889.70064,
+      "numerator": 1311672.251565,
+      "value": 453.912849,
+      "unit": "ZAR"
+    },
+    "actual": {
+      "id": "repertoire:q13_spend_zar:mean:numeric:10",
+      "value": 453.91284945161317,
+      "numerator": 1311672.2515645502,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 3005,
+        "w": 3003.847295,
+        "nEff": 2861.6642572371347
+      },
+      "validBase": {
+        "n": 2890,
+        "w": 2889.70064,
+        "nEff": 2752.431184909314
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Last occasion low/no sugar only",
+      "eligible": 3381,
+      "valid": 3381,
+      "base": 3371.486674,
+      "numerator": 1252.141599,
+      "value": 37.139153,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "needs:q18_sugar_variant:percent:2:264",
+      "value": 37.13915314143698,
+      "numerator": 1252.141599,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 3381,
+        "w": 3371.4866739999998,
+        "nEff": 3218.5182098451846
+      },
+      "validBase": {
+        "n": 3381,
+        "w": 3371.4866739999998,
+        "nEff": 3218.5182098451846
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Hypothetical P3M consumers",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 1000000,
+      "numerator": 674297.3344,
+      "value": 674297.3344,
+      "unit": "hypothetical people"
+    },
+    "actual": {
+      "id": "footprint:q06_use_recency:percent:1:304",
+      "value": 67.42973344,
+      "numerator": 674297.3344,
+      "assignedBase": {
+        "n": 5000,
+        "w": 1000000,
+        "nEff": 4763.555713891096
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 1000000,
+        "nEff": 4763.555713891096
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 1000000,
+        "nEff": 4763.555713891096
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Hypothetical P3M buyers",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 1000000,
+      "numerator": 600769.4586,
+      "value": 600769.4586,
+      "unit": "hypothetical people"
+    },
+    "actual": {
+      "id": "footprint:q07_purchase_p3m:percent:1:305",
+      "value": 60.076945859999995,
+      "numerator": 600769.4586,
+      "assignedBase": {
+        "n": 5000,
+        "w": 1000000,
+        "nEff": 4763.555713891096
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 1000000,
+        "nEff": 4763.555713891096
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 1000000,
+        "nEff": 4763.555713891096
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Hypothetical P3M consumption volume",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 1000000,
+      "numerator": 5329578.80705,
+      "value": 5329578.80705,
+      "unit": "hypothetical litres"
+    },
+    "actual": {
+      "id": "footprint:q12_use_litres:sum:numeric:306",
+      "value": 5329578.80705,
+      "numerator": 5329578.80705,
+      "assignedBase": {
+        "n": 5000,
+        "w": 1000000,
+        "nEff": 4763.555713891096
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 1000000,
+        "nEff": 4763.555713891096
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 1000000,
+        "nEff": 4763.555713891096
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Hypothetical P3M spend from answering buyers only",
+      "eligible": 3005,
+      "valid": 2890,
+      "base": 577940.1276,
+      "numerator": 262334450.173566,
+      "value": 262334450.173566,
+      "unit": "hypothetical ZAR"
+    },
+    "actual": {
+      "id": "footprint:q13_spend_zar:sum:numeric:307",
+      "value": 262334450.17356598,
+      "numerator": 262334450.17356598,
+      "assignedBase": {
+        "n": 5000,
+        "w": 1000000,
+        "nEff": 4763.555713891096
+      },
+      "eligibleBase": {
+        "n": 3005,
+        "w": 600769.4586,
+        "nEff": 2861.6642567938375
+      },
+      "validBase": {
+        "n": 2890,
+        "w": 577940.1276,
+        "nEff": 2752.431184465497
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Price barrier",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 1563.750137,
+      "value": 31.275003,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "choice:q24_barrier_1:percent:1:114",
+      "value": 31.275002727489998,
+      "numerator": 1563.750137,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Last occasion refreshment goal",
+      "eligible": 3381,
+      "valid": 3381,
+      "base": 3371.486674,
+      "numerator": 1093.48089,
+      "value": 32.433196,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "occasions:q19_need_6:percent:1:80",
+      "value": 32.433196264206856,
+      "numerator": 1093.48089,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 3381,
+        "w": 3371.4866739999998,
+        "nEff": 3218.5182098451846
+      },
+      "validBase": {
+        "n": 3381,
+        "w": 3371.4866739999998,
+        "nEff": 3218.5182098451846
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Top-goal low fulfilment",
+      "eligible": 3129,
+      "valid": 3129,
+      "base": 3118.041924,
+      "numerator": 493.444326,
+      "value": 15.825455,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "needs:q20_fulfilment:percent:1_2:83",
+      "value": 15.825455142276656,
+      "numerator": 493.444326,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 3129,
+        "w": 3118.041924,
+        "nEff": 2979.047292934649
+      },
+      "validBase": {
+        "n": 3129,
+        "w": 3118.041924,
+        "nEff": 2979.047292934649
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Variety attitude top two",
+      "eligible": 5000,
+      "valid": 4938,
+      "base": 4939.787949,
+      "numerator": 2013.934982,
+      "value": 40.769665,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "needs:q25_attitude_3:percent:4_5:124",
+      "value": 40.76966466561985,
+      "numerator": 2013.9349820000002,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 4938,
+        "w": 4939.787949,
+        "nEff": 4704.516091908996
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Most recent versus previous basket change",
+      "eligible": 3001,
+      "valid": 3001,
+      "base": 2999.872214,
+      "numerator": 1266.442469,
+      "value": 42.216547,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q28_previous_exists:percent:1:308",
+      "value": 42.21654719456661,
+      "numerator": 1266.442469,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 3001,
+        "w": 2999.872214,
+        "nEff": 2857.706370166477
+      },
+      "validBase": {
+        "n": 3001,
+        "w": 2999.872214,
+        "nEff": 2857.706370166477
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz spontaneous top of mind",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 153.807261,
+      "value": 3.076145,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "memory:q03_mention_1_code:percent:1:270",
+      "value": 3.0761452187695415,
+      "numerator": 153.80726099999998,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz aided awareness",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 2731.39907,
+      "value": 54.627981,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "memory:q04_aware_1:percent:1:13",
+      "value": 54.6279813781488,
+      "numerator": 2731.39907,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz first choice",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 435.39705,
+      "value": 8.707941,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "choice:q30_first_choice:percent:1:271",
+      "value": 8.707940996516825,
+      "numerator": 435.39705000000004,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz consideration",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 526.675426,
+      "value": 10.533509,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "choice:q33_consider_1:percent:1:189",
+      "value": 10.533508515786599,
+      "numerator": 526.675426,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz good-value association",
+      "eligible": 353,
+      "valid": 353,
+      "base": 355.328462,
+      "numerator": 145.140825,
+      "value": 40.846946,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "memory:o02_b1_attribute_2:percent:1:236",
+      "value": 40.846946001190304,
+      "numerator": 145.140825,
+      "assignedBase": {
+        "n": 630,
+        "w": 637.818959,
+        "nEff": 599.7093581385511
+      },
+      "eligibleBase": {
+        "n": 353,
+        "w": 355.328462,
+        "nEff": 336.22835058161127
+      },
+      "validBase": {
+        "n": 353,
+        "w": 355.328462,
+        "nEff": 336.22835058161127
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz meal-on-go first recall",
+      "eligible": 1658,
+      "valid": 1658,
+      "base": 1658.353919,
+      "numerator": 119.771822,
+      "value": 7.222332,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "memory:o03_situation_1_code:percent:1:272",
+      "value": 7.22233177295612,
+      "numerator": 119.771822,
+      "assignedBase": {
+        "n": 1658,
+        "w": 1658.3539190000001,
+        "nEff": 1583.4165977658974
+      },
+      "eligibleBase": {
+        "n": 1658,
+        "w": 1658.3539190000001,
+        "nEff": 1583.4165977658974
+      },
+      "validBase": {
+        "n": 1658,
+        "w": 1658.3539190000001,
+        "nEff": 1583.4165977658974
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz P3M consumption incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 503.343595,
+      "value": 10.066872,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q09_use_p3m_1:percent:1:20",
+      "value": 10.066871895973254,
+      "numerator": 503.34359500000005,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz P3M buyer incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 382.206476,
+      "value": 7.64413,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q10_purchase_1:percent:1:29",
+      "value": 7.64412951694235,
+      "numerator": 382.20647600000007,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz choice intent top two",
+      "eligible": 1743,
+      "valid": 1743,
+      "base": 1744.25943,
+      "numerator": 387.767519,
+      "value": 22.231069,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "choice:q34a_intent_1:percent:4_5:135",
+      "value": 22.23106909045061,
+      "numerator": 387.767519,
+      "assignedBase": {
+        "n": 1743,
+        "w": 1744.25943,
+        "nEff": 1660.794766495467
+      },
+      "eligibleBase": {
+        "n": 1743,
+        "w": 1744.25943,
+        "nEff": 1660.794766495467
+      },
+      "validBase": {
+        "n": 1743,
+        "w": 1744.25943,
+        "nEff": 1660.794766495467
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz verified P3M-buyer repurchase top two",
+      "eligible": 135,
+      "valid": 135,
+      "base": 132.460948,
+      "numerator": 73.678899,
+      "value": 55.62311,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q34b_intent_1:percent:4_5:136",
+      "value": 55.62311014111118,
+      "numerator": 73.678899,
+      "assignedBase": {
+        "n": 1743,
+        "w": 1744.25943,
+        "nEff": 1660.794766495467
+      },
+      "eligibleBase": {
+        "n": 135,
+        "w": 132.460948,
+        "nEff": 129.3588848322447
+      },
+      "validBase": {
+        "n": 135,
+        "w": 132.460948,
+        "nEff": 129.3588848322447
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Karoo Fizz satisfaction top two",
+      "eligible": 168,
+      "valid": 168,
+      "base": 163.604466,
+      "numerator": 78.924568,
+      "value": 48.241084,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q27_satisfaction_1:percent:4_5:134",
+      "value": 48.24108407896396,
+      "numerator": 78.92456800000001,
+      "assignedBase": {
+        "n": 1743,
+        "w": 1744.25943,
+        "nEff": 1660.794766495467
+      },
+      "eligibleBase": {
+        "n": 168,
+        "w": 163.604466,
+        "nEff": 160.7899987067671
+      },
+      "validBase": {
+        "n": 168,
+        "w": 163.604466,
+        "nEff": 160.7899987067671
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Coca-Cola P3M consumption incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 1932.82549,
+      "value": 38.65651,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q09_use_p3m_2:percent:1:21",
+      "value": 38.6565097845374,
+      "numerator": 1932.82549,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Coca-Cola P3M buyer incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 1822.202724,
+      "value": 36.444054,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q10_purchase_2:percent:1:30",
+      "value": 36.444054465422376,
+      "numerator": 1822.2027239999998,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Coca-Cola choice intent top two",
+      "eligible": 1617,
+      "valid": 1617,
+      "base": 1633.133805,
+      "numerator": 601.475083,
+      "value": 36.829504,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "choice:q34a_intent_2:percent:4_5:144",
+      "value": 36.829504181379676,
+      "numerator": 601.475083,
+      "assignedBase": {
+        "n": 1617,
+        "w": 1633.1338050000002,
+        "nEff": 1540.30909959152
+      },
+      "eligibleBase": {
+        "n": 1617,
+        "w": 1633.1338050000002,
+        "nEff": 1540.30909959152
+      },
+      "validBase": {
+        "n": 1617,
+        "w": 1633.1338050000002,
+        "nEff": 1540.30909959152
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Coca-Cola verified P3M-buyer repurchase top two",
+      "eligible": 627,
+      "valid": 627,
+      "base": 632.358225,
+      "numerator": 340.714585,
+      "value": 53.879996,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q34b_intent_2:percent:4_5:145",
+      "value": 53.879995788779375,
+      "numerator": 340.714585,
+      "assignedBase": {
+        "n": 1617,
+        "w": 1633.1338050000002,
+        "nEff": 1540.30909959152
+      },
+      "eligibleBase": {
+        "n": 627,
+        "w": 632.358225,
+        "nEff": 596.8560352834684
+      },
+      "validBase": {
+        "n": 627,
+        "w": 632.358225,
+        "nEff": 596.8560352834684
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Coca-Cola satisfaction top two",
+      "eligible": 654,
+      "valid": 654,
+      "base": 657.079393,
+      "numerator": 334.614435,
+      "value": 50.924506,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q27_satisfaction_2:percent:4_5:143",
+      "value": 50.924506013233014,
+      "numerator": 334.614435,
+      "assignedBase": {
+        "n": 1617,
+        "w": 1633.1338050000002,
+        "nEff": 1540.30909959152
+      },
+      "eligibleBase": {
+        "n": 654,
+        "w": 657.079393,
+        "nEff": 623.3588309301903
+      },
+      "validBase": {
+        "n": 654,
+        "w": 657.079393,
+        "nEff": 623.3588309301903
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Pepsi P3M consumption incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 901.798637,
+      "value": 18.035973,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q09_use_p3m_3:percent:1:22",
+      "value": 18.03597273278561,
+      "numerator": 901.7986369999999,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Pepsi P3M buyer incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 703.963978,
+      "value": 14.07928,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q10_purchase_3:percent:1:31",
+      "value": 14.079279554368288,
+      "numerator": 703.963978,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Pepsi choice intent top two",
+      "eligible": 1653,
+      "valid": 1653,
+      "base": 1661.497482,
+      "numerator": 469.208653,
+      "value": 28.240106,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "choice:q34a_intent_3:percent:4_5:153",
+      "value": 28.240106174292713,
+      "numerator": 469.208653,
+      "assignedBase": {
+        "n": 1653,
+        "w": 1661.4974820000002,
+        "nEff": 1569.0790041616544
+      },
+      "eligibleBase": {
+        "n": 1653,
+        "w": 1661.4974820000002,
+        "nEff": 1569.0790041616544
+      },
+      "validBase": {
+        "n": 1653,
+        "w": 1661.4974820000002,
+        "nEff": 1569.0790041616544
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Pepsi verified P3M-buyer repurchase top two",
+      "eligible": 224,
+      "valid": 224,
+      "base": 218.798127,
+      "numerator": 125.051378,
+      "value": 57.15377,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q34b_intent_3:percent:4_5:154",
+      "value": 57.153769876649804,
+      "numerator": 125.051378,
+      "assignedBase": {
+        "n": 1653,
+        "w": 1661.4974820000002,
+        "nEff": 1569.0790041616544
+      },
+      "eligibleBase": {
+        "n": 224,
+        "w": 218.79812700000002,
+        "nEff": 213.89875739157597
+      },
+      "validBase": {
+        "n": 224,
+        "w": 218.79812700000002,
+        "nEff": 213.89875739157597
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Pepsi satisfaction top two",
+      "eligible": 305,
+      "valid": 305,
+      "base": 305.193587,
+      "numerator": 154.149774,
+      "value": 50.508851,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q27_satisfaction_3:percent:4_5:152",
+      "value": 50.50885096088209,
+      "numerator": 154.149774,
+      "assignedBase": {
+        "n": 1653,
+        "w": 1661.4974820000002,
+        "nEff": 1569.0790041616544
+      },
+      "eligibleBase": {
+        "n": 305,
+        "w": 305.193587,
+        "nEff": 290.6527819518123
+      },
+      "validBase": {
+        "n": 305,
+        "w": 305.193587,
+        "nEff": 290.6527819518123
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Fanta P3M consumption incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 1105.787759,
+      "value": 22.115755,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q09_use_p3m_4:percent:1:23",
+      "value": 22.1157551711537,
+      "numerator": 1105.787759,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Fanta P3M buyer incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 908.776514,
+      "value": 18.17553,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q10_purchase_4:percent:1:32",
+      "value": 18.175530272729787,
+      "numerator": 908.7765139999999,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Fanta choice intent top two",
+      "eligible": 1610,
+      "valid": 1610,
+      "base": 1605.674951,
+      "numerator": 502.546768,
+      "value": 31.298163,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "choice:q34a_intent_4:percent:4_5:162",
+      "value": 31.298163285602627,
+      "numerator": 502.54676799999993,
+      "assignedBase": {
+        "n": 1610,
+        "w": 1605.674951,
+        "nEff": 1536.8726895641107
+      },
+      "eligibleBase": {
+        "n": 1610,
+        "w": 1605.674951,
+        "nEff": 1536.8726895641107
+      },
+      "validBase": {
+        "n": 1610,
+        "w": 1605.674951,
+        "nEff": 1536.8726895641107
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Fanta verified P3M-buyer repurchase top two",
+      "eligible": 276,
+      "valid": 276,
+      "base": 269.601745,
+      "numerator": 148.771131,
+      "value": 55.181813,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q34b_intent_4:percent:4_5:163",
+      "value": 55.181813085074815,
+      "numerator": 148.77113100000003,
+      "assignedBase": {
+        "n": 1610,
+        "w": 1605.674951,
+        "nEff": 1536.8726895641107
+      },
+      "eligibleBase": {
+        "n": 276,
+        "w": 269.601745,
+        "nEff": 264.4196430784861
+      },
+      "validBase": {
+        "n": 276,
+        "w": 269.601745,
+        "nEff": 264.4196430784861
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Fanta satisfaction top two",
+      "eligible": 362,
+      "valid": 362,
+      "base": 361.575718,
+      "numerator": 184.569569,
+      "value": 51.045897,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q27_satisfaction_4:percent:4_5:161",
+      "value": 51.04589711414194,
+      "numerator": 184.569569,
+      "assignedBase": {
+        "n": 1610,
+        "w": 1605.674951,
+        "nEff": 1536.8726895641107
+      },
+      "eligibleBase": {
+        "n": 362,
+        "w": 361.575718,
+        "nEff": 345.0400832327004
+      },
+      "validBase": {
+        "n": 362,
+        "w": 361.575718,
+        "nEff": 345.0400832327004
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Sprite P3M consumption incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 1130.344624,
+      "value": 22.606892,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q09_use_p3m_5:percent:1:24",
+      "value": 22.60689247095725,
+      "numerator": 1130.3446240000003,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Sprite P3M buyer incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 923.429394,
+      "value": 18.468588,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q10_purchase_5:percent:1:33",
+      "value": 18.468587872612567,
+      "numerator": 923.429394,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Sprite choice intent top two",
+      "eligible": 1708,
+      "valid": 1708,
+      "base": 1697.298783,
+      "numerator": 524.242833,
+      "value": 30.886891,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "choice:q34a_intent_5:percent:4_5:171",
+      "value": 30.88689146841862,
+      "numerator": 524.242833,
+      "assignedBase": {
+        "n": 1708,
+        "w": 1697.298783,
+        "nEff": 1628.4196473936863
+      },
+      "eligibleBase": {
+        "n": 1708,
+        "w": 1697.298783,
+        "nEff": 1628.4196473936863
+      },
+      "validBase": {
+        "n": 1708,
+        "w": 1697.298783,
+        "nEff": 1628.4196473936863
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Sprite verified P3M-buyer repurchase top two",
+      "eligible": 299,
+      "valid": 299,
+      "base": 301.688275,
+      "numerator": 182.827597,
+      "value": 60.601492,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q34b_intent_5:percent:4_5:172",
+      "value": 60.60149238481345,
+      "numerator": 182.82759700000003,
+      "assignedBase": {
+        "n": 1708,
+        "w": 1697.298783,
+        "nEff": 1628.4196473936863
+      },
+      "eligibleBase": {
+        "n": 299,
+        "w": 301.688275,
+        "nEff": 284.38468842175865
+      },
+      "validBase": {
+        "n": 299,
+        "w": 301.688275,
+        "nEff": 284.38468842175865
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Sprite satisfaction top two",
+      "eligible": 376,
+      "valid": 376,
+      "base": 371.393603,
+      "numerator": 172.456877,
+      "value": 46.435069,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q27_satisfaction_5:percent:4_5:170",
+      "value": 46.43506931916649,
+      "numerator": 172.456877,
+      "assignedBase": {
+        "n": 1708,
+        "w": 1697.298783,
+        "nEff": 1628.4196473936863
+      },
+      "eligibleBase": {
+        "n": 376,
+        "w": 371.393603,
+        "nEff": 359.25759761551586
+      },
+      "validBase": {
+        "n": 376,
+        "w": 371.393603,
+        "nEff": 359.25759761551586
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Schweppes P3M consumption incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 636.526178,
+      "value": 12.730524,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q09_use_p3m_6:percent:1:25",
+      "value": 12.73052355490779,
+      "numerator": 636.526178,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Schweppes P3M buyer incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 507.764761,
+      "value": 10.155295,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q10_purchase_6:percent:1:34",
+      "value": 10.155295215937882,
+      "numerator": 507.76476099999996,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Schweppes choice intent top two",
+      "eligible": 1669,
+      "valid": 1669,
+      "base": 1658.135553,
+      "numerator": 462.523702,
+      "value": 27.894203,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "choice:q34a_intent_6:percent:4_5:180",
+      "value": 27.894203291351776,
+      "numerator": 462.523702,
+      "assignedBase": {
+        "n": 1669,
+        "w": 1658.135553,
+        "nEff": 1592.126180416192
+      },
+      "eligibleBase": {
+        "n": 1669,
+        "w": 1658.135553,
+        "nEff": 1592.126180416192
+      },
+      "validBase": {
+        "n": 1669,
+        "w": 1658.135553,
+        "nEff": 1592.126180416192
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Schweppes verified P3M-buyer repurchase top two",
+      "eligible": 184,
+      "valid": 184,
+      "base": 179.37365,
+      "numerator": 92.88121,
+      "value": 51.780855,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q34b_intent_6:percent:4_5:181",
+      "value": 51.78085521479883,
+      "numerator": 92.88121,
+      "assignedBase": {
+        "n": 1669,
+        "w": 1658.135553,
+        "nEff": 1592.126180416192
+      },
+      "eligibleBase": {
+        "n": 184,
+        "w": 179.37365,
+        "nEff": 177.06067952129277
+      },
+      "validBase": {
+        "n": 184,
+        "w": 179.37365,
+        "nEff": 177.06067952129277
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Schweppes satisfaction top two",
+      "eligible": 212,
+      "valid": 212,
+      "base": 210.922752,
+      "numerator": 111.642585,
+      "value": 52.930556,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "experience:q27_satisfaction_6:percent:4_5:179",
+      "value": 52.93055582737702,
+      "numerator": 111.642585,
+      "assignedBase": {
+        "n": 1669,
+        "w": 1658.135553,
+        "nEff": 1592.126180416192
+      },
+      "eligibleBase": {
+        "n": 212,
+        "w": 210.922752,
+        "nEff": 201.40000557904125
+      },
+      "validBase": {
+        "n": 212,
+        "w": 210.922752,
+        "nEff": 201.40000557904125
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Other named soft-drink brand P3M consumption incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 380.511668,
+      "value": 7.610233,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q09_use_p3m_7:percent:1:26",
+      "value": 7.610233356955906,
+      "numerator": 380.511668,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Other named soft-drink brand P3M buyer incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 303.123382,
+      "value": 6.062468,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q10_purchase_7:percent:1:35",
+      "value": 6.062467637575013,
+      "numerator": 303.123382,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Unbranded soft drink P3M consumption incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 135.077425,
+      "value": 2.701548,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q09_use_p3m_8:percent:1:27",
+      "value": 2.7015484989193808,
+      "numerator": 135.077425,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Unbranded soft drink P3M buyer incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 92.658788,
+      "value": 1.853176,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q10_purchase_8:percent:1:36",
+      "value": 1.85317575925873,
+      "numerator": 92.658788,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Brand not known P3M consumption incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 130.060189,
+      "value": 2.601204,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q09_use_p3m_9:percent:1:28",
+      "value": 2.6012037789595186,
+      "numerator": 130.060189,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  },
+  {
+    "expected": {
+      "wave": 1,
+      "metric": "Brand not known P3M buyer incidence",
+      "eligible": 5000,
+      "valid": 5000,
+      "base": 5000.000002,
+      "numerator": 97.001549,
+      "value": 1.940031,
+      "unit": "percent"
+    },
+    "actual": {
+      "id": "repertoire:q10_purchase_9:percent:1:37",
+      "value": 1.9400309792239876,
+      "numerator": 97.001549,
+      "assignedBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "eligibleBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "validBase": {
+        "n": 5000,
+        "w": 5000.000002,
+        "nEff": 4763.555714334255
+      },
+      "quotes": [],
+      "suppressed": false,
+      "reason": null,
+      "designApplied": false
+    }
+  }
+]

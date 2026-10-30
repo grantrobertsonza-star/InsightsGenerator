@@ -1,0 +1,15 @@
+{
+  "baseline": "acd572122dd03f0133f76acbafb6f985f8083648",
+  "cases": 5000,
+  "variables": 600,
+  "seconds": {
+    "before": 22.7116471,
+    "after": 1.7052957999999998
+  },
+  "exactlyEquivalent": true,
+  "resultSha256": {
+    "before": "a6d921447ee74bdb83f1aac7639b2ef2489ca81ed7a94f63af14a45fb2f1d59f",
+    "after": "a6d921447ee74bdb83f1aac7639b2ef2489ca81ed7a94f63af14a45fb2f1d59f"
+  },
+  "scope": "One process, same actual-reader input and complete quality output; excludes database, browser and import I/O."
+}

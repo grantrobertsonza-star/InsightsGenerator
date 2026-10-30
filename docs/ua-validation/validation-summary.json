@@ -1,0 +1,131 @@
+{
+  "sourceCommit": "ba9a67e6b00d2e583e370b1dfcb5f651c112ccb5",
+  "inventoryFiles": 370,
+  "missingFiles": [],
+  "broad": {
+    "files": 368,
+    "passed": 2761,
+    "failed": 7,
+    "skipped": 97
+  },
+  "serialFailureFamilies": {
+    "files": 3,
+    "passed": 36,
+    "failed": 0,
+    "skipped": 1
+  },
+  "workerChecks": {
+    "files": 2,
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "consolidatedCoverage": {
+    "files": 370,
+    "passed": 2776,
+    "failed": 0,
+    "skipped": 97
+  },
+  "caveat": "Consolidated coverage is not a clean single full-suite run. The original seven broad-run failures remain recorded here; all their families passed serially.",
+  "broadFailures": [
+    {
+      "file": "src/lib/__tests__/researchAssistantTools.db.test.ts",
+      "tests": [
+        "Research assistant tools (real database) ten distinct questions at once all finish: claims come from their own pool, so the work always gets a connection, and other database work goes on (B8-F01)",
+        "Research assistant tools (real database) a question that cannot get a claim before the wait runs out is refused as busy, running nothing; asked again later it is answered",
+        "Research assistant tools (real database) sends without a request id, and the assistant outside a project, are held to the same capacity (RR-F08)",
+        "Research assistant tools (real database) gives sample sizes from the calculator",
+        "Research assistant tools (real database) builds at most four tables for one message, and stops after eight rounds"
+      ]
+    },
+    {
+      "file": "src/lib/__tests__/trackerAdvertising.db.test.ts",
+      "tests": [
+        "Advertising & WOM figures against independent reference values (real database, actual engine) failure: a file that cannot be read rejects with the reason; once readable again the page returns"
+      ]
+    },
+    {
+      "file": "src/lib/__tests__/trackerCategory.db.test.ts",
+      "tests": [
+        "Category overview figures against independent reference values (real database, actual engine) failure: a file that cannot be read rejects with the reason; once readable again the page returns"
+      ]
+    }
+  ],
+  "qa": {
+    "waves": 3,
+    "metricsPerWave": 66,
+    "totalMetricInstances": 198,
+    "quantitiesPerInstance": 5,
+    "allReproduced": true,
+    "tolerance": "Counts exact; weighted max(1e-6, abs(reference)*1e-6)."
+  },
+  "engineSelfTest": {
+    "passed": 565,
+    "failed": 0
+  },
+  "tscExit": 0,
+  "lintExit": 0,
+  "productionBuildExit": 0,
+  "browser": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 454197.978
+  },
+  "screenshots": {
+    "count": 9,
+    "width": 1440,
+    "height": 900
+  },
+  "newFiles": [
+    {
+      "file": "src/lib/__tests__/dataQualityWideRouting.test.ts",
+      "files": 1,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/lib/__tests__/jsonLineReader.test.ts",
+      "files": 1,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/lib/__tests__/uaDashboard.db.test.ts",
+      "files": 1,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/lib/__tests__/uaPanel.test.tsx",
+      "files": 1,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/lib/__tests__/uaRoles.test.ts",
+      "files": 1,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/lib/__tests__/statsWorkerFreshness.test.ts",
+      "files": 1,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/lib/__tests__/statsWorkerReload.test.ts",
+      "files": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    }
+  ]
+}
