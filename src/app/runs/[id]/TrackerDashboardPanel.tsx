@@ -24,6 +24,8 @@ import type { CompanyBox, CompanyNps, CsmTile, CsmTileId } from "@/lib/trackerCs
 import type { FunnelStage } from "@/lib/trackerRoles";
 import { searchVariables } from "@/lib/variableSearch";
 import { QuestionPicker, variableText } from "./QuestionPicker";
+import { CSM_EXTENSION_TABS, CsmExtensionSections } from "./CsmExtensionSections";
+import type { CsmExtensionSectionId } from "@/lib/csmExtension";
 
 export type TrackerDashboardKind = "brand" | "csm";
 
@@ -211,7 +213,7 @@ export default function TrackerDashboardPanel({
   closeLabel?: string;
 }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
-  const [csmTab, setCsmTab] = useState<"company" | "nps" | "drivers">("company");
+  const [csmTab, setCsmTab] = useState<"company" | "nps" | "drivers" | CsmExtensionSectionId>("company");
   const [comparators, setComparators] = useState<string[] | null>(null);
   const [pickingComparators, setPickingComparators] = useState(false);
   // The CSM tiles' scope: all customers, or one company by code; null until the researcher picks, which shows the
@@ -1607,13 +1609,15 @@ export default function TrackerDashboardPanel({
             <p className="text-[11px] text-slate-500">Choices saved for the {overview.view.scope} · kept for new waves</p>
           </div>
         </div>
-        <div role="tablist" aria-label="Dashboard sections" className="flex gap-10 border-b border-slate-200">
+        <div role="tablist" aria-label="Dashboard sections" className="flex flex-wrap gap-x-10 gap-y-1 border-b border-slate-200">
           {(
             [
               ["company", "Company"],
               ["channels", "Channels"],
               ["nps", "NPS & loyalty"],
               ["drivers", "Drivers"],
+              // R6 CSM extension: the added sections, each its own entry (CsmExtensionSections.tsx).
+              ...CSM_EXTENSION_TABS.map((t) => [t.id, t.label] as const),
             ] as const
           ).map(([id, label]) =>
             id === "channels" ? (
@@ -1715,6 +1719,9 @@ export default function TrackerDashboardPanel({
           </div>
         )}
         {csmTab === "drivers" && driverPriority(true)}
+        {(csmTab === "journey" || csmTab === "experience" || csmTab === "competitive") && (
+          <CsmExtensionSections runId={runId} documentId={documentId} section={csmTab} company={scope === "all" ? null : scope} companyLabel={scopeLabel} />
+        )}
       </>
     );
 
