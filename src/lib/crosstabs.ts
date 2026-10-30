@@ -679,6 +679,7 @@ export async function buildCrosstab(
   } = {},
 ): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[]; alreadyCopied?: true; replaced?: boolean; alreadyReplaced?: true }> {
   // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
+  if (request.uaMetrics) throw new Error("U&A dashboard measures cannot be saved as a Cross tab table. Use the dashboard.");
   const { result, doc, overlay, overrides, authoritativeSheet, headerRowsSkipped } = await computeCrosstab(tenantId, runId, documentId, request);
 
   // IMP-003 / ANA-BRAND-002: this flat `headers`/`rows` projection (the saved table's plain

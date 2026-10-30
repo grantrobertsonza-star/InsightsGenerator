@@ -155,3 +155,14 @@ in the change that moves it.
   model choice or grounding code change, and before each release; thresholds agreed in advance.
 - **Seeded defects** (release programme Phase 2): repeated every few months to check the tests still
   catch what they should.
+
+## Usage and attitudes
+
+| Rule | Owner | Contract | Pinned by |
+|---|---|---|---|
+| Relational codebook question, code-list and routing joins | `api/codebook_relations.py` `relational_codebook_items`, called by the existing engine `codebook_items` | `claude/usage-attitudes.md` | `uaRoles.test.ts`, `uaDashboard.db.test.ts` |
+| U&A semantic signature, role ambiguity and named brands | `src/lib/uaRoles.ts` `recogniseUa`, `isUaResponse` | `claude/usage-attitudes.md` | `uaRoles.test.ts` |
+| Declared U&A routes and response-state selection | `src/lib/uaRouting.ts` `compileUaRoute`, `answeredCondition` | `claude/usage-attitudes.md` | `uaDashboard.db.test.ts`, `scripts/ua_engine_selftest.py` |
+| U&A measure definitions and explicit same-period logical zeros | `src/lib/uaMetrics.ts` `planUaMetrics`; engine preparation `api/ua_metrics.py`; estimates owned by existing `crosstab` | `claude/usage-attitudes.md`, `claude/ua-metric-contracts.json` | All 198 supplied QA instances in `uaDashboard.db.test.ts`; independent engine self-test |
+| Tenant-owned U&A choices, programme/project scope and revision save | `src/lib/uaDashboards.ts` `saveUaChoices`; shared `runOwnership.ts` | `claude/usage-attitudes.md` | `uaDashboard.db.test.ts`, `uaPanel.test.tsx` |
+| Descriptive U&A previous-wave comparability | `src/lib/uaWaves.ts` `loadUaComparison`, `uaComputation.ts` `uaWaveDifference` | `claude/usage-attitudes.md` | `uaRoles.test.ts`, `ua-dashboard.check.mjs` |

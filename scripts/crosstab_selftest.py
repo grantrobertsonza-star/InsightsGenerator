@@ -1078,5 +1078,8 @@ check("decision 9: a zero-padded identifier below two title rows keeps its own p
 _pad3 = psf.read_table(_title_book([["Respondents"], ["Prepared by", "Acme"], ["id", "score"], [7, 5], [12, 6]], id_format="0000"), "pad3.xlsx", {"headerRowsSkipped": 2})
 check("decision 9: a zero-padded identifier below a chosen header row keeps its own padding", [r["id"] for r in _pad3["rows"]] == ["0007", "0012"], str(_pad3["rows"]))
 
+from ua_engine_selftest import run_checks as ua_checks
+ua_checks(psf, check)
+
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

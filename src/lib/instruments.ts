@@ -365,12 +365,13 @@ export type QuestionMeta = {
   questionType?: "categorical" | "multiple_response" | "scale" | "continuous" | "text" | null;
   questionTypeAsWritten?: string;
   mrSet?: string | null;
+  researchMeta?: Record<string, string | null>;
 };
 
 const QUESTION_TYPES = new Set(["categorical", "multiple_response", "scale", "continuous", "text"]);
 
 /** The engine's question fields, checked; null when none is given. */
-export function questionMetaOf(it: { questionId?: unknown; questionType?: unknown; questionTypeAsWritten?: unknown; mrSet?: unknown }): QuestionMeta | null {
+export function questionMetaOf(it: { questionId?: unknown; questionType?: unknown; questionTypeAsWritten?: unknown; mrSet?: unknown; researchMeta?: unknown }): QuestionMeta | null {
   const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 120) : null);
   const meta: QuestionMeta = {};
   if ("questionId" in it) meta.questionId = text(it.questionId);
@@ -378,11 +379,16 @@ export function questionMetaOf(it: { questionId?: unknown; questionType?: unknow
   const asWritten = text(it.questionTypeAsWritten);
   if (asWritten) meta.questionTypeAsWritten = asWritten;
   if ("mrSet" in it) meta.mrSet = text(it.mrSet);
+  if (it.researchMeta && typeof it.researchMeta === "object" && !Array.isArray(it.researchMeta)) {
+    const allowed = new Set(["questionWording", "fieldRole", "stateVariable", "eligibleBase", "period", "unit", "validValues", "missingTreatment", "loopContext", "itemId", "administrationNotes", "questionOptions"]);
+    meta.researchMeta = Object.fromEntries(Object.entries(it.researchMeta).filter(([k, v]) => allowed.has(k) && (v === null || typeof v === "string")).map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 6000) : null]));
+  }
   return Object.values(meta).some((v) => v !== null && v !== undefined) ? meta : null;
 }
 
 type EngineItem = {
   variable: string;
+  researchMeta?: Record<string, string | null>;
   questionId?: string | null;
   questionType?: string | null;
   questionTypeAsWritten?: string;

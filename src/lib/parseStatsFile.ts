@@ -584,6 +584,8 @@ export type CrosstabGroup = {
   qualifyCodes?: boolean;
 };
 export type CrosstabRequest = {
+  /** Routed U&A values are prepared by the engine; estimates still use its ordinary crosstab owner. */
+  uaMetrics?: import("./uaTypes").UaMetricSpec[];
   columnVars: string[];
   rowItems: CrosstabRowItem[];
   weightVar: string | null;
@@ -786,6 +788,7 @@ export type TableTest = {
   fisherP?: number;
 };
 export type CrosstabResult = {
+  uaMetrics?: import("./uaTypes").UaMetric[];
   version: 2;
   engine?: string;
   /** Engineering brief round 4 (criterion 4): the sheet this exact read actually used

@@ -3579,6 +3579,22 @@ def _cb_json_meta(entry, label):
     return out
 
 
+def _engine_sibling(name):
+    """Resolve our own engine modules beside this file, also under importlib test loaders."""
+    import importlib.util
+    import sys
+    key = "insights_engine_" + name
+    filename = os.path.join(os.path.dirname(__file__), name + ".py")
+    fingerprint = (os.stat(filename).st_mtime_ns, os.stat(filename).st_size)
+    if key not in sys.modules or getattr(sys.modules[key], "_engine_fingerprint", None) != fingerprint:
+        spec = importlib.util.spec_from_file_location(key, filename)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module._engine_fingerprint = fingerprint
+        sys.modules[key] = module
+    return sys.modules[key]
+
+
 def codebook_items(file_bytes: bytes, source_filename: str, args=None) -> dict:
     """The variables a codebook table describes: name, label, answer codes and labels, section. Every
     sheet of a workbook is read; sheets that are not codebook tables are named in skippedSheets."""
@@ -3588,6 +3604,9 @@ def codebook_items(file_bytes: bytes, source_filename: str, args=None) -> dict:
     if ext not in TABLE_EXTS:
         raise ValueError(f"A codebook is read as a table from CSV, text, Excel or JSON files, not {ext or '(none)'} files.")
     sheets = _sheet_grids(file_bytes, source_filename)
+    relational = _engine_sibling("codebook_relations").relational_codebook_items(sheets, _cb_question_type)
+    if relational is not None:
+        return relational
     items, used, skipped, seen = [], [], [], set()
     for name, grid in sheets:
         found = _cb_sheet_items(grid, name)
@@ -5356,7 +5375,7 @@ def _resolve_set_vars(df, meta, set_key):
     return exact
 
 
-def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
+def crosstab(file_bytes: bytes, source_filename: str, args: dict, _loaded=None) -> dict:
     """Weighted crosstab. args: columnVars [names], rowItems [{key,label,vars}],
     weightVar. Several banner variables sit side by side. A row item with more
     than one variable that are all yes/no options is a multiple-response
@@ -5364,6 +5383,9 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     cases that answered that option, not on everyone."""
     import numpy as np
     import pandas as pd
+
+    if args.get("uaMetrics") is not None:
+        return _engine_sibling("ua_metrics").dashboard_metrics(file_bytes, source_filename, args, _read, crosstab)
 
     column_vars = [v for v in args["columnVars"]]
     raw_items = args["rowItems"]
@@ -5427,7 +5449,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     set_wanted = [name for v in column_vars if v.startswith("set:") for name, _ in set_members[v[4:]]]
     plain_column_vars = [v for v in column_vars if not v.startswith("set:")]
     wanted = list(dict.fromkeys(plain_column_vars + set_wanted + row_vars + ([weight_var] if weight_var else []) + [v for v in (psu_var, strata_var) if v] + filter_vars))
-    df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"), header_rows_skipped=args.get("headerRowsSkipped"))
+    df, meta = _loaded if _loaded is not None else _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"), header_rows_skipped=args.get("headerRowsSkipped"))
     labels = meta.column_names_to_labels or {}
     vlabels = meta.variable_value_labels or {}
     n_rows = len(df)
@@ -5735,7 +5757,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             "total": {"count": round(tot_sel, 1), "pct": None if math.isnan(pt) else round(pt * 100, 1),
                       "countExact": tot_sel, "pctExact": None if math.isnan(pt) else pt * 100,
                       "nCell": int((valid_mask & sel_mask & w_ok).sum()),
-                      "base": {"n": tot_n, "w": round(tot_w, 1), "nEff": round(tot_eff, 1)}},
+                      "base": {"n": tot_n, "w": round(tot_w, 1), "nEff": round(tot_eff, 1), "exact": {"n": tot_n, "w": tot_w, "nEff": tot_eff}}},
         }
 
     def add_row_pct(row, block_of_col):
@@ -6007,7 +6029,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                          "rowPct": None, "nCell": None, "base": {"n": nb, "w": round(swb, 1), "nEff": round(neb, 1)}})
         return {"desc": desc, "eta": etas, "_est": ests, "count": [None] * K, "nCell": [None] * K, "pct": means, "pctExact": means_exact, "rowPct": [None] * K, "p": ps, "sig": sigs, "base": bases,
                 "net": nets,
-                "total": {"count": None, "nCell": None, "pct": round(gm, 2), "pctExact": gm, "base": {"n": tn, "w": round(tw, 1), "nEff": round(te, 1)}}}
+                "total": {"count": None, "nCell": None, "pct": round(gm, 2), "pctExact": gm, "base": {"n": tn, "w": round(tw, 1), "nEff": round(te, 1), "exact": {"n": tn, "w": tw, "nEff": te}}}}
 
     def base_src(valid_mask):
         """Bases only (no tests), for the base rows of a question."""
