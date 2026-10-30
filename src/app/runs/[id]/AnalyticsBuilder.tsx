@@ -18,6 +18,7 @@ import WaveTrackingPanel from "./WaveTrackingPanel";
 import { useKeptOpen } from "./useKeptOpen";
 import CsmAnalyticsPanel from "./CsmAnalyticsPanel";
 import BrandHealthAnalyticsPanel from "./BrandHealthAnalyticsPanel";
+import UaDashboardTile from "./UaDashboardTile";
 import TrackerDashboardPanel, { type TrackerDashboardKind } from "./TrackerDashboardPanel";
 import type { WaveFile } from "@/lib/waveTrackingActions";
 import { ChartCustomizePanel, type LegendPos } from "./ChartCustomize";
@@ -192,6 +193,7 @@ export default function AnalyticsBuilder({
           <section aria-label="Tracker dashboards" data-testid="tracker-dashboards">
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Tracker dashboards</h3>
             <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <UaDashboardTile runId={runId} documentId={documentId} waveFiles={waveFiles ?? []} />
               {dashboards.map((d) => (
                 <li key={d.kind}>
                   <button

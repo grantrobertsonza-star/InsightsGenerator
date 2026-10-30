@@ -21,7 +21,7 @@ beforeAll(async () => {
 });
 afterEach(async () => { if (root) await act(() => root!.unmount()); root = null; vi.clearAllMocks(); });
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
-const workspace = (): UaWorkspace => ({ recognition: { recognised: true, fields: [], reasons: [], questions: [], brands: [], roles: {}, analysisWeight: "weight", populationWeight: null }, choices: { focalBrand: null, weighted: true, roleCorrections: {}, lightUserMaximum: null }, revision: null, scope: "project:x", storageAvailable: true, metrics: [{ page: "footprint" }, { page: "needs" }] as UaWorkspace["metrics"], unavailable: [] });
+const workspace = (): UaWorkspace => ({ recognition: { recognised: true, needsMapping: false, fields: [], reasons: [], questions: [], brands: [], roles: {}, analysisWeight: "weight", populationWeight: null }, choices: { focalBrand: null, weighted: true, roleCorrections: {}, lightUserMaximum: null }, revision: null, scope: "project:x", storageAvailable: true, metrics: [{ page: "footprint" }, { page: "needs" }] as UaWorkspace["metrics"], unavailable: [] });
 const response = (page: "footprint" | "needs", label: string) => ({ ok: true as const, page: { page, documentId: "doc", weightVar: "weight", unavailable: [], metrics: [{ spec: { id: label, label, page, sourceQuestionIds: ["Q1"], kind: "percent", unit: "percent", reason: "Declared question", period: "P3M", variable: "v" }, result: { id: label, value: 42, numerator: 42, assignedBase: { n: 100, w: 100, nEff: 90 }, eligibleBase: { n: 100, w: 100, nEff: 90 }, validBase: { n: 100, w: 100, nEff: 90 }, suppressed: false, reason: null, designApplied: false } }] } as UaPage, comparison: { status: "none" as const, reason: "Earliest wave" } });
 async function mount() {
   const Panel = (await import("../../app/runs/[id]/UaDashboardPanel")).default;
@@ -38,6 +38,18 @@ describe("mounted U&A panel navigation and late replies", () => {
     await act(() => earlier.resolve(response("footprint", "Stale footprint")));
     expect(doc.body.textContent).not.toContain("Stale footprint"); expect(doc.body.textContent).toContain("Current attitude");
     expect(doc.body.textContent).toContain("Not asked in this file");
+  });
+  it("exposes an ambiguous study as a mapping question without publishing guessed figures", async () => {
+    const view = workspace(); view.recognition.recognised = false; view.recognition.needsMapping = true;
+    view.recognition.questions = [{ role: "everConsumption", reason: "Choose the category-ever question.", candidates: ["a", "b"] }];
+    view.recognition.fields = ["a", "b"].map(variable => ({ variable, label: `Candidate ${variable}`, questionId: "Q17", options: [], meta: { stateVariable: "state", fieldRole: "Survey response" } }));
+    actions.workspace.mockResolvedValue({ ok: true, view }); actions.page.mockResolvedValue({ ok: false, error: "Resolve the question mapping first." });
+    const Tile = (await import("../../app/runs/[id]/UaDashboardTile")).default;
+    root = createRoot(container); await act(() => root!.render(createElement(Tile, { runId: "run", documentId: "doc", waveFiles: [] })));
+    await act(() => button("review question mapping").dispatchEvent(new EventCtor("click", { bubbles: true })));
+    expect(doc.querySelector('[aria-label="Question for everConsumption"]')).toBeTruthy();
+    expect(doc.body.textContent).toContain("Choose the category-ever question");
+    expect(doc.querySelectorAll('[data-testid="ua-metric"]')).toHaveLength(0);
   });
   it("shows Saved only after a successful save and surfaces a refused save", async () => {
     actions.workspace.mockResolvedValue({ ok: true, view: workspace() }); actions.page.mockResolvedValue(response("footprint", "Current footprint"));

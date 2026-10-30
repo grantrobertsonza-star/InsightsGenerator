@@ -1,0 +1,93 @@
+import { test, expect } from "@playwright/test";
+import { readFileSync, mkdirSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { addFiles } from "./helpers/addFiles.mjs";
+import { openSource } from "./helpers/sources.mjs";
+const manifest = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "work/ua/stack/target-manifest.json";
+const target = JSON.parse(readFileSync(manifest, "utf8"));
+if (!target.disposable || !target.syntheticOnly) throw new Error("U&A check requires the disposable synthetic stack.");
+const contracts = JSON.parse(readFileSync("claude/ua-metric-contracts.json", "utf8")).metrics;
+const pack = path.resolve("fixtures/ua-soft-drinks");
+const book = "UA_Soft_Drinks_Master_Codebook.xlsx";
+const file = n => `UA_Soft_Drinks_Wave_${n}_5000.csv`;
+const refs = readFileSync(path.join(pack, "QA_Expected_Metrics.csv"), "utf8").trim().split(/\r?\n/).slice(1).map(line => line.split(","));
+const expectedAt = (wave, label) => Number(refs.find(r => r[0] === String(wave) && r[1] === label)[6]);
+const expected = label => expectedAt(1, label);
+const fmt = n => new Intl.NumberFormat("en-ZA", { maximumFractionDigits: 1 }).format(n);
+test.use({ viewport: { width: 1440, height: 900 } });
+test("U&A: real uploads, confirmed codebook, headline QA, nine pages and saved choices", async ({ page }, testInfo) => {
+  test.setTimeout(25 * 60_000);
+  const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
+  const ui = await bind({ page, target, testInfo });
+  const run = await ui.createRun({ name: `Karoo Drinks U&A ${Date.now()}` });
+  await page.goto(`${run.url}?section=upload`, { waitUntil: "networkidle" });
+  console.info("UA browser: uploading three raw waves");
+  await addFiles(page, [1, 2, 3].map(n => path.join(pack, file(n))), "Raw data");
+  await expect(page.getByTestId("add-files-error")).toHaveCount(0);
+  console.info("UA browser: raw waves stored; uploading relational codebook");
+  await addFiles(page, [path.join(pack, book)], "Codebook");
+  await expect(page.getByTestId("add-files-error")).toHaveCount(0);
+  console.info("UA browser: codebook stored");
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /^Import data/ }).first().click();
+  const card = await openSource(page, book, "Codebook links");
+  await expect(card.getByText("Variables read", { exact: true })).toBeVisible({ timeout: 300_000 });
+  const confirm = card.getByRole("button", { name: "Confirm same-code matches" });
+  await expect(confirm).toBeEnabled({ timeout: 300_000 }); await confirm.click();
+  await expect(card.getByText(/Confirmed .*same-code matches/)).toBeVisible({ timeout: 300_000 });
+  console.info("UA browser: codebook links confirmed");
+  await addFiles(page, [path.join(pack, "UA_Soft_Drinks_Questionnaire.docx")], "Questionnaire");
+  for (const n of [1, 2, 3]) {
+    const setup = await openSource(page, file(n), "Setup");
+    await expect(setup.getByLabel(`Wave: ${file(n)}`)).toBeEnabled({ timeout: 180_000 });
+    await setup.getByLabel(`Wave: ${file(n)}`).fill(`Wave ${n}`);
+    await setup.getByLabel(`Wave: ${file(n)}`).blur();
+  }
+  await expect(async () => {
+    await page.reload({ waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /^Import data/ }).first().click();
+    for (const n of [1, 2, 3]) {
+      const setup = await openSource(page, file(n), "Setup");
+      await expect(setup.getByLabel(`Wave: ${file(n)}`)).toHaveValue(`Wave ${n}`);
+    }
+  }).toPass({ timeout: 180_000 });
+  await page.getByRole("button", { name: /^Analytics/ }).first().click();
+  const section = page.getByTestId("analytics-section").filter({ visible: true });
+  await section.getByTestId("analytics-file-select").selectOption({ label: `Wave 1: ${file(1)}` });
+  await section.getByRole("button", { name: /^Usage & attitudes dashboard/ }).click({ timeout: 180_000 });
+  const dash = page.getByTestId("ua-dashboard");
+  const metric = label => dash.locator('[data-testid="ua-metric"]').filter({ has: page.getByRole("heading", { name: label, exact: true }) });
+  await expect(metric("Ever consumption")).toContainText(`${fmt(expected("Ever consumption"))}%`, { timeout: 300_000 });
+  await expect(metric("P3M consumption")).toContainText(`${fmt(expected("P3M consumption"))}%`);
+  await dash.getByLabel("Focal brand", { exact: true }).selectOption({ label: "Karoo Fizz" });
+  const savedFocal = await dash.getByLabel("Focal brand", { exact: true }).inputValue();
+  await dash.getByRole("button", { name: "Save choices", exact: true }).click();
+  await expect(dash.getByText("Saved", { exact: true })).toBeVisible({ timeout: 120_000 });
+  await dash.getByRole("button", { name: "Question mapping", exact: true }).click();
+  await dash.getByLabel("Light-user maximum P3M occasions", { exact: true }).fill("5");
+  await dash.getByRole("button", { name: "Save choices", exact: true }).click();
+  await expect(dash.getByText("Saved", { exact: true })).toBeVisible({ timeout: 120_000 });
+  await dash.getByRole("button", { name: "Question mapping", exact: true }).click();
+  console.info("UA browser: headlines match QA; researcher choices saved");
+  const pages = ["Category footprint", "Usage and brand", "Occasions and context", "Needs, emotions", "Brand memory", "Choice, access", "Experience, repeat", "Future needs", "Audiences"];
+  mkdirSync("docs/screenshots/ua", { recursive: true });
+  for (const [index, title] of pages.entries()) {
+    await dash.getByRole("navigation", { name: "U&A pages" }).getByRole("button", { name: new RegExp(title) }).click();
+    const id = ["footprint", "repertoire", "occasions", "needs", "memory", "choice", "experience", "future", "audiences"][index];
+    const first = contracts.find(m => m.page === id);
+    await expect(metric(first.label)).toBeVisible({ timeout: 300_000 });
+    await expect(dash.getByRole("alert")).toHaveCount(0);
+    console.info(`UA browser: page ${index + 1} ${id}`);
+    await dash.screenshot({ path: `docs/screenshots/ua/${String(index + 1).padStart(2, "0")}.png` });
+  }
+  await dash.getByRole("navigation", { name: "U&A pages" }).getByRole("button", { name: /Category footprint/ }).click();
+  await dash.getByLabel("Wave", { exact: true }).selectOption({ label: "Wave 2" });
+  await expect(metric("P3M consumption")).toContainText(`${fmt(expectedAt(2, "P3M consumption"))}%`, { timeout: 300_000 });
+  await expect(metric("P3M consumption")).toContainText(`${fmt(expectedAt(2, "P3M consumption") - expectedAt(1, "P3M consumption"))} points since previous wave`);
+  await dash.getByRole("button", { name: "Close dashboard" }).click();
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /^Analytics/ }).first().click();
+  await section.getByRole("button", { name: /^Usage & attitudes dashboard/ }).click({ timeout: 180_000 });
+  await expect(dash.getByLabel("Focal brand", { exact: true })).toHaveValue(savedFocal, { timeout: 120_000 });
+});
