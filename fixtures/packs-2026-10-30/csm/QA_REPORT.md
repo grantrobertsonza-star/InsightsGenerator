@@ -1,27 +1,25 @@
-# CSM verification results
+# Separate CSM testing pack QA
 
-The final banking and mobile expansion preserves every original data value and passes the checks below. It is a synthetic research fixture, not an application acceptance test or a finding about the named providers.
+Status: passed for file integrity and synthetic reference arithmetic. This is not an application acceptance test.
 
-## Original records and values
+## Data and preservation
 
-Banking retains 3,000 relationship records and 4,837 channel records. Mobile retains 3,000 relationship records and 4,576 channel records. No original fields, codes, rows or values were removed or recoded. All 1,022,586 addressed cells in the original used ranges of 16 workbooks, including structural blanks and text identifiers, were compared after final export. Original reference-result records are unchanged. See preservation_report.json.
+- Two sectors; three 1,000-customer waves each; company schema 100 fields and channel schema 88 fields.
+- Pooled company files contain exactly 3,000 rows per sector. Channel files contain 4,837 banking and 4,576 mobile rows across waves. Every pooled file exactly concatenates its wave files.
+- All 1,256,323 baseline company/channel values were preserved; including unchanged noncustomer data, 1,358,323 baseline cells were checked.
+- All 1,428,344 separate customer and channel cells reconcile to the frozen combined representation. Parent independent reconciliation separately checked 1,428,344 cells with no errors.
+- No random response generation was rerun. Original baseline files were hash-checked and remain untouched. Noncustomer data files and questionnaires are byte-identical copies.
 
-The expansion adds 41 relationship fields, 6 channel fields and a separate 1,500 synthetic focal-noncustomer records per sector, split 500 per wave. These samples must remain separate.
+## Workbook and metric checks
 
-## Data and metadata checks
+- Complete XLSX/CSV readback covered 3,088,780 cells, including all wave and pooled records, embedded codebooks, labels, MR sets, master metadata and references.
+- All 26 XLSX files were checked for unexpected formula cells, Excel error cells and missing freeze panes. Raw datasets and acceptance references are deliberately static; they do not contain live forecast formulas.
+- All 6,213 reference statistics were independently recalculated, including numerator, weighted base, raw base and expected result, within 0.000001.
+- IDs, key uniqueness, all 13 shared context fields, labels, routes, dimensions, used/unused channels, journey anchors, comparable-task benchmark gates, emotion scales, promises not yet due and optional noncustomer eligibility passed.
+- Wave workbooks, master codebooks and metric workbooks were authored and rendered using Artifact Tool. Pooled workbooks use lossless OOXML concatenation of those authored data rows, preserving identical styles and metadata, followed by complete readback and boundary checks.
 
-Both sector validators pass. Banking has 2,202 reference statistics; mobile has 1,941. All values, weighted numerators, valid weighted bases and raw bases are recalculated independently with NumPy from exported XLSX. A separate reviewer independently recomputed all 228 newly added metrics directly from CSV, with 912 scalar checks; every raw base matched exactly and the maximum numerical difference was 0.0000000000001. All CSV records match their XLSX counterparts. The 1,218 embedded variable definitions across the 18 data workbooks agree with master, CSV and optional JSON metadata.
+## Scope and use
 
-Routes checked include current-customer joins, latest-channel eligibility, original service-quality skips, complaint routes, independently anchored journey sequence and contact capacity, selected-channel consistency, recency/date order, pending-outcome exclusion, staying-reason exclusivity and primary selection, personally used alternative provider/task/window checks, paired comparison bases, focal noncustomer exclusion and awareness/actual-alternative-use skips. Separate reviewers also checked original data preservation and these added routes.
+Updated DOCX documents were rendered and page-checked; unchanged optional noncustomer documents retain their earlier verified layout. Workbook views were visually reviewed. The supplied guides state the authorised future implementation tests; no Excel desktop/UI test, dashboard import, app change, deployment or Claude contact was performed here.
 
-Original native table names are retained and their affected ranges extended. No original chart, pivot or external-link objects were dropped. The existing workbooks contain fixed synthetic data/reference values rather than input-driven analytical formulas.
-
-## Visual and content checks
-
-An independent reviewer inspected every page of all 12 final Word documents: 42 pages total. Each sector has a one-page brief, six-page company questionnaire, four-page channel questionnaire, three-page noncustomer questionnaire, four-page dashboard guide and three-page Claude implementation instructions. There are no unresolved clipping, pagination or table issues.
-
-Spreadsheet previews cover changed data, metadata and reference ranges and every sheet in the new workbooks. New long verbatims have fitted readable columns. Added question sub-IDs map to their codebook fields. Banking and mobile display terminology is appropriate to the sector.
-
-## Limits and handoff
-
-The optional JSON and CSV fixtures are not required for normal app import. Only Respondents, Experiences and Noncustomers are case data. These checks do not show that any application implements the expanded design correctly. Compare actual app outputs and preserve its existing font, layout and #2563eb accent before claiming app acceptance. No app, Claude session, production system or real respondent was contacted or changed.
+Import either three wave files or their pooled file, never both. Import either separate or combined representation, never both. Keep customer, latest-channel experience and noncustomer populations separate. See validation scripts and machine-readable reports in quality_checks.

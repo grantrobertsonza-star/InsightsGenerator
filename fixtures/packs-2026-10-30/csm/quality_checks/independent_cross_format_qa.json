@@ -1,0 +1,24 @@
+{
+  "status": "PASS",
+  "compared_cells": 1428344,
+  "counts": [
+    {
+      "sector": "banking",
+      "company_rows": 3000,
+      "channel_rows": 4837,
+      "company_fields": 100,
+      "channel_fields": 88,
+      "pooled_exact_concatenation": true
+    },
+    {
+      "sector": "mobile",
+      "company_rows": 3000,
+      "channel_rows": 4576,
+      "company_fields": 100,
+      "channel_fields": 88,
+      "pooled_exact_concatenation": true
+    }
+  ],
+  "errors": [],
+  "error_count": 0
+}

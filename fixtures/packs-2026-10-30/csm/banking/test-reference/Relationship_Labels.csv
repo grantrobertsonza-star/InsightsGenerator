@@ -1,0 +1,363 @@
+﻿variable,label,value,value_label
+wave,Wave,1,February 2026
+wave,Wave,2,June 2026
+wave,Wave,3,October 2026
+company,Main company,1,FNB
+company,Main company,2,Standard Bank
+company,Main company,3,Absa
+company,Main company,4,Nedbank
+company,Main company,5,Capitec
+company,Main company,6,Discovery Bank
+company,Main company,7,GoTyme Bank (formerly TymeBank)
+age_band,Age group,1,18–24
+age_band,Age group,2,25–34
+age_band,Age group,3,35–49
+age_band,Age group,4,50–69
+gender,Gender,1,Man
+gender,Gender,2,Woman
+gender,Gender,3,Another identity
+gender,Gender,4,Prefer not to say
+province,Province,1,Gauteng
+province,Province,2,KwaZulu-Natal
+province,Province,3,Western Cape
+province,Province,4,Eastern Cape
+province,Province,5,Limpopo
+province,Province,6,Mpumalanga
+province,Province,7,North West
+province,Province,8,Free State
+province,Province,9,Northern Cape
+income,Monthly household income,1,"Below R15,000"
+income,Monthly household income,2,"R15,000–R29,999"
+income,Monthly household income,3,"R30,000–R49,999"
+income,Monthly household income,4,"R50,000–R79,999"
+income,Monthly household income,5,"R80,000 or more"
+income,Monthly household income,99,Prefer not to say
+settlement,Settlement,1,Metro or city
+settlement,Settlement,2,Town
+settlement,Settlement,3,Rural area
+segment,Synthetic demonstration segment,1,Segment 1
+segment,Synthetic demonstration segment,2,Segment 2
+segment,Synthetic demonstration segment,3,Segment 3
+company_csat5,Overall company satisfaction,1,Very dissatisfied
+company_csat5,Overall company satisfaction,2,Dissatisfied
+company_csat5,Overall company satisfaction,3,Neither satisfied nor dissatisfied
+company_csat5,Overall company satisfaction,4,Satisfied
+company_csat5,Overall company satisfaction,5,Very satisfied
+company_csat5,Overall company satisfaction,99,Do not know
+company_expectations5,Company versus expectations,1,Much worse
+company_expectations5,Company versus expectations,2,Worse
+company_expectations5,Company versus expectations,3,As expected
+company_expectations5,Company versus expectations,4,Better
+company_expectations5,Company versus expectations,5,Much better
+company_expectations5,Company versus expectations,99,Do not know
+fairness5,Treats customers fairly,1,Strongly disagree
+fairness5,Treats customers fairly,2,Disagree
+fairness5,Treats customers fairly,3,Neither agree nor disagree
+fairness5,Treats customers fairly,4,Agree
+fairness5,Treats customers fairly,5,Strongly agree
+fairness5,Treats customers fairly,99,Do not know
+trust5,Trustworthy,1,Strongly disagree
+trust5,Trustworthy,2,Disagree
+trust5,Trustworthy,3,Neither agree nor disagree
+trust5,Trustworthy,4,Agree
+trust5,Trustworthy,5,Strongly agree
+trust5,Trustworthy,99,Do not know
+recommend_0to10,Likelihood to recommend,0,0
+recommend_0to10,Likelihood to recommend,1,1
+recommend_0to10,Likelihood to recommend,2,2
+recommend_0to10,Likelihood to recommend,3,3
+recommend_0to10,Likelihood to recommend,4,4
+recommend_0to10,Likelihood to recommend,5,5
+recommend_0to10,Likelihood to recommend,6,6
+recommend_0to10,Likelihood to recommend,7,7
+recommend_0to10,Likelihood to recommend,8,8
+recommend_0to10,Likelihood to recommend,9,9
+recommend_0to10,Likelihood to recommend,10,10
+recommend_0to10,Likelihood to recommend,99,Do not know
+continue5,Intend to continue as main provider,1,Definitely not
+continue5,Intend to continue as main provider,2,Probably not
+continue5,Intend to continue as main provider,3,Might or might not
+continue5,Intend to continue as main provider,4,Probably yes
+continue5,Intend to continue as main provider,5,Definitely yes
+continue5,Intend to continue as main provider,99,Do not know
+switch_0to10,Likelihood of switching main provider,0,0
+switch_0to10,Likelihood of switching main provider,1,1
+switch_0to10,Likelihood of switching main provider,2,2
+switch_0to10,Likelihood of switching main provider,3,3
+switch_0to10,Likelihood of switching main provider,4,4
+switch_0to10,Likelihood of switching main provider,5,5
+switch_0to10,Likelihood of switching main provider,6,6
+switch_0to10,Likelihood of switching main provider,7,7
+switch_0to10,Likelihood of switching main provider,8,8
+switch_0to10,Likelihood of switching main provider,9,9
+switch_0to10,Likelihood of switching main provider,10,10
+switch_0to10,Likelihood of switching main provider,99,Do not know
+price_switch5,Would switch for better price,1,Strongly disagree
+price_switch5,Would switch for better price,2,Disagree
+price_switch5,Would switch for better price,3,Neither agree nor disagree
+price_switch5,Would switch for better price,4,Agree
+price_switch5,Would switch for better price,5,Strongly agree
+price_switch5,Would switch for better price,99,Do not know
+grow_business5,Intend to use more services,1,Strongly disagree
+grow_business5,Intend to use more services,2,Disagree
+grow_business5,Intend to use more services,3,Neither agree nor disagree
+grow_business5,Intend to use more services,4,Agree
+grow_business5,Intend to use more services,5,Strongly agree
+grow_business5,Intend to use more services,99,Do not know
+complaint3m,Complaint in past 3 months,0,No
+complaint3m,Complaint in past 3 months,1,Yes
+company_driver_d01,Services work accurately and reliably,1,Very poor
+company_driver_d01,Services work accurately and reliably,2,Poor
+company_driver_d01,Services work accurately and reliably,3,Adequate
+company_driver_d01,Services work accurately and reliably,4,Good
+company_driver_d01,Services work accurately and reliably,5,Excellent
+company_driver_d01,Services work accurately and reliably,98,Not applicable
+company_driver_d01,Services work accurately and reliably,99,Do not know
+importance_d01,Importance of Services work accurately and reliably,1,Not important
+importance_d01,Importance of Services work accurately and reliably,2,Slightly important
+importance_d01,Importance of Services work accurately and reliably,3,Moderately important
+importance_d01,Importance of Services work accurately and reliably,4,Very important
+importance_d01,Importance of Services work accurately and reliably,5,Extremely important
+importance_d01,Importance of Services work accurately and reliably,99,Do not know
+company_driver_d02,Help is provided promptly,1,Very poor
+company_driver_d02,Help is provided promptly,2,Poor
+company_driver_d02,Help is provided promptly,3,Adequate
+company_driver_d02,Help is provided promptly,4,Good
+company_driver_d02,Help is provided promptly,5,Excellent
+company_driver_d02,Help is provided promptly,98,Not applicable
+company_driver_d02,Help is provided promptly,99,Do not know
+importance_d02,Importance of Help is provided promptly,1,Not important
+importance_d02,Importance of Help is provided promptly,2,Slightly important
+importance_d02,Importance of Help is provided promptly,3,Moderately important
+importance_d02,Importance of Help is provided promptly,4,Very important
+importance_d02,Importance of Help is provided promptly,5,Extremely important
+importance_d02,Importance of Help is provided promptly,99,Do not know
+company_driver_d03,I feel confident about security,1,Very poor
+company_driver_d03,I feel confident about security,2,Poor
+company_driver_d03,I feel confident about security,3,Adequate
+company_driver_d03,I feel confident about security,4,Good
+company_driver_d03,I feel confident about security,5,Excellent
+company_driver_d03,I feel confident about security,98,Not applicable
+company_driver_d03,I feel confident about security,99,Do not know
+importance_d03,Importance of I feel confident about security,1,Not important
+importance_d03,Importance of I feel confident about security,2,Slightly important
+importance_d03,Importance of I feel confident about security,3,Moderately important
+importance_d03,Importance of I feel confident about security,4,Very important
+importance_d03,Importance of I feel confident about security,5,Extremely important
+importance_d03,Importance of I feel confident about security,99,Do not know
+company_driver_d04,The bank understands my needs,1,Very poor
+company_driver_d04,The bank understands my needs,2,Poor
+company_driver_d04,The bank understands my needs,3,Adequate
+company_driver_d04,The bank understands my needs,4,Good
+company_driver_d04,The bank understands my needs,5,Excellent
+company_driver_d04,The bank understands my needs,98,Not applicable
+company_driver_d04,The bank understands my needs,99,Do not know
+importance_d04,Importance of The bank understands my needs,1,Not important
+importance_d04,Importance of The bank understands my needs,2,Slightly important
+importance_d04,Importance of The bank understands my needs,3,Moderately important
+importance_d04,Importance of The bank understands my needs,4,Very important
+importance_d04,Importance of The bank understands my needs,5,Extremely important
+importance_d04,Importance of The bank understands my needs,99,Do not know
+company_driver_d05,Banking channels are easy to access,1,Very poor
+company_driver_d05,Banking channels are easy to access,2,Poor
+company_driver_d05,Banking channels are easy to access,3,Adequate
+company_driver_d05,Banking channels are easy to access,4,Good
+company_driver_d05,Banking channels are easy to access,5,Excellent
+company_driver_d05,Banking channels are easy to access,98,Not applicable
+company_driver_d05,Banking channels are easy to access,99,Do not know
+importance_d05,Importance of Banking channels are easy to access,1,Not important
+importance_d05,Importance of Banking channels are easy to access,2,Slightly important
+importance_d05,Importance of Banking channels are easy to access,3,Moderately important
+importance_d05,Importance of Banking channels are easy to access,4,Very important
+importance_d05,Importance of Banking channels are easy to access,5,Extremely important
+importance_d05,Importance of Banking channels are easy to access,99,Do not know
+company_driver_d06,Fees represent good value,1,Very poor
+company_driver_d06,Fees represent good value,2,Poor
+company_driver_d06,Fees represent good value,3,Adequate
+company_driver_d06,Fees represent good value,4,Good
+company_driver_d06,Fees represent good value,5,Excellent
+company_driver_d06,Fees represent good value,98,Not applicable
+company_driver_d06,Fees represent good value,99,Do not know
+importance_d06,Importance of Fees represent good value,1,Not important
+importance_d06,Importance of Fees represent good value,2,Slightly important
+importance_d06,Importance of Fees represent good value,3,Moderately important
+importance_d06,Importance of Fees represent good value,4,Very important
+importance_d06,Importance of Fees represent good value,5,Extremely important
+importance_d06,Importance of Fees represent good value,99,Do not know
+product_p01,Transactional account,0,No
+product_p01,Transactional account,1,Yes
+product_p02,Savings or investment account,0,No
+product_p02,Savings or investment account,1,Yes
+product_p03,Credit card,0,No
+product_p03,Credit card,1,Yes
+product_p04,Loan or credit facility,0,No
+product_p04,Loan or credit facility,1,Yes
+complaint_reason_r01,Fees or charges,0,No
+complaint_reason_r01,Fees or charges,1,Yes
+complaint_reason_r02,Payment or access failure,0,No
+complaint_reason_r02,Payment or access failure,1,Yes
+complaint_reason_r03,Fraud or security concern,0,No
+complaint_reason_r03,Fraud or security concern,1,Yes
+complaint_reason_r04,Poor service,0,No
+complaint_reason_r04,Poor service,1,Yes
+complaint_reason_r05,Unclear information,0,No
+complaint_reason_r05,Unclear information,1,Yes
+complaint_reason_r06,Other,0,No
+complaint_reason_r06,Other,1,Yes
+complaint_resolution,Complaint resolution,1,Fully
+complaint_resolution,Complaint resolution,2,Partly
+complaint_resolution,Complaint resolution,3,Unresolved
+complaint_resolution,Complaint resolution,9,In progress
+complaint_handling_csat5,Complaint handling satisfaction,1,Very dissatisfied
+complaint_handling_csat5,Complaint handling satisfaction,2,Dissatisfied
+complaint_handling_csat5,Complaint handling satisfaction,3,Neither satisfied nor dissatisfied
+complaint_handling_csat5,Complaint handling satisfaction,4,Satisfied
+complaint_handling_csat5,Complaint handling satisfaction,5,Very satisfied
+complaint_handling_csat5,Complaint handling satisfaction,99,Do not know
+channel_used_c01,Call centre,0,No
+channel_used_c01,Call centre,1,Yes
+channel_used_c02,Branch,0,No
+channel_used_c02,Branch,1,Yes
+channel_used_c03,Digital self service,0,No
+channel_used_c03,Digital self service,1,Yes
+channel_used_c04,Messaging or live chat,0,No
+channel_used_c04,Messaging or live chat,1,Yes
+channel_none,No channel used in past 30 days,0,No
+channel_none,No channel used in past 30 days,1,Yes
+experience_preference5,Recent experiences give a reason to choose this provider over another,1,Strongly disagree
+experience_preference5,Recent experiences give a reason to choose this provider over another,2,Disagree
+experience_preference5,Recent experiences give a reason to choose this provider over another,3,Neither agree nor disagree
+experience_preference5,Recent experiences give a reason to choose this provider over another,4,Agree
+experience_preference5,Recent experiences give a reason to choose this provider over another,5,Strongly agree
+experience_preference5,Recent experiences give a reason to choose this provider over another,99,Do not know
+stay_reason_r01,Genuine preference for this provider,0,Not selected
+stay_reason_r01,Genuine preference for this provider,1,Selected
+stay_reason_r02,Habit or familiarity,0,Not selected
+stay_reason_r02,Habit or familiarity,1,Selected
+stay_reason_r03,Contractual restriction or exit charge,0,Not selected
+stay_reason_r03,Contractual restriction or exit charge,1,Selected
+stay_reason_r04,Time effort or inconvenience of switching,0,Not selected
+stay_reason_r04,Time effort or inconvenience of switching,1,Selected
+stay_reason_r05,Lack of suitable alternatives,0,Not selected
+stay_reason_r05,Lack of suitable alternatives,1,Selected
+stay_reason_r06,Other reason,0,Not selected
+stay_reason_r06,Other reason,1,Selected
+stay_none,No stated reason for continuing current use,0,Not selected
+stay_none,No stated reason for continuing current use,1,Selected
+stay_dk,Do not know reason for current use,0,Not selected
+stay_dk,Do not know reason for current use,1,Selected
+stay_primary,Main reason for continuing current use,1,Genuine preference for this provider
+stay_primary,Main reason for continuing current use,2,Habit or familiarity
+stay_primary,Main reason for continuing current use,3,Contractual restriction or exit charge
+stay_primary,Main reason for continuing current use,4,Time effort or inconvenience of switching
+stay_primary,Main reason for continuing current use,5,Lack of suitable alternatives
+stay_primary,Main reason for continuing current use,6,Other reason
+stay_primary,Main reason for continuing current use,97,None of these
+stay_primary,Main reason for continuing current use,99,Do not know
+journey_recent30,Attempted a specific service task with main provider in past 30 days,0,No
+journey_recent30,Attempted a specific service task with main provider in past 30 days,1,Yes
+journey_task,Task attempted in anchored journey,1,Payment or transfer
+journey_task,Task attempted in anchored journey,2,Account balance or information
+journey_task,Task attempted in anchored journey,3,Account or personal detail change
+journey_task,Task attempted in anchored journey,4,Problem complaint or fraud concern
+journey_task,Task attempted in anchored journey,5,Product advice or application
+journey_task,Task attempted in anchored journey,6,Other
+journey_channel_c01,Same task used Call centre,0,Not used
+journey_channel_c01,Same task used Call centre,1,Used
+journey_channel_c02,Same task used Branch,0,Not used
+journey_channel_c02,Same task used Branch,1,Used
+journey_channel_c03,Same task used Digital self service,0,Not used
+journey_channel_c03,Same task used Digital self service,1,Used
+journey_channel_c04,Same task used Messaging or live chat,0,Not used
+journey_channel_c04,Same task used Messaging or live chat,1,Used
+journey_digital_mode,Digital mode used in anchored journey,1,App
+journey_digital_mode,Digital mode used in anchored journey,2,Website
+journey_digital_mode,Digital mode used in anchored journey,3,Both app and website
+journey_multichannel,Used at least two distinct channels on the same task,0,One channel
+journey_multichannel,Used at least two distinct channels on the same task,1,Multiple channels
+journey_transferred,Transferred or directed between teams or channels on this task,0,No
+journey_transferred,Transferred or directed between teams or channels on this task,1,Yes
+journey_transferred,Transferred or directed between teams or channels on this task,99,Do not know
+journey_repeat_info,Required to repeat information already provided on this task,0,No
+journey_repeat_info,Required to repeat information already provided on this task,1,Yes
+journey_repeat_info,Required to repeat information already provided on this task,99,Do not know
+journey_status,Outcome of the same anchored task at interview,1,Completed
+journey_status,Outcome of the same anchored task at interview,2,Partly completed
+journey_status,Outcome of the same anchored task at interview,3,Unresolved or abandoned
+journey_status,Outcome of the same anchored task at interview,9,Still pending
+journey_completed,Completed task among known final outcomes,0,Not completed
+journey_completed,Completed task among known final outcomes,1,Completed
+journey_csat5,Overall satisfaction with the end to end anchored task,1,Very dissatisfied
+journey_csat5,Overall satisfaction with the end to end anchored task,2,Dissatisfied
+journey_csat5,Overall satisfaction with the end to end anchored task,3,Neither satisfied nor dissatisfied
+journey_csat5,Overall satisfaction with the end to end anchored task,4,Satisfied
+journey_csat5,Overall satisfaction with the end to end anchored task,5,Very satisfied
+journey_csat5,Overall satisfaction with the end to end anchored task,99,Do not know
+journey_reassured5,Anchored journey left customer reassured,1,Not at all
+journey_reassured5,Anchored journey left customer reassured,2,A little
+journey_reassured5,Anchored journey left customer reassured,3,Moderately
+journey_reassured5,Anchored journey left customer reassured,4,Very
+journey_reassured5,Anchored journey left customer reassured,5,Extremely
+journey_reassured5,Anchored journey left customer reassured,99,Do not know
+journey_valued5,Anchored journey left customer valued,1,Not at all
+journey_valued5,Anchored journey left customer valued,2,A little
+journey_valued5,Anchored journey left customer valued,3,Moderately
+journey_valued5,Anchored journey left customer valued,4,Very
+journey_valued5,Anchored journey left customer valued,5,Extremely
+journey_valued5,Anchored journey left customer valued,99,Do not know
+journey_frustrated5,Anchored journey left customer frustrated,1,Not at all
+journey_frustrated5,Anchored journey left customer frustrated,2,A little
+journey_frustrated5,Anchored journey left customer frustrated,3,Moderately
+journey_frustrated5,Anchored journey left customer frustrated,4,Very
+journey_frustrated5,Anchored journey left customer frustrated,5,Extremely
+journey_frustrated5,Anchored journey left customer frustrated,99,Do not know
+journey_anxious5,Anchored journey left customer anxious,1,Not at all
+journey_anxious5,Anchored journey left customer anxious,2,A little
+journey_anxious5,Anchored journey left customer anxious,3,Moderately
+journey_anxious5,Anchored journey left customer anxious,4,Very
+journey_anxious5,Anchored journey left customer anxious,5,Extremely
+journey_anxious5,Anchored journey left customer anxious,99,Do not know
+journey_preference5,Anchored journey gives a reason to choose this provider,1,Strongly disagree
+journey_preference5,Anchored journey gives a reason to choose this provider,2,Disagree
+journey_preference5,Anchored journey gives a reason to choose this provider,3,Neither agree nor disagree
+journey_preference5,Anchored journey gives a reason to choose this provider,4,Agree
+journey_preference5,Anchored journey gives a reason to choose this provider,5,Strongly agree
+journey_preference5,Anchored journey gives a reason to choose this provider,99,Do not know
+benchmark_recent_same_task30,Personally used another provider for same task type in past 30 days,0,No
+benchmark_recent_same_task30,Personally used another provider for same task type in past 30 days,1,Yes
+benchmark_recent_same_task30,Personally used another provider for same task type in past 30 days,99,Do not know
+benchmark_provider,Other provider personally used for comparable task,1,FNB
+benchmark_provider,Other provider personally used for comparable task,2,Standard Bank
+benchmark_provider,Other provider personally used for comparable task,3,Absa
+benchmark_provider,Other provider personally used for comparable task,4,Nedbank
+benchmark_provider,Other provider personally used for comparable task,5,Capitec
+benchmark_provider,Other provider personally used for comparable task,6,Discovery Bank
+benchmark_provider,Other provider personally used for comparable task,7,GoTyme Bank (formerly TymeBank)
+benchmark_task,Task type personally attempted with other provider,1,Payment or transfer
+benchmark_task,Task type personally attempted with other provider,2,Account balance or information
+benchmark_task,Task type personally attempted with other provider,3,Account or personal detail change
+benchmark_task,Task type personally attempted with other provider,4,Problem complaint or fraud concern
+benchmark_task,Task type personally attempted with other provider,5,Product advice or application
+benchmark_task,Task type personally attempted with other provider,6,Other
+benchmark_channel,Channel of comparable other provider task experience,1,Call centre
+benchmark_channel,Channel of comparable other provider task experience,2,Branch
+benchmark_channel,Channel of comparable other provider task experience,3,Digital self service
+benchmark_channel,Channel of comparable other provider task experience,4,Messaging or live chat
+benchmark_csat5,Overall satisfaction with other provider comparable task,1,Very dissatisfied
+benchmark_csat5,Overall satisfaction with other provider comparable task,2,Dissatisfied
+benchmark_csat5,Overall satisfaction with other provider comparable task,3,Neither satisfied nor dissatisfied
+benchmark_csat5,Overall satisfaction with other provider comparable task,4,Satisfied
+benchmark_csat5,Overall satisfaction with other provider comparable task,5,Very satisfied
+benchmark_csat5,Overall satisfaction with other provider comparable task,99,Do not know
+journey_angry5,Anchored journey left customer angry,1,Not at all
+journey_angry5,Anchored journey left customer angry,2,A little
+journey_angry5,Anchored journey left customer angry,3,Moderately
+journey_angry5,Anchored journey left customer angry,4,Very
+journey_angry5,Anchored journey left customer angry,5,Extremely
+journey_angry5,Anchored journey left customer angry,99,Do not know
+journey_disappointed5,Anchored journey left customer disappointed,1,Not at all
+journey_disappointed5,Anchored journey left customer disappointed,2,A little
+journey_disappointed5,Anchored journey left customer disappointed,3,Moderately
+journey_disappointed5,Anchored journey left customer disappointed,4,Very
+journey_disappointed5,Anchored journey left customer disappointed,5,Extremely
+journey_disappointed5,Anchored journey left customer disappointed,99,Do not know

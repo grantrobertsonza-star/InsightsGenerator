@@ -1,0 +1,30 @@
+[
+  {
+    "sector": "banking",
+    "file": "01_Company_CSM_Questionnaire.docx",
+    "new_fields_checked": 2,
+    "all_present": true,
+    "combined_prefix_residue": false
+  },
+  {
+    "sector": "banking",
+    "file": "01_Channel_CSM_Questionnaire.docx",
+    "new_fields_checked": 17,
+    "all_present": true,
+    "combined_prefix_residue": false
+  },
+  {
+    "sector": "mobile",
+    "file": "01_Company_CSM_Questionnaire.docx",
+    "new_fields_checked": 2,
+    "all_present": true,
+    "combined_prefix_residue": false
+  },
+  {
+    "sector": "mobile",
+    "file": "01_Channel_CSM_Questionnaire.docx",
+    "new_fields_checked": 17,
+    "all_present": true,
+    "combined_prefix_residue": false
+  }
+]

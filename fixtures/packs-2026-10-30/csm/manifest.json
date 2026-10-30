@@ -1,76 +1,524 @@
 {
-  "CHANGELOG.md": "bd33df16ed6b2ab145f5de3441fdf9d65e33fd3cb3982bd0f8c2c32f7b141c06",
-  "QA_REPORT.md": "fd1d09800038d88c92fb09c50b4460d989aca9107e79e314629feae0141067cf",
-  "START_HERE.txt": "06f98f1315ff488df043399d9e4f94b3d8a17ae789310ecd93ef19bdf52d7425",
-  "banking/00_CSM_Research_Brief.docx": "ca9be096215a7c0f0e3f3fe3dbad83f24afc4fc24113ed2c91d91d09c9e7e52a",
-  "banking/01_Channel_CSM_Questionnaire.docx": "a0f07293ddbab4de8e17f23a9a6b876585a702bce488b11a009b2ed1f1da8895",
-  "banking/01_Company_CSM_Questionnaire.docx": "5c0f70742082aa947b2349473cd831d4df5f1a4c379bd39190db4da774aa4dba",
-  "banking/01_Noncustomer_Expectations_Questionnaire.docx": "1b31a704f87be7a735661c3fea71752ace034e21e23efcfeec28bfda9f170438",
-  "banking/02_Dashboard_and_Analysis_Guide.docx": "3f7d98ff2e7e90ad60940398c26861d9fde1be12c9efd383c44300c6f8677074",
-  "banking/03_Claude_Implementation_Instructions.docx": "1f0e3f681c4f436e043db6b59ccb9def52c97f97dd3502e4289cae5cd8a96b67",
-  "banking/Banking_CSM_Channel_Wave_1.xlsx": "147d83c847dbde655056d8be12757126570e6bd3bffbe38540def315c75bb9e9",
-  "banking/Banking_CSM_Channel_Wave_2.xlsx": "bc094c79c42e172b368922919ec7d86dd8fbb57b2f744c0ab312c25b7c64def3",
-  "banking/Banking_CSM_Channel_Wave_3.xlsx": "56ade1a719de2171c806a28cc09dabde24a801bcd604251d1fc5b64d2a6cbb59",
-  "banking/Banking_CSM_Noncustomer_Wave_1.xlsx": "95eea5abe8cde21a2868e58be2156b677d00460273afc0857c80d9975e6fb63a",
-  "banking/Banking_CSM_Noncustomer_Wave_2.xlsx": "be84e0d36e29b36a4a7e4889286a7efa42a7a689ad5f9ed7be62b6ae5932eae1",
-  "banking/Banking_CSM_Noncustomer_Wave_3.xlsx": "aeb2c99f0eb2952fd3727261326ca7af38293f4230bb56ab489223ccaa67f983",
-  "banking/Banking_CSM_Relationship_Wave_1.xlsx": "91e0634e6bf5f198d9a6e879e03db1b9fbf1bb6beabf4d8e4744a7d04ac62f46",
-  "banking/Banking_CSM_Relationship_Wave_2.xlsx": "737d2933362e01b310a44f10e4b5ad186793240fd8fba12634f70e86f51311f3",
-  "banking/Banking_CSM_Relationship_Wave_3.xlsx": "d25f68ff4d1652756133ec17be8566a55ec5db70e74883c5fb000bbf44c1b536",
-  "banking/CSM_Reference_Metrics.xlsx": "8c3dc9686f0638d009d195c461b406b88a471b1c1bc043f8769462ebc0d5e8d1",
-  "banking/Master_CSM_Codebook.xlsx": "da53943d90809ec4e448efe75a92ab0211287ee8a6187ca149616352ddc6582e",
-  "banking/README.md": "cecf7d5def3b2f07bab9b8f0d353cc21451856959d516c8fc3d0f3eb5e9dc9e2",
-  "banking/manifest.json": "885cc54806719614ed98fb2ce49b1c98f4e724a9f436437ea4e2bdd806547e69",
-  "banking/test-reference/Banking_CSM_Channel_Wave_1.csv": "c0ed27d22b8f85c151c6bb836c40c8f2ca7adcdf8748969adffe020e6ce93d3e",
-  "banking/test-reference/Banking_CSM_Channel_Wave_2.csv": "c62c14f77dc34361ecb7fdf60c3e14063e41fcccb5916b321ca99fd9fa7c789a",
-  "banking/test-reference/Banking_CSM_Channel_Wave_3.csv": "176082aacb7e81bd5f4faa0602a2851e89efaebea38bec5fcda6dd094d45b06f",
-  "banking/test-reference/Banking_CSM_Noncustomer_Wave_1.csv": "d12703654a73f79485d3ed405fc2affe1cfc7383830997f400a8cb2745820094",
-  "banking/test-reference/Banking_CSM_Noncustomer_Wave_2.csv": "2d9fe55a0d49da058df3bdd8ebfcbce50fab828c60987fe37cb808658add9b66",
-  "banking/test-reference/Banking_CSM_Noncustomer_Wave_3.csv": "85377eafba4c7ed8e65c9a465adbb68bebe4300996cc32213cb26e69f8ea7561",
-  "banking/test-reference/Banking_CSM_Relationship_Wave_1.csv": "546185a5141422944f86307fb84a6c316ead2c6885995e208c9a6f8ac462d4da",
-  "banking/test-reference/Banking_CSM_Relationship_Wave_2.csv": "39acb6c2a3da721a68f692d347bd81ef274bc6d7603a835339c7f1c0c31e8c1f",
-  "banking/test-reference/Banking_CSM_Relationship_Wave_3.csv": "c5d980cf6008ec6098f2cc09af492d455d94dc578794221565f64559047faaeb",
-  "banking/test-reference/Channel_Codebook.csv": "640211eb97074a406b0d653349e05c87820b2899fec1eb4348dd21e0897b7f69",
-  "banking/test-reference/Noncustomer_Codebook.csv": "a209cc1cb914b304d6d23ac6c458316968252202837899084930637cc073c7d0",
-  "banking/test-reference/Relationship_Codebook.csv": "641428d1c7ac3097d893469bded56884065c2be1759be2993edbaf6b81102b71",
-  "banking/test-reference/metadata.json": "d5c263718f93d9b0692578b8f29fa4b30e754666de271090f6ab205fa58d7635",
-  "banking/test-reference/reference_results.json": "c2dab866786f08ccc3c215dd94079ea7eef8a5dad5aaa4dadc588240f5ec7e94",
-  "banking/test-reference/validate_pack.py": "e4938f1e48e04c93d5986ffaef2612dd43dfb24eff2a04a30ff98778e8ea3400",
-  "banking/test-reference/validation_results.json": "31ea8bec8215be1fd0e3366a85851b1ca3f93f6eadce5a7c46f2cf8ad15bac53",
-  "mobile/00_CSM_Research_Brief.docx": "04b7dd2b8ffbbb0be88a2f7275a5d790384d29fbf8c8af27cc6c2ed6eaeffbe4",
-  "mobile/01_Channel_CSM_Questionnaire.docx": "2915e63021d8b165a19299ef940754ae153c5b104ca7f7452d11f3f6b4cbd8ed",
-  "mobile/01_Company_CSM_Questionnaire.docx": "b8b171c73d6b93bc65c0b8c8f04d11622544142428209eddc380bedbb78b53e9",
-  "mobile/01_Noncustomer_Expectations_Questionnaire.docx": "b1dd2ce56e9585bce9eef663bb70279bd74f18b014413cf94dce7c14c5e1dcc9",
-  "mobile/02_Dashboard_and_Analysis_Guide.docx": "a28da68f8c6c05142f06b55775abc4871096d28b73612a387bfaa300429f3f4f",
-  "mobile/03_Claude_Implementation_Instructions.docx": "9f71583f50fa0f269550fa24a9b24d67a17f49f4bf5536a0ea9023d52558d06d",
-  "mobile/CSM_Reference_Metrics.xlsx": "d490aa124c510bf6eb2fa6c6cb53e2c8eeddf5b064be8649457447007f14254a",
-  "mobile/Master_CSM_Codebook.xlsx": "86fc8fe7ba6e91210d2f11b08a96c0266f7a0dc534180dfd613488e172489407",
-  "mobile/Mobile_CSM_Channel_Wave_1.xlsx": "468c40a785158e9b8128a1985adb9c6195b12a752ee9d892aaef5dd41cb96e5a",
-  "mobile/Mobile_CSM_Channel_Wave_2.xlsx": "411decc61e569ef82dfb11fe1547b513fb59556649553048c6fcc11494d36d74",
-  "mobile/Mobile_CSM_Channel_Wave_3.xlsx": "213ac587c06fda2a557121174e6b2e9356f9501ae26a59ba57e3393b5deb91c5",
-  "mobile/Mobile_CSM_Noncustomer_Wave_1.xlsx": "dac04ff3009fd6a82a252688930e31a80cbc84393dfc95ca2932882fd3d32edf",
-  "mobile/Mobile_CSM_Noncustomer_Wave_2.xlsx": "1d9b9db2613c4fa7a46f0878000e416193da37058ad42cb06df5f2cb2f782809",
-  "mobile/Mobile_CSM_Noncustomer_Wave_3.xlsx": "191498333cafd98e46fab394d1b58de5ad18d39438e85ca1878ccf8de888609e",
-  "mobile/Mobile_CSM_Relationship_Wave_1.xlsx": "b41bcbccaf67d98cccbe206fabb72572fce9bb102a1b82da58e8be7aaee55916",
-  "mobile/Mobile_CSM_Relationship_Wave_2.xlsx": "35e2b2fc4d2c6210a777bb3c3aee61a9e4fc1f9771839148a759af5d475532fb",
-  "mobile/Mobile_CSM_Relationship_Wave_3.xlsx": "cb8099b9936b38e2e2518a1dc5dc2fce678ba7919ab596d98a2fdcce863be101",
-  "mobile/README.md": "cecf7d5def3b2f07bab9b8f0d353cc21451856959d516c8fc3d0f3eb5e9dc9e2",
-  "mobile/manifest.json": "9d4db2a16cebdb9495dafd6e3d14a547b4dfa81443e313ab3f165bc44bf5bae6",
-  "mobile/test-reference/Channel_Codebook.csv": "89a0c29f27b6592a8c475877b6e2f69d0eb2187d797b58a57ce863ca0f09ef4d",
-  "mobile/test-reference/Mobile_CSM_Channel_Wave_1.csv": "34d17da38cc3ee0fe3c6ee93c554195b1d52617d780f8d72b07fcb1b42b70a46",
-  "mobile/test-reference/Mobile_CSM_Channel_Wave_2.csv": "2ff15b22faf1e99ac7627c786d8c434d90f3ad6aa6b14fc728d42b3cda4eef7f",
-  "mobile/test-reference/Mobile_CSM_Channel_Wave_3.csv": "bf675013c71e7d668bc64eb13e576aabefe17f46281ba34d354914194b080ebc",
-  "mobile/test-reference/Mobile_CSM_Noncustomer_Wave_1.csv": "01dee53600e2e74e12a139909f3406f1b834b51089228509a8bb4eb62415fbfe",
-  "mobile/test-reference/Mobile_CSM_Noncustomer_Wave_2.csv": "a76cb44a96ef0f5b4b993352ab9abccacf82ddde15a0409e61e63a959b15d034",
-  "mobile/test-reference/Mobile_CSM_Noncustomer_Wave_3.csv": "eb2a64dce849173c941e2e26bc351ed1cab21cef9e0223c0e62c1686e07b0949",
-  "mobile/test-reference/Mobile_CSM_Relationship_Wave_1.csv": "40f321b90bacc4ee8cc8ec9849148319500d1fd91b634a9c414092641e6e98b5",
-  "mobile/test-reference/Mobile_CSM_Relationship_Wave_2.csv": "c87f9bcd03f98cd55563fed1a170e1b1811daefeefa2843d5be0e7f7d0c13b67",
-  "mobile/test-reference/Mobile_CSM_Relationship_Wave_3.csv": "e12bd207fd355b11c345a3660a4ecb4bdfdc474ba2d1543b666666ad84cadd3b",
-  "mobile/test-reference/Noncustomer_Codebook.csv": "cb4d2db258e0dc688c5ec84de8ff8c33b108db24e73a41556dc3ed2612b975c8",
-  "mobile/test-reference/Relationship_Codebook.csv": "8a78ecc11bfed5be5ac2182211b3d41e466fd8a2fe9527d3c306a3fb55a2a230",
-  "mobile/test-reference/metadata.json": "467b9e180835f4b334059e59e977d9b0381a125f3ba57ea61d4359ba54536435",
-  "mobile/test-reference/reference_results.json": "9ad4d0843a5c6d5ad3ac54519852a70308b6a242cf70386f8e7874ffcfe2c3d7",
-  "mobile/test-reference/validate_pack.py": "e4938f1e48e04c93d5986ffaef2612dd43dfb24eff2a04a30ff98778e8ea3400",
-  "mobile/test-reference/validation_results.json": "ffad39976016d2f4e7a3aacef02dfba8e2bf74825e2da86f08e81a52fa8af32e",
-  "preservation_report.json": "d76ecc38ccc827992f9cc7821c9d391b3b0fc3de198384b759cdfc6b9e5156d2"
+  "version": "separate_testing_20261030_v2",
+  "created_utc": "2026-10-30T13:11:23.060311+00:00",
+  "status": "verified synthetic testing base",
+  "representation": "Separate company and channel; matches combined 400-field answers exactly",
+  "baseline_unchanged": true,
+  "files": [
+    {
+      "path": "CHANGELOG.md",
+      "bytes": 1477,
+      "sha256": "6dbb51b836f2e3957f60bf26bba619f6563a3a9508b6db836bf4109d7aab091f"
+    },
+    {
+      "path": "QA_REPORT.md",
+      "bytes": 2684,
+      "sha256": "c7a1f358a02a9dcf30e2172c16ddfd162ed56c7faec402eb870438852bedbdf4"
+    },
+    {
+      "path": "README.txt",
+      "bytes": 2584,
+      "sha256": "65bd544f1a570d51f59c858e91dd962e748cfc596bffa704e0064875570f012c"
+    },
+    {
+      "path": "START_HERE.txt",
+      "bytes": 2584,
+      "sha256": "65bd544f1a570d51f59c858e91dd962e748cfc596bffa704e0064875570f012c"
+    },
+    {
+      "path": "banking/00_CSM_Research_Brief.docx",
+      "bytes": 40813,
+      "sha256": "a471349f5ef7e1cc1a7c46440424e6c156251721336ba2920b6e46bc7203af56"
+    },
+    {
+      "path": "banking/01_Channel_CSM_Questionnaire.docx",
+      "bytes": 44748,
+      "sha256": "92ff533e58abb50392f824dbae542633c3e82bb55cd5d54a3504c1017fee848d"
+    },
+    {
+      "path": "banking/01_Company_CSM_Questionnaire.docx",
+      "bytes": 46135,
+      "sha256": "3808c6a03fe33a89a532a09617473ea07a7f0406c708e188a4eea4ab8aea71c6"
+    },
+    {
+      "path": "banking/01_Noncustomer_Expectations_Questionnaire.docx",
+      "bytes": 39899,
+      "sha256": "1b31a704f87be7a735661c3fea71752ace034e21e23efcfeec28bfda9f170438"
+    },
+    {
+      "path": "banking/02_Dashboard_and_Analysis_Guide.docx",
+      "bytes": 43810,
+      "sha256": "b4c9519f357b09bdb2d5863dc9d98c1abf9123a7564e15afebac9069172f96c6"
+    },
+    {
+      "path": "banking/03_Claude_Implementation_Instructions.docx",
+      "bytes": 43219,
+      "sha256": "31d54bae003c2e980d5ca6bbcfa30d62735454de7c0f87395015fadc060a98ff"
+    },
+    {
+      "path": "banking/Banking_CSM_Channel_All_Waves.xlsx",
+      "bytes": 1557206,
+      "sha256": "4f2bf096d9ccab53fac68c1d14d0d97dca3196ab41d37b9ef8fda4a6aabe0e36"
+    },
+    {
+      "path": "banking/Banking_CSM_Channel_Wave_1.xlsx",
+      "bytes": 550562,
+      "sha256": "f373a5f7cf9eeb3b7162454e2958f076b447a40764028fb529bcba4ac48dc914"
+    },
+    {
+      "path": "banking/Banking_CSM_Channel_Wave_2.xlsx",
+      "bytes": 563319,
+      "sha256": "f234d0da6f56a1c9056e1c5ad76fc536eb64fa3620a06c6c97acf13afab5b4d2"
+    },
+    {
+      "path": "banking/Banking_CSM_Channel_Wave_3.xlsx",
+      "bytes": 535800,
+      "sha256": "c1483b6f2554ab9766626c8cf7cb5d5132f4d65627d27bd9890a1278d206e71e"
+    },
+    {
+      "path": "banking/Banking_CSM_Noncustomer_Wave_1.xlsx",
+      "bytes": 78023,
+      "sha256": "95eea5abe8cde21a2868e58be2156b677d00460273afc0857c80d9975e6fb63a"
+    },
+    {
+      "path": "banking/Banking_CSM_Noncustomer_Wave_2.xlsx",
+      "bytes": 77735,
+      "sha256": "be84e0d36e29b36a4a7e4889286a7efa42a7a689ad5f9ed7be62b6ae5932eae1"
+    },
+    {
+      "path": "banking/Banking_CSM_Noncustomer_Wave_3.xlsx",
+      "bytes": 77824,
+      "sha256": "aeb2c99f0eb2952fd3727261326ca7af38293f4230bb56ab489223ccaa67f983"
+    },
+    {
+      "path": "banking/Banking_CSM_Relationship_All_Waves.xlsx",
+      "bytes": 1126033,
+      "sha256": "b6a75407b06451dd5480e1198a6a9ab48f05a4aa70d3a146fc0a422b9c4f949d"
+    },
+    {
+      "path": "banking/Banking_CSM_Relationship_Wave_1.xlsx",
+      "bytes": 396843,
+      "sha256": "697e02c0d9942bfc613cdd86078aa650dc2dd370aad7ca251c64df011303764e"
+    },
+    {
+      "path": "banking/Banking_CSM_Relationship_Wave_2.xlsx",
+      "bytes": 396284,
+      "sha256": "f13b9849649dd88384fccadb9862bc68fee7b5d125da7b22da3db395665e2ebe"
+    },
+    {
+      "path": "banking/Banking_CSM_Relationship_Wave_3.xlsx",
+      "bytes": 395874,
+      "sha256": "efc8e24d180f7c44a9da5788ed4565d6493c2441444d8419eae4f5a767c2fbd2"
+    },
+    {
+      "path": "banking/CSM_Reference_Metrics.xlsx",
+      "bytes": 240408,
+      "sha256": "9602a89682e774a3633e25bb5b555bddc8a30d150901d75fe797c19fe911b677"
+    },
+    {
+      "path": "banking/Master_CSM_Codebook.xlsx",
+      "bytes": 58561,
+      "sha256": "db100530c449fcbd4f2187eed692bf669bb7cf9e7ef644ea40915c8134703c1f"
+    },
+    {
+      "path": "banking/README.md",
+      "bytes": 3601,
+      "sha256": "3c3adeb296e115930a28d274959f0ec1c9ad3bfe21bd7b8a623b4981e3b090af"
+    },
+    {
+      "path": "banking/manifest.json",
+      "bytes": 8003,
+      "sha256": "93a97ee2a0964269e9141759c6e20016367acf835f8639f009948f4968be0be2"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Channel_All_Waves.csv",
+      "bytes": 1569277,
+      "sha256": "b01c17ae24f00ef19b8df44042c8e451f88ec2aa0d03c635780342f281e2029f"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Channel_Wave_1.csv",
+      "bytes": 525559,
+      "sha256": "8d1c22f75487664822a7ededc18619b0f3009ca85557134ce5ccc19c0c8f1a6c"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Channel_Wave_2.csv",
+      "bytes": 537681,
+      "sha256": "b23feb053388289513163a9fa5bfeed788307edb1506d749beff5f3d501b8161"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Channel_Wave_3.csv",
+      "bytes": 508961,
+      "sha256": "4ef1717b4c8fe772d3daea70f4d30b051efa657641890be1c397fcdd7f20be22"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Noncustomer_Wave_1.csv",
+      "bytes": 76528,
+      "sha256": "d12703654a73f79485d3ed405fc2affe1cfc7383830997f400a8cb2745820094"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Noncustomer_Wave_2.csv",
+      "bytes": 76449,
+      "sha256": "2d9fe55a0d49da058df3bdd8ebfcbce50fab828c60987fe37cb808658add9b66"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Noncustomer_Wave_3.csv",
+      "bytes": 76616,
+      "sha256": "85377eafba4c7ed8e65c9a465adbb68bebe4300996cc32213cb26e69f8ea7561"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Relationship_All_Waves.csv",
+      "bytes": 1021185,
+      "sha256": "386f9a4bd51fe3899bc7cf5e5f6fa970274d6101c311231b09e8413073383c70"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Relationship_Wave_1.csv",
+      "bytes": 341030,
+      "sha256": "77276aac204980e65d7d3f27bee1b32e5113ee1083d934bc3d852fb53a179901"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Relationship_Wave_2.csv",
+      "bytes": 343140,
+      "sha256": "75b575d274841b974da8343ac37594231322a1983fdfc00f4592e9f0d1e9d1c1"
+    },
+    {
+      "path": "banking/test-reference/Banking_CSM_Relationship_Wave_3.csv",
+      "bytes": 340271,
+      "sha256": "a51e0c6c969dd7a5a94cc5bad03407f7cc8df6bbeb5bfdf9822d1913ad5fe24c"
+    },
+    {
+      "path": "banking/test-reference/Channel_Codebook.csv",
+      "bytes": 9110,
+      "sha256": "f848d82475bcefdf5277b12ab63138fb5dee1a4bbde33f5f715d5475ac3161cd"
+    },
+    {
+      "path": "banking/test-reference/Channel_Labels.csv",
+      "bytes": 21792,
+      "sha256": "1a93f307817ab566ec4b8d10af6f7ef94838c0c953ebfbde482a3f3cd9093688"
+    },
+    {
+      "path": "banking/test-reference/Channel_MR_Sets.csv",
+      "bytes": 482,
+      "sha256": "f9479c9599dd8f8c5e36051fbaf8cde0893df2080d35e09d00bb7343a32c46fa"
+    },
+    {
+      "path": "banking/test-reference/Noncustomer_Codebook.csv",
+      "bytes": 3833,
+      "sha256": "a209cc1cb914b304d6d23ac6c458316968252202837899084930637cc073c7d0"
+    },
+    {
+      "path": "banking/test-reference/Noncustomer_Labels.csv",
+      "bytes": 11724,
+      "sha256": "758ea989db58638f3fbade5fd7e3cdd83b8c687823f34b8e1e5e89f70339e8cf"
+    },
+    {
+      "path": "banking/test-reference/Reference_Metrics.csv",
+      "bytes": 436370,
+      "sha256": "e50fd88e3ccf8ed943e19960409f839d78670f9e1bab89602cf48cafdaade458"
+    },
+    {
+      "path": "banking/test-reference/Relationship_Codebook.csv",
+      "bytes": 10443,
+      "sha256": "121945f847e4601cb0b40c9ba49cd31d607cdc05b12f6272227930f46570ec5d"
+    },
+    {
+      "path": "banking/test-reference/Relationship_Labels.csv",
+      "bytes": 23633,
+      "sha256": "0597caffaa9949b24be9f49ef418f5668c574a901a690a19080ad0376afbb323"
+    },
+    {
+      "path": "banking/test-reference/Relationship_MR_Sets.csv",
+      "bytes": 1787,
+      "sha256": "6a5216f8b798fca0e75674dcb924e2ef8a19e4a9aa4ddc7fa3a9721795f160a9"
+    },
+    {
+      "path": "banking/test-reference/Source_to_Combined_Map.csv",
+      "bytes": 45578,
+      "sha256": "df9ec04bfa31e0390e71e0dd0a863defc49e10a0a5700f8096701e5302d36a0a"
+    },
+    {
+      "path": "banking/test-reference/metadata.json",
+      "bytes": 170397,
+      "sha256": "042a130603b29cfb19e4c86de37768d057e10b8656dafdd41ed2f8f0824aca67"
+    },
+    {
+      "path": "banking/test-reference/reference_results.json",
+      "bytes": 1167600,
+      "sha256": "724b50355e6d82b1270be46c7597a977451e48618784666e955aa49d2021b09d"
+    },
+    {
+      "path": "banking/test-reference/validate_pack.py",
+      "bytes": 273,
+      "sha256": "ca28c327020ca34575bb033f7832440a5dae1a3bacc3c8e6997f34ca728ad25b"
+    },
+    {
+      "path": "banking/test-reference/validation_results.json",
+      "bytes": 816,
+      "sha256": "e41a0e6173d58ee528fdbde8043e90329997250cb358129e468515c0079c5fff"
+    },
+    {
+      "path": "mobile/00_CSM_Research_Brief.docx",
+      "bytes": 40886,
+      "sha256": "bc3da01493df73676b92879b91c475fed7a27cc3bce6e5bace342434bee0df5c"
+    },
+    {
+      "path": "mobile/01_Channel_CSM_Questionnaire.docx",
+      "bytes": 44762,
+      "sha256": "b6d60f3ec2190d8b415a0bf3f2e37169c6f76cecdba75cab54e56c45b0fc48c5"
+    },
+    {
+      "path": "mobile/01_Company_CSM_Questionnaire.docx",
+      "bytes": 46131,
+      "sha256": "0a0947856c03cf414cae2ea529840a5d6d46f3ec6c5a29e1cd5071ea30b36110"
+    },
+    {
+      "path": "mobile/01_Noncustomer_Expectations_Questionnaire.docx",
+      "bytes": 39923,
+      "sha256": "b1dd2ce56e9585bce9eef663bb70279bd74f18b014413cf94dce7c14c5e1dcc9"
+    },
+    {
+      "path": "mobile/02_Dashboard_and_Analysis_Guide.docx",
+      "bytes": 43806,
+      "sha256": "fe93e543ca96e739b00a87c099676c876f43252893c0c3403d7f63bb4430a043"
+    },
+    {
+      "path": "mobile/03_Claude_Implementation_Instructions.docx",
+      "bytes": 43233,
+      "sha256": "aa3e8ec29454e0be9ee8e7d9745ab8827cf5785a4b587f5c01ca56e985823ea3"
+    },
+    {
+      "path": "mobile/CSM_Reference_Metrics.xlsx",
+      "bytes": 212688,
+      "sha256": "18bfe0dbb17c2416b5f2123cc0e61d6eac046aed1340dd1570d0858a90d2a0e4"
+    },
+    {
+      "path": "mobile/Master_CSM_Codebook.xlsx",
+      "bytes": 58448,
+      "sha256": "f8bf9553007fb5c75eeb7ec8396483e9fbe167593b454e1723a4d46474f45175"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Channel_All_Waves.xlsx",
+      "bytes": 1480210,
+      "sha256": "69b68d05c92c7964f5ddd492564ef62c46474d11ed4a949c61d6150eab1235bd"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Channel_Wave_1.xlsx",
+      "bytes": 514386,
+      "sha256": "7da67d8ecbdd4addfbb61c055d2b3e73e0c1ffdac37051462aa686ac406a768b"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Channel_Wave_2.xlsx",
+      "bytes": 514877,
+      "sha256": "ef17e60977df730087d2732caf7c0405dda678d7f0916c33e9ffd3bf6c217933"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Channel_Wave_3.xlsx",
+      "bytes": 539887,
+      "sha256": "eb0429f50f01635726814e8f83ed6fb808500e0be92881e1a808a4ca8bd95aaa"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Noncustomer_Wave_1.xlsx",
+      "bytes": 77917,
+      "sha256": "dac04ff3009fd6a82a252688930e31a80cbc84393dfc95ca2932882fd3d32edf"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Noncustomer_Wave_2.xlsx",
+      "bytes": 77684,
+      "sha256": "1d9b9db2613c4fa7a46f0878000e416193da37058ad42cb06df5f2cb2f782809"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Noncustomer_Wave_3.xlsx",
+      "bytes": 77548,
+      "sha256": "191498333cafd98e46fab394d1b58de5ad18d39438e85ca1878ccf8de888609e"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Relationship_All_Waves.xlsx",
+      "bytes": 1123089,
+      "sha256": "253f4a31ff7ceeafb2ed1dddb7e25fbb2494cacf51751c5ab612d26ea6b91bea"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Relationship_Wave_1.xlsx",
+      "bytes": 396418,
+      "sha256": "f0a23b42ed1417b628b65b94fbb0a4e115be16f6889232156f8ee50df151eadc"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Relationship_Wave_2.xlsx",
+      "bytes": 396978,
+      "sha256": "6bf80266de78b99d1de2292f810b556d0e059e1c67fc34a8476e6588685840fd"
+    },
+    {
+      "path": "mobile/Mobile_CSM_Relationship_Wave_3.xlsx",
+      "bytes": 395300,
+      "sha256": "b0f9c5960efc3ace9fcaa615558e096ecee1aa5cb837ef747c218259a286eccd"
+    },
+    {
+      "path": "mobile/README.md",
+      "bytes": 3617,
+      "sha256": "e60a621c8c9de9f3ecaaf0b127048b43afd6ff2c8ab02458933d48e237171cb4"
+    },
+    {
+      "path": "mobile/manifest.json",
+      "bytes": 7981,
+      "sha256": "fe52bcd28ca7b4aecb53f269577df18d524548efcd69113cf8b6ade2bbcddc0a"
+    },
+    {
+      "path": "mobile/test-reference/Channel_Codebook.csv",
+      "bytes": 9113,
+      "sha256": "60a6242d9a4c84f32bb40fccc37f688095166619635468017b2af60b42c6f55e"
+    },
+    {
+      "path": "mobile/test-reference/Channel_Labels.csv",
+      "bytes": 21758,
+      "sha256": "c12ebbff3d6f217e0ffb4bfecccfc9d14fb025d0912150544567111e9c9ff64a"
+    },
+    {
+      "path": "mobile/test-reference/Channel_MR_Sets.csv",
+      "bytes": 485,
+      "sha256": "234449b2d356165701d7914834572c9d59649eb0e1022afad1263212010d050a"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Channel_All_Waves.csv",
+      "bytes": 1490202,
+      "sha256": "a71129951c621f7ac5b133beca237aca0bc8a465b79f0fc97ef42a79500ebb9c"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Channel_Wave_1.csv",
+      "bytes": 488596,
+      "sha256": "3d7b58a118cb4107c9344a99cbf64fa830d38fd729cd733e99e7eaf176dd62aa"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Channel_Wave_2.csv",
+      "bytes": 490722,
+      "sha256": "ff2676ab01c09e1321b1a0f20c4907073921aeabb59adb324dd4e48979b200b9"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Channel_Wave_3.csv",
+      "bytes": 513808,
+      "sha256": "f12f9267c039ee2bcc072b5c0fcb4eb6b4b56bc6953bf6365cb21b0b5faaa6a3"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Noncustomer_Wave_1.csv",
+      "bytes": 76421,
+      "sha256": "01dee53600e2e74e12a139909f3406f1b834b51089228509a8bb4eb62415fbfe"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Noncustomer_Wave_2.csv",
+      "bytes": 76438,
+      "sha256": "a76cb44a96ef0f5b4b993352ab9abccacf82ddde15a0409e61e63a959b15d034"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Noncustomer_Wave_3.csv",
+      "bytes": 76481,
+      "sha256": "eb2a64dce849173c941e2e26bc351ed1cab21cef9e0223c0e62c1686e07b0949"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Relationship_All_Waves.csv",
+      "bytes": 1013059,
+      "sha256": "80d0aace8275eba84c11d12a1439a93bc143141fbd1532a0bb05c763e5224d26"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Relationship_Wave_1.csv",
+      "bytes": 339415,
+      "sha256": "0e5200f034dbddb423bb2acf299c759550cc8bb070b2327b8a75588b6303fdc1"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Relationship_Wave_2.csv",
+      "bytes": 338292,
+      "sha256": "ae82825a3dedaa08cbf0e9ecc08abc3d320a0383890d00e9810851557aa53dc2"
+    },
+    {
+      "path": "mobile/test-reference/Mobile_CSM_Relationship_Wave_3.csv",
+      "bytes": 338608,
+      "sha256": "4453c49fd89d10b21de3af2ee16d51d02493b5d5ee0ca088783e4bc13938ac88"
+    },
+    {
+      "path": "mobile/test-reference/Noncustomer_Codebook.csv",
+      "bytes": 3877,
+      "sha256": "cb4d2db258e0dc688c5ec84de8ff8c33b108db24e73a41556dc3ed2612b975c8"
+    },
+    {
+      "path": "mobile/test-reference/Noncustomer_Labels.csv",
+      "bytes": 11865,
+      "sha256": "0fb5c735696be1bb27ecdf4574635bb6bbdcf84a1dcea98c8d7b59bb59fb2d89"
+    },
+    {
+      "path": "mobile/test-reference/Reference_Metrics.csv",
+      "bytes": 384054,
+      "sha256": "4c68e45a22a1c0488f27539bfa141a1f2929d157487e221d5f1535811e127b1d"
+    },
+    {
+      "path": "mobile/test-reference/Relationship_Codebook.csv",
+      "bytes": 10486,
+      "sha256": "5a6e6e7298c5ca3614959cd71b6273e605ac9e1d2a3a8168d2729bcf558032bd"
+    },
+    {
+      "path": "mobile/test-reference/Relationship_Labels.csv",
+      "bytes": 23770,
+      "sha256": "81f794964a1a9e7617fd2d02a36df73f592b191ab2ef6d641baaec4b96576639"
+    },
+    {
+      "path": "mobile/test-reference/Relationship_MR_Sets.csv",
+      "bytes": 1780,
+      "sha256": "a60d47c8bf601470ba24d6810027d79ed65a1171b2c1b8ea80817efece76c053"
+    },
+    {
+      "path": "mobile/test-reference/Source_to_Combined_Map.csv",
+      "bytes": 45578,
+      "sha256": "df9ec04bfa31e0390e71e0dd0a863defc49e10a0a5700f8096701e5302d36a0a"
+    },
+    {
+      "path": "mobile/test-reference/metadata.json",
+      "bytes": 170490,
+      "sha256": "757a21384d74d815bcfe96a0951d98164d4dbf13bd7c040f1ccd976442e4f34b"
+    },
+    {
+      "path": "mobile/test-reference/reference_results.json",
+      "bytes": 1027033,
+      "sha256": "2dd47d46bd61dbe46d4e99381055c7ada4f92837157f9d23b69afc37bf0adefd"
+    },
+    {
+      "path": "mobile/test-reference/validate_pack.py",
+      "bytes": 273,
+      "sha256": "ca28c327020ca34575bb033f7832440a5dae1a3bacc3c8e6997f34ca728ad25b"
+    },
+    {
+      "path": "mobile/test-reference/validation_results.json",
+      "bytes": 815,
+      "sha256": "193a6927ba7428fe2be9911515e6348e0f8bff7f293e2be61a53b3ab6704c4b9"
+    },
+    {
+      "path": "preservation_report.json",
+      "bytes": 13048,
+      "sha256": "04a7e050c38cef88cff5d22eab6b400a492d99ec5b872cfdad5ebaa853bdd859"
+    },
+    {
+      "path": "quality_checks/doc_schema_check.json",
+      "bytes": 698,
+      "sha256": "d6f488120eff9bfd2ca7f984e8057c1b9677b6e5541265d664e0861bb0ce1c3a"
+    },
+    {
+      "path": "quality_checks/independent_cross_format_qa.json",
+      "bytes": 492,
+      "sha256": "87ea98165ebac9becc74174db95e7ab313cf21d534ec4b3e2cc2b4bba5cbe778"
+    },
+    {
+      "path": "quality_checks/pooled_merge_report.json",
+      "bytes": 1860,
+      "sha256": "033b4366471aa21ef0807bbdcd3cbf1bc042b52f933e29dbae639a628b3268e2"
+    },
+    {
+      "path": "quality_checks/validation_results.json",
+      "bytes": 1635,
+      "sha256": "c5022b15f1dd6465f7d43d6bc6d7f6030a9e80a96f56edc8b9683c55405981cc"
+    },
+    {
+      "path": "quality_checks/validation_rules.py",
+      "bytes": 16040,
+      "sha256": "5e392472bd6c759a2fdccda6274a58db8eeb3e6d21ae0d692a06cdbcc471e61d"
+    },
+    {
+      "path": "validate_separate_pack.py",
+      "bytes": 6874,
+      "sha256": "5b16f1d380c15fce52f8bbe9d7c0c8f1d91c7c0891caf1fe4dfdb17aa9d84c2f"
+    }
+  ]
 }

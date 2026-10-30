@@ -1,36 +1,73 @@
-# Customer satisfaction tracker
+# South African banking separate testing pack
 
-This pack retains two linked current-customer data grains and adds an independent focal-noncustomer supplement for each of three waves.
+## Purpose
 
-- Relationship: one current customer rating one main provider. 1,000 per wave.
-- Channel: the most recent experience per customer per used channel in 30 days. Not every contact and not an independent customer sample.
+South African banking separate company and channel synthetic testing base. Fictional records, not actual market evidence.
 
-Read the research brief and the matching questionnaire first. Company questionnaire: 01_Company_CSM_Questionnaire.docx, matched to Relationship wave files. Channel questionnaire: 01_Channel_CSM_Questionnaire.docx, matched to Channel wave files. Each data workbook has its own matching Codebook, Labels and MR sets sheets. Original question IDs, codes, rows and values are unchanged. New question IDs and fields are appended; the extra journey module stays at respondent level. Select Respondents in Relationship workbooks and Experiences in Channel workbooks. Never import both grains as though they were the same population. Codebook, Labels and MR sets are embedded, with a separate master codebook.
+## Representations
 
-Company CSAT is five-point, top two = 4–5, top = 5, bottom two = 1–2. NPS uses the original 0–10 recommendation item with passives retained in the denominator. Ease is seven-point, higher = easier. Higher switching likelihood means worse risk. These definitions are not interchangeable.
+Choose this separate pack OR the combined pack. They encode the same customer answers. Never append or union the two representations.
 
-Blank = structural skip. 98 = not applicable on performance items. 99 = do not know or prefer not to say as labelled. Pending = 9 on selected status questions and must not be globally converted to missing. Always use each question's own valid base.
+## Company grain
 
-Channel records inherit the same customer weight. Within one channel there is at most one record per person. Across channels the same person can appear repeatedly. Deduplicate customer measures before joining/aggregating. Join only within this study and sector using wave and respondent_id, never row position. Other synthetic projects may reuse a superficially similar ID pattern.
+Relationship Respondents contains one person per (wave, respondent_id), 100 fields; 1,000 per wave and 3,000 in All_Waves.
 
-The source ZIP is unchanged. This expanded copy retains the original data fields and adds the requested modules. The older 0–10 CSM data are not converted to the new five-point measure. The uploaded Word document is a general questionnaire template, not a specific original CSM scale. The new performance-only domains are SERVQUAL-inspired, not certified original SERVQUAL or ACSI scores.
+## Channel grain
 
-All data, brand effects and verbatim examples are fictional. Fixed company allocations are not market shares. Stated loyalty and switching are intentions, not observed churn or retention. No client records or personal identifiers are included.
+Channel Experiences contains one latest experience per used channel and (wave, respondent_id), 88 fields. Up to four rows per person; these are not extra customers or every recalled contact.
 
-The optional Reference Metrics workbook and test-reference folder provide calculation answer keys for Codex. Do not import them as respondent records. To validate unpacked data, run python test-reference/validate_pack.py . using existing numpy and openpyxl. No application acceptance is claimed until the app's actual outputs are compared.
+## Keys
 
-See 02_Dashboard_and_Analysis_Guide.docx for dashboard views, filters, bases, low-base rules, service-quality routes and measurement references.
+Keep respondent_id and experience_id as text, retaining leading zeros. Join channel records many-to-one to company records on (wave, respondent_id), and verify company plus all 13 shared values. Channel key is (wave, respondent_id, channel).
 
+## Import choice
 
-## Additive expansion dated 30 October 2026
+For each grain import three Wave files OR the All_Waves file, never both. Matching CSVs are in test-reference. No JSON or hand-written mapping is required.
 
-- Relationship data adds experience-led preference and multiple/primary reasons for current use, distinguishing preference, habit, contractual restriction, switching inconvenience and lack of alternatives.
-- Journey fields describe one independently anchored task started or attempted in 30 days. They capture ordered channel contacts, app/website mode, transfers, repeated information, end-to-end outcome, emotions and preference. They are not reconstructed by joining separate latest-channel experiences.
-- Channel data adds four separately rated emotional outcomes, a reason verbatim and experience-led preference on each existing experience row.
-- Competitive ratings require personally experienced alternative use of the same task type within 30 days. Paired CSAT differences use only respondents with two valid ratings. Missing or noncomparable evidence is Not measured, not zero.
-- The new Noncustomer workbooks contain 500 independent synthetic focal-provider noncustomers per wave. They use the sector but have no current focal use, including secondary use. Focal awareness gates consideration and anticipated performance. They never rate unexperienced focal service. Unit-weight, approximately balanced alternative-provider quotas are a demonstration design, not population targets.
-- Keep noncustomer expectations and customer performance as separate profiles: future expectations versus retrospective experience are not a paired gap. Never pool the samples for prevalence or market share.
+## Weights
 
-Read 01_Noncustomer_Expectations_Questionnaire.docx and 03_Claude_Implementation_Instructions.docx. The Claude instructions are written handoff only: retain the existing app font/layout and #2563eb accent. No app changes or communication with Claude took place.
+Use the supplied positive weight once per person for company or anchored-journey results; once per eligible experience for a channel-specific result. Never calculate company KPIs on multiplied channel rows.
 
-Select only Respondents, Experiences or Noncustomers for import. Embedded metadata is sufficient. JSON/CSV under test-reference and the reference workbook are optional validation aids and are never required app imports. The validator now tests all three grains, original and added routes, reference arithmetic, and XLSX/CSV parity.
+## Waves
+
+February, June and October 2026 are repeated synthetic cross-sections, not a panel. Preserve wave and weights. Default reporting to one wave; pooled estimates are descriptive only.
+
+## Routing
+
+Only used-channel rows exist. In each row, routed-out fields stay blank. Preserve 0 as a valid No or nonselection. Codes 98 and 99 are scale-specific exclusions, not zeros.
+
+## Emotions
+
+Reassured, valued, frustrated, anxious, angry and disappointed are separate 1–5 intensities; higher negative emotion is worse. Keep whole-task and latest-channel emotions distinct; never invent a net emotion score.
+
+## Call diagnostics
+
+Call agent, queue, total duration satisfaction, agent performance, transfer, promise and urgency diagnostics are separately routed. IVR ratings require used_ivr=1. Original process variables remain intact.
+
+## Pending
+
+agent_promises_kept5=9 means not yet due or too early to tell. Exclude 9 from valid 1–5 ratings; do not classify pending as broken promises. Pending task and callback statuses retain their own meaning.
+
+## Future IVR-only calls
+
+All preserved call rows already had staff_contact=1, so call_agent_contact=1. Questionnaire skip routes cover future IVR-only calls; none were fabricated by changing baseline answers.
+
+## Independent journeys
+
+The company journey is one independently anchored task. Latest call, branch/store, digital and chat experiences can concern different tasks; never stitch them into one journey.
+
+## Dependence
+
+A person may contribute multiple channels. Cross-channel inference must account for within-person dependence. Do not treat pooled channel rows as unique-person sample size.
+
+## Optional noncustomers
+
+The unchanged 500-case per-wave noncustomer files and questionnaire form a separate optional supplement. Never append to customer or channel bases.
+
+## Testing references
+
+CSM_Reference_Metrics.xlsx and test-reference/Reference_Metrics.csv contain static acceptance-test targets, not live recalculating reports. validate_pack.py independently checks the exported data.
+
+## Source
+
+Projected and unpivoted from the frozen combined 400-field files. All baseline company and channel values are preserved; new diagnostic and emotion responses exactly match the combined representation.

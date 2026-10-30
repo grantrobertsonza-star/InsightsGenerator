@@ -1,0 +1,62 @@
+[
+  {
+    "sector": "banking",
+    "dataset": "Relationship",
+    "wave_rows": [
+      1000,
+      1000,
+      1000
+    ],
+    "pooled_rows": 3000,
+    "columns": 100,
+    "source_styles_identical": true,
+    "new_values_generated": 0,
+    "method": "Artifact-authored wave blocks concatenated losslessly; metadata/style views unchanged; complete post-merge CSV/XLSX check required",
+    "sha256": "b6a75407b06451dd5480e1198a6a9ab48f05a4aa70d3a146fc0a422b9c4f949d"
+  },
+  {
+    "sector": "banking",
+    "dataset": "Channel",
+    "wave_rows": [
+      1615,
+      1653,
+      1569
+    ],
+    "pooled_rows": 4837,
+    "columns": 88,
+    "source_styles_identical": true,
+    "new_values_generated": 0,
+    "method": "Artifact-authored wave blocks concatenated losslessly; metadata/style views unchanged; complete post-merge CSV/XLSX check required",
+    "sha256": "4f2bf096d9ccab53fac68c1d14d0d97dca3196ab41d37b9ef8fda4a6aabe0e36"
+  },
+  {
+    "sector": "mobile",
+    "dataset": "Relationship",
+    "wave_rows": [
+      1000,
+      1000,
+      1000
+    ],
+    "pooled_rows": 3000,
+    "columns": 100,
+    "source_styles_identical": true,
+    "new_values_generated": 0,
+    "method": "Artifact-authored wave blocks concatenated losslessly; metadata/style views unchanged; complete post-merge CSV/XLSX check required",
+    "sha256": "253f4a31ff7ceeafb2ed1dddb7e25fbb2494cacf51751c5ab612d26ea6b91bea"
+  },
+  {
+    "sector": "mobile",
+    "dataset": "Channel",
+    "wave_rows": [
+      1498,
+      1501,
+      1577
+    ],
+    "pooled_rows": 4576,
+    "columns": 88,
+    "source_styles_identical": true,
+    "new_values_generated": 0,
+    "method": "Artifact-authored wave blocks concatenated losslessly; metadata/style views unchanged; complete post-merge CSV/XLSX check required",
+    "sha256": "69b68d05c92c7964f5ddd492564ef62c46474d11ed4a949c61d6150eab1235bd"
+  }
+]

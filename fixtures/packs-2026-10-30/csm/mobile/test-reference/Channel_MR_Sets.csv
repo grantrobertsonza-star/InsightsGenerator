@@ -1,0 +1,7 @@
+﻿set_id,variable,selected_value,label,universe
+experience_reasons,reasons_r01,1,Recharge or bundle purchase,All records
+experience_reasons,reasons_r02,1,Billing or account information,All records
+experience_reasons,reasons_r03,1,SIM contract or package change,All records
+experience_reasons,reasons_r04,1,Network service or billing problem,All records
+experience_reasons,reasons_r05,1,Device or technical support,All records
+experience_reasons,reasons_r06,1,Other,All records

@@ -1,9 +1,31 @@
 {
   "status": "passed",
-  "relationship_records": 3000,
-  "channel_records": 4837,
-  "noncustomer_records": 1500,
-  "reference_results": 2202,
-  "record_and_metric_checks": 11467,
-  "scope": "Exported fixture integrity, joins, routes and reference arithmetic. Not an application acceptance pass."
+  "sector": {
+    "sector": "banking",
+    "waves": [
+      {
+        "wave": 1,
+        "company_rows": 1000,
+        "channel_rows": 1615,
+        "noncustomer_rows": 500
+      },
+      {
+        "wave": 2,
+        "company_rows": 1000,
+        "channel_rows": 1653,
+        "noncustomer_rows": 500
+      },
+      {
+        "wave": 3,
+        "company_rows": 1000,
+        "channel_rows": 1569,
+        "noncustomer_rows": 500
+      }
+    ],
+    "pooled_company": 3000,
+    "pooled_channel": 4837,
+    "references": 3306
+  },
+  "full_report": "../../quality_checks/validation_results.json",
+  "scope": "Synthetic fixture integrity, complete raw value and metadata readback, routes, weighted arithmetic, pooled exactness and optional cross-format preservation; not an app acceptance test"
 }

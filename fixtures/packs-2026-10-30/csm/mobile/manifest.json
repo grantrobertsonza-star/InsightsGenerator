@@ -1,36 +1,235 @@
 {
-  "00_CSM_Research_Brief.docx": "04b7dd2b8ffbbb0be88a2f7275a5d790384d29fbf8c8af27cc6c2ed6eaeffbe4",
-  "01_Channel_CSM_Questionnaire.docx": "2915e63021d8b165a19299ef940754ae153c5b104ca7f7452d11f3f6b4cbd8ed",
-  "01_Company_CSM_Questionnaire.docx": "b8b171c73d6b93bc65c0b8c8f04d11622544142428209eddc380bedbb78b53e9",
-  "01_Noncustomer_Expectations_Questionnaire.docx": "b1dd2ce56e9585bce9eef663bb70279bd74f18b014413cf94dce7c14c5e1dcc9",
-  "02_Dashboard_and_Analysis_Guide.docx": "a28da68f8c6c05142f06b55775abc4871096d28b73612a387bfaa300429f3f4f",
-  "03_Claude_Implementation_Instructions.docx": "9f71583f50fa0f269550fa24a9b24d67a17f49f4bf5536a0ea9023d52558d06d",
-  "CSM_Reference_Metrics.xlsx": "d490aa124c510bf6eb2fa6c6cb53e2c8eeddf5b064be8649457447007f14254a",
-  "Master_CSM_Codebook.xlsx": "86fc8fe7ba6e91210d2f11b08a96c0266f7a0dc534180dfd613488e172489407",
-  "Mobile_CSM_Channel_Wave_1.xlsx": "468c40a785158e9b8128a1985adb9c6195b12a752ee9d892aaef5dd41cb96e5a",
-  "Mobile_CSM_Channel_Wave_2.xlsx": "411decc61e569ef82dfb11fe1547b513fb59556649553048c6fcc11494d36d74",
-  "Mobile_CSM_Channel_Wave_3.xlsx": "213ac587c06fda2a557121174e6b2e9356f9501ae26a59ba57e3393b5deb91c5",
-  "Mobile_CSM_Noncustomer_Wave_1.xlsx": "dac04ff3009fd6a82a252688930e31a80cbc84393dfc95ca2932882fd3d32edf",
-  "Mobile_CSM_Noncustomer_Wave_2.xlsx": "1d9b9db2613c4fa7a46f0878000e416193da37058ad42cb06df5f2cb2f782809",
-  "Mobile_CSM_Noncustomer_Wave_3.xlsx": "191498333cafd98e46fab394d1b58de5ad18d39438e85ca1878ccf8de888609e",
-  "Mobile_CSM_Relationship_Wave_1.xlsx": "b41bcbccaf67d98cccbe206fabb72572fce9bb102a1b82da58e8be7aaee55916",
-  "Mobile_CSM_Relationship_Wave_2.xlsx": "35e2b2fc4d2c6210a777bb3c3aee61a9e4fc1f9771839148a759af5d475532fb",
-  "Mobile_CSM_Relationship_Wave_3.xlsx": "cb8099b9936b38e2e2518a1dc5dc2fce678ba7919ab596d98a2fdcce863be101",
-  "README.md": "cecf7d5def3b2f07bab9b8f0d353cc21451856959d516c8fc3d0f3eb5e9dc9e2",
-  "test-reference/Channel_Codebook.csv": "89a0c29f27b6592a8c475877b6e2f69d0eb2187d797b58a57ce863ca0f09ef4d",
-  "test-reference/Mobile_CSM_Channel_Wave_1.csv": "34d17da38cc3ee0fe3c6ee93c554195b1d52617d780f8d72b07fcb1b42b70a46",
-  "test-reference/Mobile_CSM_Channel_Wave_2.csv": "2ff15b22faf1e99ac7627c786d8c434d90f3ad6aa6b14fc728d42b3cda4eef7f",
-  "test-reference/Mobile_CSM_Channel_Wave_3.csv": "bf675013c71e7d668bc64eb13e576aabefe17f46281ba34d354914194b080ebc",
-  "test-reference/Mobile_CSM_Noncustomer_Wave_1.csv": "01dee53600e2e74e12a139909f3406f1b834b51089228509a8bb4eb62415fbfe",
-  "test-reference/Mobile_CSM_Noncustomer_Wave_2.csv": "a76cb44a96ef0f5b4b993352ab9abccacf82ddde15a0409e61e63a959b15d034",
-  "test-reference/Mobile_CSM_Noncustomer_Wave_3.csv": "eb2a64dce849173c941e2e26bc351ed1cab21cef9e0223c0e62c1686e07b0949",
-  "test-reference/Mobile_CSM_Relationship_Wave_1.csv": "40f321b90bacc4ee8cc8ec9849148319500d1fd91b634a9c414092641e6e98b5",
-  "test-reference/Mobile_CSM_Relationship_Wave_2.csv": "c87f9bcd03f98cd55563fed1a170e1b1811daefeefa2843d5be0e7f7d0c13b67",
-  "test-reference/Mobile_CSM_Relationship_Wave_3.csv": "e12bd207fd355b11c345a3660a4ecb4bdfdc474ba2d1543b666666ad84cadd3b",
-  "test-reference/Noncustomer_Codebook.csv": "cb4d2db258e0dc688c5ec84de8ff8c33b108db24e73a41556dc3ed2612b975c8",
-  "test-reference/Relationship_Codebook.csv": "8a78ecc11bfed5be5ac2182211b3d41e466fd8a2fe9527d3c306a3fb55a2a230",
-  "test-reference/metadata.json": "467b9e180835f4b334059e59e977d9b0381a125f3ba57ea61d4359ba54536435",
-  "test-reference/reference_results.json": "9ad4d0843a5c6d5ad3ac54519852a70308b6a242cf70386f8e7874ffcfe2c3d7",
-  "test-reference/validate_pack.py": "e4938f1e48e04c93d5986ffaef2612dd43dfb24eff2a04a30ff98778e8ea3400",
-  "test-reference/validation_results.json": "ffad39976016d2f4e7a3aacef02dfba8e2bf74825e2da86f08e81a52fa8af32e"
+  "version": "separate_testing_20261030_v2",
+  "created_utc": "2026-10-30T13:11:23.060311+00:00",
+  "schema": {
+    "company": 100,
+    "channel": 88
+  },
+  "files": [
+    {
+      "path": "00_CSM_Research_Brief.docx",
+      "bytes": 40886,
+      "sha256": "bc3da01493df73676b92879b91c475fed7a27cc3bce6e5bace342434bee0df5c"
+    },
+    {
+      "path": "01_Channel_CSM_Questionnaire.docx",
+      "bytes": 44762,
+      "sha256": "b6d60f3ec2190d8b415a0bf3f2e37169c6f76cecdba75cab54e56c45b0fc48c5"
+    },
+    {
+      "path": "01_Company_CSM_Questionnaire.docx",
+      "bytes": 46131,
+      "sha256": "0a0947856c03cf414cae2ea529840a5d6d46f3ec6c5a29e1cd5071ea30b36110"
+    },
+    {
+      "path": "01_Noncustomer_Expectations_Questionnaire.docx",
+      "bytes": 39923,
+      "sha256": "b1dd2ce56e9585bce9eef663bb70279bd74f18b014413cf94dce7c14c5e1dcc9"
+    },
+    {
+      "path": "02_Dashboard_and_Analysis_Guide.docx",
+      "bytes": 43806,
+      "sha256": "fe93e543ca96e739b00a87c099676c876f43252893c0c3403d7f63bb4430a043"
+    },
+    {
+      "path": "03_Claude_Implementation_Instructions.docx",
+      "bytes": 43233,
+      "sha256": "aa3e8ec29454e0be9ee8e7d9745ab8827cf5785a4b587f5c01ca56e985823ea3"
+    },
+    {
+      "path": "CSM_Reference_Metrics.xlsx",
+      "bytes": 212688,
+      "sha256": "18bfe0dbb17c2416b5f2123cc0e61d6eac046aed1340dd1570d0858a90d2a0e4"
+    },
+    {
+      "path": "Master_CSM_Codebook.xlsx",
+      "bytes": 58448,
+      "sha256": "f8bf9553007fb5c75eeb7ec8396483e9fbe167593b454e1723a4d46474f45175"
+    },
+    {
+      "path": "Mobile_CSM_Channel_All_Waves.xlsx",
+      "bytes": 1480210,
+      "sha256": "69b68d05c92c7964f5ddd492564ef62c46474d11ed4a949c61d6150eab1235bd"
+    },
+    {
+      "path": "Mobile_CSM_Channel_Wave_1.xlsx",
+      "bytes": 514386,
+      "sha256": "7da67d8ecbdd4addfbb61c055d2b3e73e0c1ffdac37051462aa686ac406a768b"
+    },
+    {
+      "path": "Mobile_CSM_Channel_Wave_2.xlsx",
+      "bytes": 514877,
+      "sha256": "ef17e60977df730087d2732caf7c0405dda678d7f0916c33e9ffd3bf6c217933"
+    },
+    {
+      "path": "Mobile_CSM_Channel_Wave_3.xlsx",
+      "bytes": 539887,
+      "sha256": "eb0429f50f01635726814e8f83ed6fb808500e0be92881e1a808a4ca8bd95aaa"
+    },
+    {
+      "path": "Mobile_CSM_Noncustomer_Wave_1.xlsx",
+      "bytes": 77917,
+      "sha256": "dac04ff3009fd6a82a252688930e31a80cbc84393dfc95ca2932882fd3d32edf"
+    },
+    {
+      "path": "Mobile_CSM_Noncustomer_Wave_2.xlsx",
+      "bytes": 77684,
+      "sha256": "1d9b9db2613c4fa7a46f0878000e416193da37058ad42cb06df5f2cb2f782809"
+    },
+    {
+      "path": "Mobile_CSM_Noncustomer_Wave_3.xlsx",
+      "bytes": 77548,
+      "sha256": "191498333cafd98e46fab394d1b58de5ad18d39438e85ca1878ccf8de888609e"
+    },
+    {
+      "path": "Mobile_CSM_Relationship_All_Waves.xlsx",
+      "bytes": 1123089,
+      "sha256": "253f4a31ff7ceeafb2ed1dddb7e25fbb2494cacf51751c5ab612d26ea6b91bea"
+    },
+    {
+      "path": "Mobile_CSM_Relationship_Wave_1.xlsx",
+      "bytes": 396418,
+      "sha256": "f0a23b42ed1417b628b65b94fbb0a4e115be16f6889232156f8ee50df151eadc"
+    },
+    {
+      "path": "Mobile_CSM_Relationship_Wave_2.xlsx",
+      "bytes": 396978,
+      "sha256": "6bf80266de78b99d1de2292f810b556d0e059e1c67fc34a8476e6588685840fd"
+    },
+    {
+      "path": "Mobile_CSM_Relationship_Wave_3.xlsx",
+      "bytes": 395300,
+      "sha256": "b0f9c5960efc3ace9fcaa615558e096ecee1aa5cb837ef747c218259a286eccd"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3617,
+      "sha256": "e60a621c8c9de9f3ecaaf0b127048b43afd6ff2c8ab02458933d48e237171cb4"
+    },
+    {
+      "path": "test-reference/Channel_Codebook.csv",
+      "bytes": 9113,
+      "sha256": "60a6242d9a4c84f32bb40fccc37f688095166619635468017b2af60b42c6f55e"
+    },
+    {
+      "path": "test-reference/Channel_Labels.csv",
+      "bytes": 21758,
+      "sha256": "c12ebbff3d6f217e0ffb4bfecccfc9d14fb025d0912150544567111e9c9ff64a"
+    },
+    {
+      "path": "test-reference/Channel_MR_Sets.csv",
+      "bytes": 485,
+      "sha256": "234449b2d356165701d7914834572c9d59649eb0e1022afad1263212010d050a"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Channel_All_Waves.csv",
+      "bytes": 1490202,
+      "sha256": "a71129951c621f7ac5b133beca237aca0bc8a465b79f0fc97ef42a79500ebb9c"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Channel_Wave_1.csv",
+      "bytes": 488596,
+      "sha256": "3d7b58a118cb4107c9344a99cbf64fa830d38fd729cd733e99e7eaf176dd62aa"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Channel_Wave_2.csv",
+      "bytes": 490722,
+      "sha256": "ff2676ab01c09e1321b1a0f20c4907073921aeabb59adb324dd4e48979b200b9"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Channel_Wave_3.csv",
+      "bytes": 513808,
+      "sha256": "f12f9267c039ee2bcc072b5c0fcb4eb6b4b56bc6953bf6365cb21b0b5faaa6a3"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Noncustomer_Wave_1.csv",
+      "bytes": 76421,
+      "sha256": "01dee53600e2e74e12a139909f3406f1b834b51089228509a8bb4eb62415fbfe"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Noncustomer_Wave_2.csv",
+      "bytes": 76438,
+      "sha256": "a76cb44a96ef0f5b4b993352ab9abccacf82ddde15a0409e61e63a959b15d034"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Noncustomer_Wave_3.csv",
+      "bytes": 76481,
+      "sha256": "eb2a64dce849173c941e2e26bc351ed1cab21cef9e0223c0e62c1686e07b0949"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Relationship_All_Waves.csv",
+      "bytes": 1013059,
+      "sha256": "80d0aace8275eba84c11d12a1439a93bc143141fbd1532a0bb05c763e5224d26"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Relationship_Wave_1.csv",
+      "bytes": 339415,
+      "sha256": "0e5200f034dbddb423bb2acf299c759550cc8bb070b2327b8a75588b6303fdc1"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Relationship_Wave_2.csv",
+      "bytes": 338292,
+      "sha256": "ae82825a3dedaa08cbf0e9ecc08abc3d320a0383890d00e9810851557aa53dc2"
+    },
+    {
+      "path": "test-reference/Mobile_CSM_Relationship_Wave_3.csv",
+      "bytes": 338608,
+      "sha256": "4453c49fd89d10b21de3af2ee16d51d02493b5d5ee0ca088783e4bc13938ac88"
+    },
+    {
+      "path": "test-reference/Noncustomer_Codebook.csv",
+      "bytes": 3877,
+      "sha256": "cb4d2db258e0dc688c5ec84de8ff8c33b108db24e73a41556dc3ed2612b975c8"
+    },
+    {
+      "path": "test-reference/Noncustomer_Labels.csv",
+      "bytes": 11865,
+      "sha256": "0fb5c735696be1bb27ecdf4574635bb6bbdcf84a1dcea98c8d7b59bb59fb2d89"
+    },
+    {
+      "path": "test-reference/Reference_Metrics.csv",
+      "bytes": 384054,
+      "sha256": "4c68e45a22a1c0488f27539bfa141a1f2929d157487e221d5f1535811e127b1d"
+    },
+    {
+      "path": "test-reference/Relationship_Codebook.csv",
+      "bytes": 10486,
+      "sha256": "5a6e6e7298c5ca3614959cd71b6273e605ac9e1d2a3a8168d2729bcf558032bd"
+    },
+    {
+      "path": "test-reference/Relationship_Labels.csv",
+      "bytes": 23770,
+      "sha256": "81f794964a1a9e7617fd2d02a36df73f592b191ab2ef6d641baaec4b96576639"
+    },
+    {
+      "path": "test-reference/Relationship_MR_Sets.csv",
+      "bytes": 1780,
+      "sha256": "a60d47c8bf601470ba24d6810027d79ed65a1171b2c1b8ea80817efece76c053"
+    },
+    {
+      "path": "test-reference/Source_to_Combined_Map.csv",
+      "bytes": 45578,
+      "sha256": "df9ec04bfa31e0390e71e0dd0a863defc49e10a0a5700f8096701e5302d36a0a"
+    },
+    {
+      "path": "test-reference/metadata.json",
+      "bytes": 170490,
+      "sha256": "757a21384d74d815bcfe96a0951d98164d4dbf13bd7c040f1ccd976442e4f34b"
+    },
+    {
+      "path": "test-reference/reference_results.json",
+      "bytes": 1027033,
+      "sha256": "2dd47d46bd61dbe46d4e99381055c7ada4f92837157f9d23b69afc37bf0adefd"
+    },
+    {
+      "path": "test-reference/validate_pack.py",
+      "bytes": 273,
+      "sha256": "ca28c327020ca34575bb033f7832440a5dae1a3bacc3c8e6997f34ca728ad25b"
+    },
+    {
+      "path": "test-reference/validation_results.json",
+      "bytes": 815,
+      "sha256": "193a6927ba7428fe2be9911515e6348e0f8bff7f293e2be61a53b3ab6704c4b9"
+    }
+  ]
 }

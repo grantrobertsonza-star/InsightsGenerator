@@ -27,7 +27,7 @@
       "question_type": "text",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -39,7 +39,7 @@
       "question_type": "text",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -51,7 +51,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -63,7 +63,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -75,7 +75,7 @@
       "question_type": "continuous",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "relative weight"
     },
@@ -87,7 +87,7 @@
       "question_type": "continuous",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "years"
     },
@@ -99,7 +99,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -111,7 +111,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -123,7 +123,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -135,7 +135,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -147,7 +147,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -159,7 +159,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -171,7 +171,7 @@
       "question_type": "continuous",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "months"
     },
@@ -183,7 +183,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -195,7 +195,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -207,7 +207,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -219,7 +219,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -231,7 +231,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -243,7 +243,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -255,7 +255,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -267,7 +267,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -279,7 +279,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -291,7 +291,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -303,7 +303,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -315,7 +315,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -327,7 +327,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -339,7 +339,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -351,7 +351,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -363,7 +363,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -375,7 +375,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -387,7 +387,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -399,7 +399,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -411,7 +411,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -423,7 +423,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -435,7 +435,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -447,7 +447,7 @@
       "question_type": "text",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -459,7 +459,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "products",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -471,7 +471,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "products",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -483,7 +483,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "products",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -495,7 +495,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "products",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -507,7 +507,7 @@
       "question_type": "multiple_response",
       "universe": "complaint3m=1",
       "mr_set": "complaint_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -519,7 +519,7 @@
       "question_type": "multiple_response",
       "universe": "complaint3m=1",
       "mr_set": "complaint_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -531,7 +531,7 @@
       "question_type": "multiple_response",
       "universe": "complaint3m=1",
       "mr_set": "complaint_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -543,7 +543,7 @@
       "question_type": "multiple_response",
       "universe": "complaint3m=1",
       "mr_set": "complaint_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -555,7 +555,7 @@
       "question_type": "multiple_response",
       "universe": "complaint3m=1",
       "mr_set": "complaint_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -567,7 +567,7 @@
       "question_type": "multiple_response",
       "universe": "complaint3m=1",
       "mr_set": "complaint_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -579,7 +579,7 @@
       "question_type": "categorical",
       "universe": "complaint3m=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -591,7 +591,7 @@
       "question_type": "scale",
       "universe": "complaint3m=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -603,7 +603,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "channel_use",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -615,7 +615,7 @@
       "question_type": "continuous",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "interactions"
     },
@@ -627,7 +627,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "channel_use",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -639,7 +639,7 @@
       "question_type": "continuous",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "interactions"
     },
@@ -651,7 +651,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "channel_use",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -663,7 +663,7 @@
       "question_type": "continuous",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "interactions"
     },
@@ -675,7 +675,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "channel_use",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -687,7 +687,7 @@
       "question_type": "continuous",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "interactions"
     },
@@ -699,7 +699,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -711,7 +711,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -723,7 +723,7 @@
       "question_type": "multiple response",
       "universe": "All records",
       "mr_set": "reasons_staying",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -735,7 +735,7 @@
       "question_type": "multiple response",
       "universe": "All records",
       "mr_set": "reasons_staying",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -747,7 +747,7 @@
       "question_type": "multiple response",
       "universe": "All records",
       "mr_set": "reasons_staying",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -759,7 +759,7 @@
       "question_type": "multiple response",
       "universe": "All records",
       "mr_set": "reasons_staying",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -771,7 +771,7 @@
       "question_type": "multiple response",
       "universe": "All records",
       "mr_set": "reasons_staying",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -783,7 +783,7 @@
       "question_type": "multiple response",
       "universe": "All records",
       "mr_set": "reasons_staying",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -795,7 +795,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -807,7 +807,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -819,7 +819,7 @@
       "question_type": "categorical",
       "universe": "Selected substantive reasons; None or Do not know carried from L7",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -831,7 +831,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -843,7 +843,7 @@
       "question_type": "text",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -855,7 +855,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -867,7 +867,7 @@
       "question_type": "continuous",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "days"
     },
@@ -879,7 +879,7 @@
       "question_type": "continuous",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "days"
     },
@@ -891,7 +891,7 @@
       "question_type": "multiple response",
       "universe": "journey_recent30=1",
       "mr_set": "journey_channels",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -903,7 +903,7 @@
       "question_type": "multiple response",
       "universe": "journey_recent30=1",
       "mr_set": "journey_channels",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -915,7 +915,7 @@
       "question_type": "multiple response",
       "universe": "journey_recent30=1",
       "mr_set": "journey_channels",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -927,7 +927,7 @@
       "question_type": "multiple response",
       "universe": "journey_recent30=1",
       "mr_set": "journey_channels",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -939,7 +939,7 @@
       "question_type": "categorical",
       "universe": "journey_channel_c03=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -951,7 +951,7 @@
       "question_type": "text",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -963,7 +963,7 @@
       "question_type": "continuous",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "contacts"
     },
@@ -975,7 +975,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "Count of journey_channel_c01-c04 selected >=2",
       "unit": "code"
     },
@@ -987,7 +987,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -999,7 +999,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1011,7 +1011,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1023,7 +1023,7 @@
       "question_type": "categorical",
       "universe": "journey_status in 1 2 3",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "1 if journey_status=1; 0 if 2 or 3; blank if pending or no journey",
       "unit": "code"
     },
@@ -1035,7 +1035,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1047,7 +1047,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1059,7 +1059,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1071,7 +1071,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1083,7 +1083,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1095,7 +1095,7 @@
       "question_type": "text",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1107,7 +1107,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1119,7 +1119,7 @@
       "question_type": "categorical",
       "universe": "journey_recent30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1131,7 +1131,7 @@
       "question_type": "categorical",
       "universe": "benchmark_recent_same_task30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1143,7 +1143,7 @@
       "question_type": "categorical",
       "universe": "benchmark_recent_same_task30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1155,7 +1155,7 @@
       "question_type": "continuous",
       "universe": "benchmark_recent_same_task30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "days"
     },
@@ -1167,7 +1167,7 @@
       "question_type": "categorical",
       "universe": "benchmark_recent_same_task30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1179,7 +1179,7 @@
       "question_type": "categorical",
       "universe": "benchmark_recent_same_task30=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1191,9 +1191,33 @@
       "question_type": "continuous",
       "universe": "Both journey_csat5 and benchmark_csat5 valid 1-5",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "journey_csat5 - benchmark_csat5; descriptive paired difference only",
       "unit": "scale points"
+    },
+    {
+      "variable": "journey_angry5",
+      "label": "Anchored journey left customer angry",
+      "question": "J7f",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "journey_disappointed5",
+      "label": "Anchored journey left customer disappointed",
+      "question": "J7g",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "journey_recent30=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
     }
   ],
   "channel_specs": [
@@ -1361,7 +1385,7 @@
       "question_type": "text",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1373,7 +1397,7 @@
       "question_type": "text",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1385,7 +1409,7 @@
       "question_type": "continuous",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "days"
     },
@@ -1397,7 +1421,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1409,7 +1433,7 @@
       "question_type": "categorical",
       "universe": "channel=3",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1421,7 +1445,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1433,7 +1457,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1445,7 +1469,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "experience_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -1457,7 +1481,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "experience_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -1469,7 +1493,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "experience_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -1481,7 +1505,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "experience_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -1493,7 +1517,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "experience_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -1505,7 +1529,7 @@
       "question_type": "multiple_response",
       "universe": "All records",
       "mr_set": "experience_reasons",
-      "selected_value": 1,
+      "selected_value": "1",
       "derivation": "",
       "unit": "code"
     },
@@ -1517,7 +1541,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1529,7 +1553,7 @@
       "question_type": "scale",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1541,7 +1565,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1553,7 +1577,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1565,7 +1589,7 @@
       "question_type": "categorical",
       "universe": "problem_present=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1577,7 +1601,7 @@
       "question_type": "continuous",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "contacts"
     },
@@ -1589,7 +1613,7 @@
       "question_type": "categorical",
       "universe": "problem_present=1 and problem_resolution in 1,2,3",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "1 only when fully resolved and contacts_same_need=1",
       "unit": "code"
     },
@@ -1601,7 +1625,7 @@
       "question_type": "text",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1613,7 +1637,7 @@
       "question_type": "scale",
       "universe": "All channel experiences",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1625,7 +1649,7 @@
       "question_type": "scale",
       "universe": "All channel experiences",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1637,7 +1661,7 @@
       "question_type": "scale",
       "universe": "All channel experiences",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1649,7 +1673,7 @@
       "question_type": "scale",
       "universe": "All channel experiences",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1661,7 +1685,7 @@
       "question_type": "scale",
       "universe": "staff_contact=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1673,7 +1697,7 @@
       "question_type": "scale",
       "universe": "All channel experiences",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1685,7 +1709,7 @@
       "question_type": "scale",
       "universe": "staff_contact=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1697,7 +1721,7 @@
       "question_type": "scale",
       "universe": "staff_contact=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1709,7 +1733,7 @@
       "question_type": "scale",
       "universe": "All channel experiences",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1721,7 +1745,7 @@
       "question_type": "scale",
       "universe": "All channel experiences",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1733,9 +1757,9 @@
       "question_type": "continuous",
       "universe": "Both corresponding items valid",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "Mean of two matching Q1 items, excluding 98/99; both required",
-      "unit": "1\u20135 mean"
+      "unit": "1–5 mean"
     },
     {
       "variable": "dimension_responsiveness",
@@ -1745,9 +1769,9 @@
       "question_type": "continuous",
       "universe": "Both corresponding items valid",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "Mean of two matching Q1 items, excluding 98/99; both required",
-      "unit": "1\u20135 mean"
+      "unit": "1–5 mean"
     },
     {
       "variable": "dimension_assurance",
@@ -1757,9 +1781,9 @@
       "question_type": "continuous",
       "universe": "Both corresponding items valid",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "Mean of two matching Q1 items, excluding 98/99; both required",
-      "unit": "1\u20135 mean"
+      "unit": "1–5 mean"
     },
     {
       "variable": "dimension_empathy",
@@ -1769,9 +1793,9 @@
       "question_type": "continuous",
       "universe": "Both corresponding items valid",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "Mean of two matching Q1 items, excluding 98/99; both required",
-      "unit": "1\u20135 mean"
+      "unit": "1–5 mean"
     },
     {
       "variable": "dimension_access_and_clarity",
@@ -1781,9 +1805,9 @@
       "question_type": "continuous",
       "universe": "Both corresponding items valid",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "Mean of two matching Q1 items, excluding 98/99; both required",
-      "unit": "1\u20135 mean"
+      "unit": "1–5 mean"
     },
     {
       "variable": "wait_minutes",
@@ -1793,7 +1817,7 @@
       "question_type": "continuous",
       "universe": "staff_contact=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "minutes"
     },
@@ -1805,7 +1829,7 @@
       "question_type": "continuous",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "minutes"
     },
@@ -1817,7 +1841,7 @@
       "question_type": "continuous",
       "universe": "channel=3",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "seconds"
     },
@@ -1829,7 +1853,7 @@
       "question_type": "categorical",
       "universe": "channel=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1841,7 +1865,7 @@
       "question_type": "categorical",
       "universe": "channel=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1853,7 +1877,7 @@
       "question_type": "categorical",
       "universe": "channel=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1865,7 +1889,7 @@
       "question_type": "categorical",
       "universe": "channel=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1877,7 +1901,7 @@
       "question_type": "continuous",
       "universe": "channel=1 and transferred=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "transfers"
     },
@@ -1889,7 +1913,7 @@
       "question_type": "categorical",
       "universe": "callback_promised=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1901,7 +1925,7 @@
       "question_type": "scale",
       "universe": "used_ivr=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1913,7 +1937,7 @@
       "question_type": "scale",
       "universe": "used_ivr=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1925,7 +1949,7 @@
       "question_type": "categorical",
       "universe": "staff_contact=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1937,7 +1961,7 @@
       "question_type": "categorical",
       "universe": "staff_contact=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1949,7 +1973,7 @@
       "question_type": "categorical",
       "universe": "staff_contact=1",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1961,7 +1985,7 @@
       "question_type": "scale",
       "universe": "channel=2",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1973,7 +1997,7 @@
       "question_type": "scale",
       "universe": "channel=2",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1985,7 +2009,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -1997,7 +2021,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -2009,7 +2033,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -2021,7 +2045,7 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -2033,7 +2057,7 @@
       "question_type": "text",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     },
@@ -2045,7 +2069,211 @@
       "question_type": "categorical",
       "universe": "All records",
       "mr_set": "",
-      "selected_value": null,
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_angry5",
+      "label": "This latest channel experience left customer angry",
+      "question": "E8f",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "channel_disappointed5",
+      "label": "This latest channel experience left customer disappointed",
+      "question": "E8g",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "call_agent_contact",
+      "label": "Spoke with a live agent during this call",
+      "question": "Q7a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "queue_wait_csat5",
+      "label": "Satisfaction with wait to speak to a live agent including no wait",
+      "question": "Q7b",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and call_agent_contact=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "total_call_time_csat5",
+      "label": "Satisfaction with total duration of this call",
+      "question": "Q7c",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "agent_overall_csat5",
+      "label": "Overall satisfaction with the live agent on this call",
+      "question": "Q7d",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and call_agent_contact=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "correct_person_first_transfer",
+      "label": "Reached the right person on the first transfer",
+      "question": "Q7e",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and call_agent_contact=1 and transferred=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "agent_ownership5",
+      "label": "The agent took ownership of helping resolve the need",
+      "question": "Q8a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and call_agent_contact=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "agent_promise_made",
+      "label": "Agent made a specific promise about something to happen after the call",
+      "question": "Q8b",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and call_agent_contact=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "agent_promises_kept5",
+      "label": "The agent kept the promises that were due by now",
+      "question": "Q8c",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and call_agent_contact=1 and agent_promise_made=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "agent_patience5",
+      "label": "The agent was patient with me",
+      "question": "Q8d",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and call_agent_contact=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "urgency_need",
+      "label": "Told the agent that the need was urgent",
+      "question": "Q8e",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and call_agent_contact=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "agent_urgency5",
+      "label": "The agent responded appropriately to the urgency of my need",
+      "question": "Q8f",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and call_agent_contact=1 and urgency_need=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "ivr_availability5",
+      "label": "Availability of the automated telephone service when needed",
+      "question": "Q9a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and used_ivr=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "ivr_response_speed5",
+      "label": "Speed of the automated telephone service responses",
+      "question": "Q9b",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and used_ivr=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "ivr_information_accuracy5",
+      "label": "Accuracy of information supplied by the automated telephone service",
+      "question": "Q9c",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and used_ivr=1",
+      "mr_set": "",
+      "selected_value": "",
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "ivr_ease5",
+      "label": "Ease of using the automated telephone service",
+      "question": "Q9d",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "channel=1 and used_ivr=1",
+      "mr_set": "",
+      "selected_value": "",
       "derivation": "",
       "unit": "code"
     }
@@ -2115,25 +2343,25 @@
       "age_band",
       "Age group",
       1,
-      "18\u201324"
+      "18–24"
     ],
     [
       "age_band",
       "Age group",
       2,
-      "25\u201334"
+      "25–34"
     ],
     [
       "age_band",
       "Age group",
       3,
-      "35\u201349"
+      "35–49"
     ],
     [
       "age_band",
       "Age group",
       4,
-      "50\u201369"
+      "50–69"
     ],
     [
       "gender",
@@ -2223,19 +2451,19 @@
       "income",
       "Monthly household income",
       2,
-      "R15,000\u2013R29,999"
+      "R15,000–R29,999"
     ],
     [
       "income",
       "Monthly household income",
       3,
-      "R30,000\u2013R49,999"
+      "R30,000–R49,999"
     ],
     [
       "income",
       "Monthly household income",
       4,
-      "R50,000\u2013R79,999"
+      "R50,000–R79,999"
     ],
     [
       "income",
@@ -4150,6 +4378,78 @@
       "Overall satisfaction with other provider comparable task",
       99,
       "Do not know"
+    ],
+    [
+      "journey_angry5",
+      "Anchored journey left customer angry",
+      1,
+      "Not at all"
+    ],
+    [
+      "journey_angry5",
+      "Anchored journey left customer angry",
+      2,
+      "A little"
+    ],
+    [
+      "journey_angry5",
+      "Anchored journey left customer angry",
+      3,
+      "Moderately"
+    ],
+    [
+      "journey_angry5",
+      "Anchored journey left customer angry",
+      4,
+      "Very"
+    ],
+    [
+      "journey_angry5",
+      "Anchored journey left customer angry",
+      5,
+      "Extremely"
+    ],
+    [
+      "journey_angry5",
+      "Anchored journey left customer angry",
+      99,
+      "Do not know"
+    ],
+    [
+      "journey_disappointed5",
+      "Anchored journey left customer disappointed",
+      1,
+      "Not at all"
+    ],
+    [
+      "journey_disappointed5",
+      "Anchored journey left customer disappointed",
+      2,
+      "A little"
+    ],
+    [
+      "journey_disappointed5",
+      "Anchored journey left customer disappointed",
+      3,
+      "Moderately"
+    ],
+    [
+      "journey_disappointed5",
+      "Anchored journey left customer disappointed",
+      4,
+      "Very"
+    ],
+    [
+      "journey_disappointed5",
+      "Anchored journey left customer disappointed",
+      5,
+      "Extremely"
+    ],
+    [
+      "journey_disappointed5",
+      "Anchored journey left customer disappointed",
+      99,
+      "Do not know"
     ]
   ],
   "channel_labels": [
@@ -4217,25 +4517,25 @@
       "age_band",
       "Age group",
       1,
-      "18\u201324"
+      "18–24"
     ],
     [
       "age_band",
       "Age group",
       2,
-      "25\u201334"
+      "25–34"
     ],
     [
       "age_band",
       "Age group",
       3,
-      "35\u201349"
+      "35–49"
     ],
     [
       "age_band",
       "Age group",
       4,
-      "50\u201369"
+      "50–69"
     ],
     [
       "gender",
@@ -4325,19 +4625,19 @@
       "income",
       "Monthly household income",
       2,
-      "R15,000\u2013R29,999"
+      "R15,000–R29,999"
     ],
     [
       "income",
       "Monthly household income",
       3,
-      "R30,000\u2013R49,999"
+      "R30,000–R49,999"
     ],
     [
       "income",
       "Monthly household income",
       4,
-      "R50,000\u2013R79,999"
+      "R50,000–R79,999"
     ],
     [
       "income",
@@ -5562,6 +5862,600 @@
       "This latest channel experience gives reason to choose provider",
       99,
       "Do not know"
+    ],
+    [
+      "channel_angry5",
+      "This latest channel experience left customer angry",
+      1,
+      "Not at all"
+    ],
+    [
+      "channel_angry5",
+      "This latest channel experience left customer angry",
+      2,
+      "A little"
+    ],
+    [
+      "channel_angry5",
+      "This latest channel experience left customer angry",
+      3,
+      "Moderately"
+    ],
+    [
+      "channel_angry5",
+      "This latest channel experience left customer angry",
+      4,
+      "Very"
+    ],
+    [
+      "channel_angry5",
+      "This latest channel experience left customer angry",
+      5,
+      "Extremely"
+    ],
+    [
+      "channel_angry5",
+      "This latest channel experience left customer angry",
+      99,
+      "Do not know"
+    ],
+    [
+      "channel_disappointed5",
+      "This latest channel experience left customer disappointed",
+      1,
+      "Not at all"
+    ],
+    [
+      "channel_disappointed5",
+      "This latest channel experience left customer disappointed",
+      2,
+      "A little"
+    ],
+    [
+      "channel_disappointed5",
+      "This latest channel experience left customer disappointed",
+      3,
+      "Moderately"
+    ],
+    [
+      "channel_disappointed5",
+      "This latest channel experience left customer disappointed",
+      4,
+      "Very"
+    ],
+    [
+      "channel_disappointed5",
+      "This latest channel experience left customer disappointed",
+      5,
+      "Extremely"
+    ],
+    [
+      "channel_disappointed5",
+      "This latest channel experience left customer disappointed",
+      99,
+      "Do not know"
+    ],
+    [
+      "call_agent_contact",
+      "Spoke with a live agent during this call",
+      0,
+      "No"
+    ],
+    [
+      "call_agent_contact",
+      "Spoke with a live agent during this call",
+      1,
+      "Yes"
+    ],
+    [
+      "call_agent_contact",
+      "Spoke with a live agent during this call",
+      99,
+      "Do not know"
+    ],
+    [
+      "queue_wait_csat5",
+      "Satisfaction with wait to speak to a live agent including no wait",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "queue_wait_csat5",
+      "Satisfaction with wait to speak to a live agent including no wait",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "queue_wait_csat5",
+      "Satisfaction with wait to speak to a live agent including no wait",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "queue_wait_csat5",
+      "Satisfaction with wait to speak to a live agent including no wait",
+      4,
+      "Satisfied"
+    ],
+    [
+      "queue_wait_csat5",
+      "Satisfaction with wait to speak to a live agent including no wait",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "queue_wait_csat5",
+      "Satisfaction with wait to speak to a live agent including no wait",
+      99,
+      "Do not know"
+    ],
+    [
+      "total_call_time_csat5",
+      "Satisfaction with total duration of this call",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "total_call_time_csat5",
+      "Satisfaction with total duration of this call",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "total_call_time_csat5",
+      "Satisfaction with total duration of this call",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "total_call_time_csat5",
+      "Satisfaction with total duration of this call",
+      4,
+      "Satisfied"
+    ],
+    [
+      "total_call_time_csat5",
+      "Satisfaction with total duration of this call",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "total_call_time_csat5",
+      "Satisfaction with total duration of this call",
+      99,
+      "Do not know"
+    ],
+    [
+      "agent_overall_csat5",
+      "Overall satisfaction with the live agent on this call",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "agent_overall_csat5",
+      "Overall satisfaction with the live agent on this call",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "agent_overall_csat5",
+      "Overall satisfaction with the live agent on this call",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "agent_overall_csat5",
+      "Overall satisfaction with the live agent on this call",
+      4,
+      "Satisfied"
+    ],
+    [
+      "agent_overall_csat5",
+      "Overall satisfaction with the live agent on this call",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "agent_overall_csat5",
+      "Overall satisfaction with the live agent on this call",
+      99,
+      "Do not know"
+    ],
+    [
+      "correct_person_first_transfer",
+      "Reached the right person on the first transfer",
+      0,
+      "No"
+    ],
+    [
+      "correct_person_first_transfer",
+      "Reached the right person on the first transfer",
+      1,
+      "Yes"
+    ],
+    [
+      "correct_person_first_transfer",
+      "Reached the right person on the first transfer",
+      99,
+      "Do not know"
+    ],
+    [
+      "agent_ownership5",
+      "The agent took ownership of helping resolve the need",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "agent_ownership5",
+      "The agent took ownership of helping resolve the need",
+      2,
+      "Disagree"
+    ],
+    [
+      "agent_ownership5",
+      "The agent took ownership of helping resolve the need",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "agent_ownership5",
+      "The agent took ownership of helping resolve the need",
+      4,
+      "Agree"
+    ],
+    [
+      "agent_ownership5",
+      "The agent took ownership of helping resolve the need",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "agent_ownership5",
+      "The agent took ownership of helping resolve the need",
+      98,
+      "Not applicable"
+    ],
+    [
+      "agent_ownership5",
+      "The agent took ownership of helping resolve the need",
+      99,
+      "Do not know"
+    ],
+    [
+      "agent_promise_made",
+      "Agent made a specific promise about something to happen after the call",
+      0,
+      "No"
+    ],
+    [
+      "agent_promise_made",
+      "Agent made a specific promise about something to happen after the call",
+      1,
+      "Yes"
+    ],
+    [
+      "agent_promise_made",
+      "Agent made a specific promise about something to happen after the call",
+      99,
+      "Do not know"
+    ],
+    [
+      "agent_promises_kept5",
+      "The agent kept the promises that were due by now",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "agent_promises_kept5",
+      "The agent kept the promises that were due by now",
+      2,
+      "Disagree"
+    ],
+    [
+      "agent_promises_kept5",
+      "The agent kept the promises that were due by now",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "agent_promises_kept5",
+      "The agent kept the promises that were due by now",
+      4,
+      "Agree"
+    ],
+    [
+      "agent_promises_kept5",
+      "The agent kept the promises that were due by now",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "agent_promises_kept5",
+      "The agent kept the promises that were due by now",
+      98,
+      "Not applicable"
+    ],
+    [
+      "agent_promises_kept5",
+      "The agent kept the promises that were due by now",
+      99,
+      "Do not know"
+    ],
+    [
+      "agent_promises_kept5",
+      "The agent kept the promises that were due by now",
+      9,
+      "Not yet due or too early to tell"
+    ],
+    [
+      "agent_patience5",
+      "The agent was patient with me",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "agent_patience5",
+      "The agent was patient with me",
+      2,
+      "Disagree"
+    ],
+    [
+      "agent_patience5",
+      "The agent was patient with me",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "agent_patience5",
+      "The agent was patient with me",
+      4,
+      "Agree"
+    ],
+    [
+      "agent_patience5",
+      "The agent was patient with me",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "agent_patience5",
+      "The agent was patient with me",
+      98,
+      "Not applicable"
+    ],
+    [
+      "agent_patience5",
+      "The agent was patient with me",
+      99,
+      "Do not know"
+    ],
+    [
+      "urgency_need",
+      "Told the agent that the need was urgent",
+      0,
+      "No"
+    ],
+    [
+      "urgency_need",
+      "Told the agent that the need was urgent",
+      1,
+      "Yes"
+    ],
+    [
+      "urgency_need",
+      "Told the agent that the need was urgent",
+      99,
+      "Do not know"
+    ],
+    [
+      "agent_urgency5",
+      "The agent responded appropriately to the urgency of my need",
+      1,
+      "Strongly disagree"
+    ],
+    [
+      "agent_urgency5",
+      "The agent responded appropriately to the urgency of my need",
+      2,
+      "Disagree"
+    ],
+    [
+      "agent_urgency5",
+      "The agent responded appropriately to the urgency of my need",
+      3,
+      "Neither agree nor disagree"
+    ],
+    [
+      "agent_urgency5",
+      "The agent responded appropriately to the urgency of my need",
+      4,
+      "Agree"
+    ],
+    [
+      "agent_urgency5",
+      "The agent responded appropriately to the urgency of my need",
+      5,
+      "Strongly agree"
+    ],
+    [
+      "agent_urgency5",
+      "The agent responded appropriately to the urgency of my need",
+      98,
+      "Not applicable"
+    ],
+    [
+      "agent_urgency5",
+      "The agent responded appropriately to the urgency of my need",
+      99,
+      "Do not know"
+    ],
+    [
+      "ivr_availability5",
+      "Availability of the automated telephone service when needed",
+      1,
+      "Very poor"
+    ],
+    [
+      "ivr_availability5",
+      "Availability of the automated telephone service when needed",
+      2,
+      "Poor"
+    ],
+    [
+      "ivr_availability5",
+      "Availability of the automated telephone service when needed",
+      3,
+      "Adequate"
+    ],
+    [
+      "ivr_availability5",
+      "Availability of the automated telephone service when needed",
+      4,
+      "Good"
+    ],
+    [
+      "ivr_availability5",
+      "Availability of the automated telephone service when needed",
+      5,
+      "Excellent"
+    ],
+    [
+      "ivr_availability5",
+      "Availability of the automated telephone service when needed",
+      98,
+      "Not applicable"
+    ],
+    [
+      "ivr_availability5",
+      "Availability of the automated telephone service when needed",
+      99,
+      "Do not know"
+    ],
+    [
+      "ivr_response_speed5",
+      "Speed of the automated telephone service responses",
+      1,
+      "Very poor"
+    ],
+    [
+      "ivr_response_speed5",
+      "Speed of the automated telephone service responses",
+      2,
+      "Poor"
+    ],
+    [
+      "ivr_response_speed5",
+      "Speed of the automated telephone service responses",
+      3,
+      "Adequate"
+    ],
+    [
+      "ivr_response_speed5",
+      "Speed of the automated telephone service responses",
+      4,
+      "Good"
+    ],
+    [
+      "ivr_response_speed5",
+      "Speed of the automated telephone service responses",
+      5,
+      "Excellent"
+    ],
+    [
+      "ivr_response_speed5",
+      "Speed of the automated telephone service responses",
+      98,
+      "Not applicable"
+    ],
+    [
+      "ivr_response_speed5",
+      "Speed of the automated telephone service responses",
+      99,
+      "Do not know"
+    ],
+    [
+      "ivr_information_accuracy5",
+      "Accuracy of information supplied by the automated telephone service",
+      1,
+      "Very poor"
+    ],
+    [
+      "ivr_information_accuracy5",
+      "Accuracy of information supplied by the automated telephone service",
+      2,
+      "Poor"
+    ],
+    [
+      "ivr_information_accuracy5",
+      "Accuracy of information supplied by the automated telephone service",
+      3,
+      "Adequate"
+    ],
+    [
+      "ivr_information_accuracy5",
+      "Accuracy of information supplied by the automated telephone service",
+      4,
+      "Good"
+    ],
+    [
+      "ivr_information_accuracy5",
+      "Accuracy of information supplied by the automated telephone service",
+      5,
+      "Excellent"
+    ],
+    [
+      "ivr_information_accuracy5",
+      "Accuracy of information supplied by the automated telephone service",
+      98,
+      "Not applicable"
+    ],
+    [
+      "ivr_information_accuracy5",
+      "Accuracy of information supplied by the automated telephone service",
+      99,
+      "Do not know"
+    ],
+    [
+      "ivr_ease5",
+      "Ease of using the automated telephone service",
+      1,
+      "Very poor"
+    ],
+    [
+      "ivr_ease5",
+      "Ease of using the automated telephone service",
+      2,
+      "Poor"
+    ],
+    [
+      "ivr_ease5",
+      "Ease of using the automated telephone service",
+      3,
+      "Adequate"
+    ],
+    [
+      "ivr_ease5",
+      "Ease of using the automated telephone service",
+      4,
+      "Good"
+    ],
+    [
+      "ivr_ease5",
+      "Ease of using the automated telephone service",
+      5,
+      "Excellent"
+    ],
+    [
+      "ivr_ease5",
+      "Ease of using the automated telephone service",
+      98,
+      "Not applicable"
+    ],
+    [
+      "ivr_ease5",
+      "Ease of using the automated telephone service",
+      99,
+      "Do not know"
     ]
   ],
   "dimensions": [
@@ -5589,7 +6483,7 @@
     "Channel": "one most recent experience per customer per channel per wave",
     "Noncustomer": "one independently sampled focal-provider noncustomer per wave; no focal experience ratings"
   },
-  "source_note": "User CSM workbook provides 0\u201310 call-centre variables. New 5-point instrument is not a score conversion. User Word file is a general questionnaire template.",
+  "source_note": "Lossless projection and unpivot of frozen 400-field combined testing data; no new response generation. Original separate source values remain unchanged.",
   "noncustomer_specs": [
     {
       "variable": "respondent_id",
@@ -6065,25 +6959,25 @@
       "age_band",
       "Age group",
       1,
-      "18\u201324"
+      "18–24"
     ],
     [
       "age_band",
       "Age group",
       2,
-      "25\u201334"
+      "25–34"
     ],
     [
       "age_band",
       "Age group",
       3,
-      "35\u201349"
+      "35–49"
     ],
     [
       "age_band",
       "Age group",
       4,
-      "50\u201369"
+      "50–69"
     ],
     [
       "gender",
@@ -6173,19 +7067,19 @@
       "income",
       "Monthly household income",
       2,
-      "R15,000\u2013R29,999"
+      "R15,000–R29,999"
     ],
     [
       "income",
       "Monthly household income",
       3,
-      "R30,000\u2013R49,999"
+      "R30,000–R49,999"
     ],
     [
       "income",
       "Monthly household income",
       4,
-      "R50,000\u2013R79,999"
+      "R50,000–R79,999"
     ],
     [
       "income",
@@ -6897,13 +7791,14 @@
     ]
   ],
   "noncustomer_mr": [],
-  "expansion_version": "2026-10-30 additive synthetic v3",
+  "expansion_version": "separate_testing_20261030_v2",
   "synthetic_design": {
     "original_current_customers_per_wave": 1000,
     "supplemental_focal_noncustomers_per_wave": 500,
     "noncustomer_definition": "Current sector user with no current focal-provider use of any kind",
     "sample_pooling": "Never pool samples for prevalence or market share",
     "journey_anchor": "Independent most recent specific task attempted in 30 days; latest channel records are not a common journey",
-    "comparison": "Personal actual use, same task type, same 30 days; descriptive only"
+    "comparison": "Personal actual use, same task type, same 30 days; descriptive only",
+    "testing_additions_source": "Identical approved response values as combined representation; no RNG rerun."
   }
 }

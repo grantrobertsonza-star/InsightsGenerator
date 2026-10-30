@@ -1,0 +1,25 @@
+﻿set_id,variable,selected_value,label,universe
+products,product_p01,1,Prepaid,All records
+products,product_p02,1,Contract,All records
+products,product_p03,1,Hybrid or top up,All records
+products,product_p04,1,Data-only mobile,All records
+complaint_reasons,complaint_reason_r01,1,Data or airtime charges,complaint3m=1
+complaint_reasons,complaint_reason_r02,1,Coverage or speed failure,complaint3m=1
+complaint_reasons,complaint_reason_r03,1,Billing or contract dispute,complaint3m=1
+complaint_reasons,complaint_reason_r04,1,Poor service,complaint3m=1
+complaint_reasons,complaint_reason_r05,1,Unclear package information,complaint3m=1
+complaint_reasons,complaint_reason_r06,1,Other,complaint3m=1
+channel_use,channel_used_c01,1,Call centre,All records
+channel_use,channel_used_c02,1,Retail store,All records
+channel_use,channel_used_c03,1,Digital self service,All records
+channel_use,channel_used_c04,1,Messaging or live chat,All records
+reasons_staying,stay_reason_r01,1,Genuine preference for this provider,All records
+reasons_staying,stay_reason_r02,1,Habit or familiarity,All records
+reasons_staying,stay_reason_r03,1,Contractual restriction or exit charge,All records
+reasons_staying,stay_reason_r04,1,Time effort or inconvenience of switching,All records
+reasons_staying,stay_reason_r05,1,Lack of suitable alternatives,All records
+reasons_staying,stay_reason_r06,1,Other reason,All records
+journey_channels,journey_channel_c01,1,Same task used Call centre,journey_recent30=1
+journey_channels,journey_channel_c02,1,Same task used Retail store,journey_recent30=1
+journey_channels,journey_channel_c03,1,Same task used Digital self service,journey_recent30=1
+journey_channels,journey_channel_c04,1,Same task used Messaging or live chat,journey_recent30=1

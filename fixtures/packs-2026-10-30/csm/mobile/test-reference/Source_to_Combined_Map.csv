@@ -1,0 +1,453 @@
+﻿source_dataset,source_variable,source_question,channel,combined_variable,combined_question,handling
+Relationship,respondent_id,SYS,0,respondent_id,C.SYS,Preserved unchanged once
+Relationship,interview_date,SYS,0,interview_date,C.SYS,Preserved unchanged once
+Relationship,wave,SYS,0,wave,C.SYS,Preserved unchanged once
+Relationship,company,S2,0,company,C.S2,Preserved unchanged once
+Relationship,weight,SYS,0,weight,C.SYS,Preserved unchanged once
+Relationship,age,S1,0,age,C.S1,Preserved unchanged once
+Relationship,age_band,S1,0,age_band,C.S1,Preserved unchanged once
+Relationship,gender,D1,0,gender,C.D1,Preserved unchanged once
+Relationship,province,D2,0,province,C.D2,Preserved unchanged once
+Relationship,income,D3,0,income,C.D3,Preserved unchanged once
+Relationship,settlement,D4,0,settlement,C.D4,Preserved unchanged once
+Relationship,segment,SYS,0,segment,C.SYS,Preserved unchanged once
+Relationship,tenure_months,S2,0,tenure_months,C.S2,Preserved unchanged once
+Relationship,company_csat5,R1,0,company_csat5,C.R1,Preserved unchanged once
+Relationship,company_expectations5,R2,0,company_expectations5,C.R2,Preserved unchanged once
+Relationship,fairness5,R5,0,fairness5,C.R5,Preserved unchanged once
+Relationship,trust5,R5,0,trust5,C.R5,Preserved unchanged once
+Relationship,recommend_0to10,L1,0,recommend_0to10,C.L1,Preserved unchanged once
+Relationship,continue5,L2,0,continue5,C.L2,Preserved unchanged once
+Relationship,switch_0to10,L3,0,switch_0to10,C.L3,Preserved unchanged once
+Relationship,price_switch5,L4,0,price_switch5,C.L4,Preserved unchanged once
+Relationship,grow_business5,L4,0,grow_business5,C.L4,Preserved unchanged once
+Relationship,complaint3m,C1,0,complaint3m,C.C1,Preserved unchanged once
+Relationship,company_driver_d01,R3,0,company_driver_d01,C.R3,Preserved unchanged once
+Relationship,importance_d01,R4,0,importance_d01,C.R4,Preserved unchanged once
+Relationship,company_driver_d02,R3,0,company_driver_d02,C.R3,Preserved unchanged once
+Relationship,importance_d02,R4,0,importance_d02,C.R4,Preserved unchanged once
+Relationship,company_driver_d03,R3,0,company_driver_d03,C.R3,Preserved unchanged once
+Relationship,importance_d03,R4,0,importance_d03,C.R4,Preserved unchanged once
+Relationship,company_driver_d04,R3,0,company_driver_d04,C.R3,Preserved unchanged once
+Relationship,importance_d04,R4,0,importance_d04,C.R4,Preserved unchanged once
+Relationship,company_driver_d05,R3,0,company_driver_d05,C.R3,Preserved unchanged once
+Relationship,importance_d05,R4,0,importance_d05,C.R4,Preserved unchanged once
+Relationship,company_driver_d06,R3,0,company_driver_d06,C.R3,Preserved unchanged once
+Relationship,importance_d06,R4,0,importance_d06,C.R4,Preserved unchanged once
+Relationship,company_reason_text,L5,0,company_reason_text,C.L5,Preserved unchanged once
+Relationship,product_p01,S3,0,product_p01,C.S3,Preserved unchanged once
+Relationship,product_p02,S3,0,product_p02,C.S3,Preserved unchanged once
+Relationship,product_p03,S3,0,product_p03,C.S3,Preserved unchanged once
+Relationship,product_p04,S3,0,product_p04,C.S3,Preserved unchanged once
+Relationship,complaint_reason_r01,C2,0,complaint_reason_r01,C.C2,Preserved unchanged once
+Relationship,complaint_reason_r02,C2,0,complaint_reason_r02,C.C2,Preserved unchanged once
+Relationship,complaint_reason_r03,C2,0,complaint_reason_r03,C.C2,Preserved unchanged once
+Relationship,complaint_reason_r04,C2,0,complaint_reason_r04,C.C2,Preserved unchanged once
+Relationship,complaint_reason_r05,C2,0,complaint_reason_r05,C.C2,Preserved unchanged once
+Relationship,complaint_reason_r06,C2,0,complaint_reason_r06,C.C2,Preserved unchanged once
+Relationship,complaint_resolution,C3,0,complaint_resolution,C.C3,Preserved unchanged once
+Relationship,complaint_handling_csat5,C3,0,complaint_handling_csat5,C.C3,Preserved unchanged once
+Relationship,channel_used_c01,CH1,0,channel_used_c01,C.CH1,Preserved unchanged once
+Relationship,channel_contacts_c01,CH2,0,channel_contacts_c01,C.CH2,Preserved unchanged once
+Relationship,channel_used_c02,CH1,0,channel_used_c02,C.CH1,Preserved unchanged once
+Relationship,channel_contacts_c02,CH2,0,channel_contacts_c02,C.CH2,Preserved unchanged once
+Relationship,channel_used_c03,CH1,0,channel_used_c03,C.CH1,Preserved unchanged once
+Relationship,channel_contacts_c03,CH2,0,channel_contacts_c03,C.CH2,Preserved unchanged once
+Relationship,channel_used_c04,CH1,0,channel_used_c04,C.CH1,Preserved unchanged once
+Relationship,channel_contacts_c04,CH2,0,channel_contacts_c04,C.CH2,Preserved unchanged once
+Relationship,channel_none,CH1,0,channel_none,C.CH1,Preserved unchanged once
+Relationship,experience_preference5,L6,0,experience_preference5,C.L6,Preserved unchanged once
+Relationship,stay_reason_r01,L7,0,stay_reason_r01,C.L7,Preserved unchanged once
+Relationship,stay_reason_r02,L7,0,stay_reason_r02,C.L7,Preserved unchanged once
+Relationship,stay_reason_r03,L7,0,stay_reason_r03,C.L7,Preserved unchanged once
+Relationship,stay_reason_r04,L7,0,stay_reason_r04,C.L7,Preserved unchanged once
+Relationship,stay_reason_r05,L7,0,stay_reason_r05,C.L7,Preserved unchanged once
+Relationship,stay_reason_r06,L7,0,stay_reason_r06,C.L7,Preserved unchanged once
+Relationship,stay_none,L7,0,stay_none,C.L7,Preserved unchanged once
+Relationship,stay_dk,L7,0,stay_dk,C.L7,Preserved unchanged once
+Relationship,stay_primary,L8,0,stay_primary,C.L8,Preserved unchanged once
+Relationship,journey_recent30,J1,0,journey_recent30,C.J1,Preserved unchanged once
+Relationship,journey_id,SYS,0,journey_id,C.SYS,Preserved unchanged once
+Relationship,journey_task,J2a,0,journey_task,C.J2a,Preserved unchanged once
+Relationship,journey_start_days_ago,J2b,0,journey_start_days_ago,C.J2b,Preserved unchanged once
+Relationship,journey_last_days_ago,J2c,0,journey_last_days_ago,C.J2c,Preserved unchanged once
+Relationship,journey_channel_c01,J3a,0,journey_channel_c01,C.J3a,Preserved unchanged once
+Relationship,journey_channel_c02,J3a,0,journey_channel_c02,C.J3a,Preserved unchanged once
+Relationship,journey_channel_c03,J3a,0,journey_channel_c03,C.J3a,Preserved unchanged once
+Relationship,journey_channel_c04,J3a,0,journey_channel_c04,C.J3a,Preserved unchanged once
+Relationship,journey_digital_mode,J3b,0,journey_digital_mode,C.J3b,Preserved unchanged once
+Relationship,journey_sequence,J3c,0,journey_sequence,C.J3c,Preserved unchanged once
+Relationship,journey_contacts,J3d,0,journey_contacts,C.J3d,Preserved unchanged once
+Relationship,journey_multichannel,DER,0,journey_multichannel,C.DER,Preserved unchanged once
+Relationship,journey_transferred,J4a,0,journey_transferred,C.J4a,Preserved unchanged once
+Relationship,journey_repeat_info,J4b,0,journey_repeat_info,C.J4b,Preserved unchanged once
+Relationship,journey_status,J5,0,journey_status,C.J5,Preserved unchanged once
+Relationship,journey_completed,DER,0,journey_completed,C.DER,Preserved unchanged once
+Relationship,journey_csat5,J6,0,journey_csat5,C.J6,Preserved unchanged once
+Relationship,journey_reassured5,J7a,0,journey_reassured5,C.J7a,Preserved unchanged once
+Relationship,journey_valued5,J7b,0,journey_valued5,C.J7b,Preserved unchanged once
+Relationship,journey_frustrated5,J7c,0,journey_frustrated5,C.J7c,Preserved unchanged once
+Relationship,journey_anxious5,J7d,0,journey_anxious5,C.J7d,Preserved unchanged once
+Relationship,journey_emotion_why_text,J7e,0,journey_emotion_why_text,C.J7e,Preserved unchanged once
+Relationship,journey_preference5,J8,0,journey_preference5,C.J8,Preserved unchanged once
+Relationship,benchmark_recent_same_task30,B1,0,benchmark_recent_same_task30,C.B1,Preserved unchanged once
+Relationship,benchmark_provider,B2a,0,benchmark_provider,C.B2a,Preserved unchanged once
+Relationship,benchmark_task,B2b,0,benchmark_task,C.B2b,Preserved unchanged once
+Relationship,benchmark_days_ago,B2c,0,benchmark_days_ago,C.B2c,Preserved unchanged once
+Relationship,benchmark_channel,B2d,0,benchmark_channel,C.B2d,Preserved unchanged once
+Relationship,benchmark_csat5,B3,0,benchmark_csat5,C.B3,Preserved unchanged once
+Relationship,benchmark_gap5,DER,0,benchmark_gap5,C.DER,Preserved unchanged once
+Synthetic addition,journey_angry5,J7f,0,journey_angry5,C.J7f,New approved seeded synthetic testing response
+Synthetic addition,journey_disappointed5,J7g,0,journey_disappointed5,C.J7g,New approved seeded synthetic testing response
+Channel,respondent_id,SYS,1,respondent_id,C.SYS,Shared source values verified equal to company and retained once
+Channel,interview_date,SYS,1,interview_date,C.SYS,Shared source values verified equal to company and retained once
+Channel,wave,SYS,1,wave,C.SYS,Shared source values verified equal to company and retained once
+Channel,company,S2,1,company,C.S2,Shared source values verified equal to company and retained once
+Channel,weight,SYS,1,weight,C.SYS,Shared source values verified equal to company and retained once
+Channel,age,S1,1,age,C.S1,Shared source values verified equal to company and retained once
+Channel,age_band,S1,1,age_band,C.S1,Shared source values verified equal to company and retained once
+Channel,gender,D1,1,gender,C.D1,Shared source values verified equal to company and retained once
+Channel,province,D2,1,province,C.D2,Shared source values verified equal to company and retained once
+Channel,income,D3,1,income,C.D3,Shared source values verified equal to company and retained once
+Channel,settlement,D4,1,settlement,C.D4,Shared source values verified equal to company and retained once
+Channel,segment,SYS,1,segment,C.SYS,Shared source values verified equal to company and retained once
+Channel,tenure_months,S2,1,tenure_months,C.S2,Shared source values verified equal to company and retained once
+Channel,experience_id,SYS,1,ch01_experience_id,CH01.SYS,Preserved unchanged in channel block
+Channel,contact_date,E1,1,ch01_contact_date,CH01.E1,Preserved unchanged in channel block
+Channel,days_ago,E1,1,ch01_days_ago,CH01.E1,Preserved unchanged in channel block
+Channel,channel,CH1,1,ch01_channel,CH01.CH1,Preserved unchanged in channel block
+Channel,digital_mode,E2,1,ch01_digital_mode,CH01.E2,Preserved unchanged in channel block
+Channel,staff_contact,E2,1,ch01_staff_contact,CH01.E2,Preserved unchanged in channel block
+Channel,primary_reason,E1,1,ch01_primary_reason,CH01.E1,Preserved unchanged in channel block
+Channel,reasons_r01,E1,1,ch01_reasons_r01,CH01.E1,Preserved unchanged in channel block
+Channel,reasons_r02,E1,1,ch01_reasons_r02,CH01.E1,Preserved unchanged in channel block
+Channel,reasons_r03,E1,1,ch01_reasons_r03,CH01.E1,Preserved unchanged in channel block
+Channel,reasons_r04,E1,1,ch01_reasons_r04,CH01.E1,Preserved unchanged in channel block
+Channel,reasons_r05,E1,1,ch01_reasons_r05,CH01.E1,Preserved unchanged in channel block
+Channel,reasons_r06,E1,1,ch01_reasons_r06,CH01.E1,Preserved unchanged in channel block
+Channel,channel_csat5,E3,1,ch01_channel_csat5,CH01.E3,Preserved unchanged in channel block
+Channel,ease7,E4,1,ch01_ease7,CH01.E4,Preserved unchanged in channel block
+Channel,task_completed,E5,1,ch01_task_completed,CH01.E5,Preserved unchanged in channel block
+Channel,problem_present,E5,1,ch01_problem_present,CH01.E5,Preserved unchanged in channel block
+Channel,problem_resolution,E5,1,ch01_problem_resolution,CH01.E5,Preserved unchanged in channel block
+Channel,contacts_same_need,E6,1,ch01_contacts_same_need,CH01.E6,Preserved unchanged in channel block
+Channel,first_contact_resolution,E6,1,ch01_first_contact_resolution,CH01.E6,Preserved unchanged in channel block
+Channel,channel_reason_text,E7,1,ch01_channel_reason_text,CH01.E7,Preserved unchanged in channel block
+Channel,driver_reliable_accurate,Q1,1,ch01_driver_reliable_accurate,CH01.Q1,Preserved unchanged in channel block
+Channel,driver_reliable_correct,Q1,1,ch01_driver_reliable_correct,CH01.Q1,Preserved unchanged in channel block
+Channel,driver_responsive_speed,Q1,1,ch01_driver_responsive_speed,CH01.Q1,Preserved unchanged in channel block
+Channel,driver_responsive_updates,Q1,1,ch01_driver_responsive_updates,CH01.Q1,Preserved unchanged in channel block
+Channel,driver_assurance_knowledge,Q1,1,ch01_driver_assurance_knowledge,CH01.Q1,Preserved unchanged in channel block
+Channel,driver_assurance_confidence,Q1,1,ch01_driver_assurance_confidence,CH01.Q1,Preserved unchanged in channel block
+Channel,driver_empathy_understood,Q1,1,ch01_driver_empathy_understood,CH01.Q1,Preserved unchanged in channel block
+Channel,driver_empathy_respect,Q1,1,ch01_driver_empathy_respect,CH01.Q1,Preserved unchanged in channel block
+Channel,driver_access_ease,Q1,1,ch01_driver_access_ease,CH01.Q1,Preserved unchanged in channel block
+Channel,driver_access_clarity,Q1,1,ch01_driver_access_clarity,CH01.Q1,Preserved unchanged in channel block
+Channel,dimension_reliability,Derived,1,ch01_dimension_reliability,CH01.Derived,Preserved unchanged in channel block
+Channel,dimension_responsiveness,Derived,1,ch01_dimension_responsiveness,CH01.Derived,Preserved unchanged in channel block
+Channel,dimension_assurance,Derived,1,ch01_dimension_assurance,CH01.Derived,Preserved unchanged in channel block
+Channel,dimension_empathy,Derived,1,ch01_dimension_empathy,CH01.Derived,Preserved unchanged in channel block
+Channel,dimension_access_and_clarity,Derived,1,ch01_dimension_access_and_clarity,CH01.Derived,Preserved unchanged in channel block
+Channel,wait_minutes,Q2,1,ch01_wait_minutes,CH01.Q2,Preserved unchanged in channel block
+Channel,handling_minutes,Q2,1,ch01_handling_minutes,CH01.Q2,Preserved unchanged in channel block
+Channel,digital_response_seconds,Q2,1,ch01_digital_response_seconds,CH01.Q2,Preserved unchanged in channel block
+Channel,transferred,Q3/Q4,1,ch01_transferred,CH01.Q3/Q4,Preserved unchanged in channel block
+Channel,put_on_hold,Q3/Q4,1,ch01_put_on_hold,CH01.Q3/Q4,Preserved unchanged in channel block
+Channel,callback_promised,Q3/Q4,1,ch01_callback_promised,CH01.Q3/Q4,Preserved unchanged in channel block
+Channel,used_ivr,Q3/Q4,1,ch01_used_ivr,CH01.Q3/Q4,Preserved unchanged in channel block
+Channel,number_transfers,Q3,1,ch01_number_transfers,CH01.Q3,Preserved unchanged in channel block
+Channel,callback_outcome,Q3,1,ch01_callback_outcome,CH01.Q3,Preserved unchanged in channel block
+Channel,ivr_csat5,Q4,1,ch01_ivr_csat5,CH01.Q4,Preserved unchanged in channel block
+Channel,ivr_clarity5,Q4,1,ch01_ivr_clarity5,CH01.Q4,Preserved unchanged in channel block
+Channel,agent_introduced,Q5,1,ch01_agent_introduced,CH01.Q5,Preserved unchanged in channel block
+Channel,agent_polite,Q5,1,ch01_agent_polite,CH01.Q5,Preserved unchanged in channel block
+Channel,preferred_language_assisted,Q5,1,ch01_preferred_language_assisted,CH01.Q5,Preserved unchanged in channel block
+Channel,branch_tidy5,Q6,1,ch01_branch_tidy5,CH01.Q6,Preserved unchanged in channel block
+Channel,branch_accessible5,Q6,1,ch01_branch_accessible5,CH01.Q6,Preserved unchanged in channel block
+Channel,channel_reassured5,E8a,1,ch01_channel_reassured5,CH01.E8a,Preserved unchanged in channel block
+Channel,channel_valued5,E8b,1,ch01_channel_valued5,CH01.E8b,Preserved unchanged in channel block
+Channel,channel_frustrated5,E8c,1,ch01_channel_frustrated5,CH01.E8c,Preserved unchanged in channel block
+Channel,channel_anxious5,E8d,1,ch01_channel_anxious5,CH01.E8d,Preserved unchanged in channel block
+Channel,channel_emotion_why_text,E8e,1,ch01_channel_emotion_why_text,CH01.E8e,Preserved unchanged in channel block
+Channel,channel_preference5,E9,1,ch01_channel_preference5,CH01.E9,Preserved unchanged in channel block
+Synthetic addition,channel_angry5,E8f,1,ch01_channel_angry5,CH01.E8f,New approved seeded synthetic testing response
+Synthetic addition,channel_disappointed5,E8g,1,ch01_channel_disappointed5,CH01.E8g,New approved seeded synthetic testing response
+Synthetic addition,call_agent_contact,Q7a,1,ch01_call_agent_contact,CH01.Q7a,New approved seeded synthetic testing response
+Synthetic addition,queue_wait_csat5,Q7b,1,ch01_queue_wait_csat5,CH01.Q7b,New approved seeded synthetic testing response
+Synthetic addition,total_call_time_csat5,Q7c,1,ch01_total_call_time_csat5,CH01.Q7c,New approved seeded synthetic testing response
+Synthetic addition,agent_overall_csat5,Q7d,1,ch01_agent_overall_csat5,CH01.Q7d,New approved seeded synthetic testing response
+Synthetic addition,correct_person_first_transfer,Q7e,1,ch01_correct_person_first_transfer,CH01.Q7e,New approved seeded synthetic testing response
+Synthetic addition,agent_ownership5,Q8a,1,ch01_agent_ownership5,CH01.Q8a,New approved seeded synthetic testing response
+Synthetic addition,agent_promise_made,Q8b,1,ch01_agent_promise_made,CH01.Q8b,New approved seeded synthetic testing response
+Synthetic addition,agent_promises_kept5,Q8c,1,ch01_agent_promises_kept5,CH01.Q8c,New approved seeded synthetic testing response
+Synthetic addition,agent_patience5,Q8d,1,ch01_agent_patience5,CH01.Q8d,New approved seeded synthetic testing response
+Synthetic addition,urgency_need,Q8e,1,ch01_urgency_need,CH01.Q8e,New approved seeded synthetic testing response
+Synthetic addition,agent_urgency5,Q8f,1,ch01_agent_urgency5,CH01.Q8f,New approved seeded synthetic testing response
+Synthetic addition,ivr_availability5,Q9a,1,ch01_ivr_availability5,CH01.Q9a,New approved seeded synthetic testing response
+Synthetic addition,ivr_response_speed5,Q9b,1,ch01_ivr_response_speed5,CH01.Q9b,New approved seeded synthetic testing response
+Synthetic addition,ivr_information_accuracy5,Q9c,1,ch01_ivr_information_accuracy5,CH01.Q9c,New approved seeded synthetic testing response
+Synthetic addition,ivr_ease5,Q9d,1,ch01_ivr_ease5,CH01.Q9d,New approved seeded synthetic testing response
+Channel,respondent_id,SYS,2,respondent_id,C.SYS,Shared source values verified equal to company and retained once
+Channel,interview_date,SYS,2,interview_date,C.SYS,Shared source values verified equal to company and retained once
+Channel,wave,SYS,2,wave,C.SYS,Shared source values verified equal to company and retained once
+Channel,company,S2,2,company,C.S2,Shared source values verified equal to company and retained once
+Channel,weight,SYS,2,weight,C.SYS,Shared source values verified equal to company and retained once
+Channel,age,S1,2,age,C.S1,Shared source values verified equal to company and retained once
+Channel,age_band,S1,2,age_band,C.S1,Shared source values verified equal to company and retained once
+Channel,gender,D1,2,gender,C.D1,Shared source values verified equal to company and retained once
+Channel,province,D2,2,province,C.D2,Shared source values verified equal to company and retained once
+Channel,income,D3,2,income,C.D3,Shared source values verified equal to company and retained once
+Channel,settlement,D4,2,settlement,C.D4,Shared source values verified equal to company and retained once
+Channel,segment,SYS,2,segment,C.SYS,Shared source values verified equal to company and retained once
+Channel,tenure_months,S2,2,tenure_months,C.S2,Shared source values verified equal to company and retained once
+Channel,experience_id,SYS,2,ch02_experience_id,CH02.SYS,Preserved unchanged in channel block
+Channel,contact_date,E1,2,ch02_contact_date,CH02.E1,Preserved unchanged in channel block
+Channel,days_ago,E1,2,ch02_days_ago,CH02.E1,Preserved unchanged in channel block
+Channel,channel,CH1,2,ch02_channel,CH02.CH1,Preserved unchanged in channel block
+Channel,digital_mode,E2,2,ch02_digital_mode,CH02.E2,Preserved unchanged in channel block
+Channel,staff_contact,E2,2,ch02_staff_contact,CH02.E2,Preserved unchanged in channel block
+Channel,primary_reason,E1,2,ch02_primary_reason,CH02.E1,Preserved unchanged in channel block
+Channel,reasons_r01,E1,2,ch02_reasons_r01,CH02.E1,Preserved unchanged in channel block
+Channel,reasons_r02,E1,2,ch02_reasons_r02,CH02.E1,Preserved unchanged in channel block
+Channel,reasons_r03,E1,2,ch02_reasons_r03,CH02.E1,Preserved unchanged in channel block
+Channel,reasons_r04,E1,2,ch02_reasons_r04,CH02.E1,Preserved unchanged in channel block
+Channel,reasons_r05,E1,2,ch02_reasons_r05,CH02.E1,Preserved unchanged in channel block
+Channel,reasons_r06,E1,2,ch02_reasons_r06,CH02.E1,Preserved unchanged in channel block
+Channel,channel_csat5,E3,2,ch02_channel_csat5,CH02.E3,Preserved unchanged in channel block
+Channel,ease7,E4,2,ch02_ease7,CH02.E4,Preserved unchanged in channel block
+Channel,task_completed,E5,2,ch02_task_completed,CH02.E5,Preserved unchanged in channel block
+Channel,problem_present,E5,2,ch02_problem_present,CH02.E5,Preserved unchanged in channel block
+Channel,problem_resolution,E5,2,ch02_problem_resolution,CH02.E5,Preserved unchanged in channel block
+Channel,contacts_same_need,E6,2,ch02_contacts_same_need,CH02.E6,Preserved unchanged in channel block
+Channel,first_contact_resolution,E6,2,ch02_first_contact_resolution,CH02.E6,Preserved unchanged in channel block
+Channel,channel_reason_text,E7,2,ch02_channel_reason_text,CH02.E7,Preserved unchanged in channel block
+Channel,driver_reliable_accurate,Q1,2,ch02_driver_reliable_accurate,CH02.Q1,Preserved unchanged in channel block
+Channel,driver_reliable_correct,Q1,2,ch02_driver_reliable_correct,CH02.Q1,Preserved unchanged in channel block
+Channel,driver_responsive_speed,Q1,2,ch02_driver_responsive_speed,CH02.Q1,Preserved unchanged in channel block
+Channel,driver_responsive_updates,Q1,2,ch02_driver_responsive_updates,CH02.Q1,Preserved unchanged in channel block
+Channel,driver_assurance_knowledge,Q1,2,ch02_driver_assurance_knowledge,CH02.Q1,Preserved unchanged in channel block
+Channel,driver_assurance_confidence,Q1,2,ch02_driver_assurance_confidence,CH02.Q1,Preserved unchanged in channel block
+Channel,driver_empathy_understood,Q1,2,ch02_driver_empathy_understood,CH02.Q1,Preserved unchanged in channel block
+Channel,driver_empathy_respect,Q1,2,ch02_driver_empathy_respect,CH02.Q1,Preserved unchanged in channel block
+Channel,driver_access_ease,Q1,2,ch02_driver_access_ease,CH02.Q1,Preserved unchanged in channel block
+Channel,driver_access_clarity,Q1,2,ch02_driver_access_clarity,CH02.Q1,Preserved unchanged in channel block
+Channel,dimension_reliability,Derived,2,ch02_dimension_reliability,CH02.Derived,Preserved unchanged in channel block
+Channel,dimension_responsiveness,Derived,2,ch02_dimension_responsiveness,CH02.Derived,Preserved unchanged in channel block
+Channel,dimension_assurance,Derived,2,ch02_dimension_assurance,CH02.Derived,Preserved unchanged in channel block
+Channel,dimension_empathy,Derived,2,ch02_dimension_empathy,CH02.Derived,Preserved unchanged in channel block
+Channel,dimension_access_and_clarity,Derived,2,ch02_dimension_access_and_clarity,CH02.Derived,Preserved unchanged in channel block
+Channel,wait_minutes,Q2,2,ch02_wait_minutes,CH02.Q2,Preserved unchanged in channel block
+Channel,handling_minutes,Q2,2,ch02_handling_minutes,CH02.Q2,Preserved unchanged in channel block
+Channel,digital_response_seconds,Q2,2,ch02_digital_response_seconds,CH02.Q2,Preserved unchanged in channel block
+Channel,transferred,Q3/Q4,2,ch02_transferred,CH02.Q3/Q4,Preserved unchanged in channel block
+Channel,put_on_hold,Q3/Q4,2,ch02_put_on_hold,CH02.Q3/Q4,Preserved unchanged in channel block
+Channel,callback_promised,Q3/Q4,2,ch02_callback_promised,CH02.Q3/Q4,Preserved unchanged in channel block
+Channel,used_ivr,Q3/Q4,2,ch02_used_ivr,CH02.Q3/Q4,Preserved unchanged in channel block
+Channel,number_transfers,Q3,2,ch02_number_transfers,CH02.Q3,Preserved unchanged in channel block
+Channel,callback_outcome,Q3,2,ch02_callback_outcome,CH02.Q3,Preserved unchanged in channel block
+Channel,ivr_csat5,Q4,2,ch02_ivr_csat5,CH02.Q4,Preserved unchanged in channel block
+Channel,ivr_clarity5,Q4,2,ch02_ivr_clarity5,CH02.Q4,Preserved unchanged in channel block
+Channel,agent_introduced,Q5,2,ch02_agent_introduced,CH02.Q5,Preserved unchanged in channel block
+Channel,agent_polite,Q5,2,ch02_agent_polite,CH02.Q5,Preserved unchanged in channel block
+Channel,preferred_language_assisted,Q5,2,ch02_preferred_language_assisted,CH02.Q5,Preserved unchanged in channel block
+Channel,branch_tidy5,Q6,2,ch02_branch_tidy5,CH02.Q6,Preserved unchanged in channel block
+Channel,branch_accessible5,Q6,2,ch02_branch_accessible5,CH02.Q6,Preserved unchanged in channel block
+Channel,channel_reassured5,E8a,2,ch02_channel_reassured5,CH02.E8a,Preserved unchanged in channel block
+Channel,channel_valued5,E8b,2,ch02_channel_valued5,CH02.E8b,Preserved unchanged in channel block
+Channel,channel_frustrated5,E8c,2,ch02_channel_frustrated5,CH02.E8c,Preserved unchanged in channel block
+Channel,channel_anxious5,E8d,2,ch02_channel_anxious5,CH02.E8d,Preserved unchanged in channel block
+Channel,channel_emotion_why_text,E8e,2,ch02_channel_emotion_why_text,CH02.E8e,Preserved unchanged in channel block
+Channel,channel_preference5,E9,2,ch02_channel_preference5,CH02.E9,Preserved unchanged in channel block
+Synthetic addition,channel_angry5,E8f,2,ch02_channel_angry5,CH02.E8f,New approved seeded synthetic testing response
+Synthetic addition,channel_disappointed5,E8g,2,ch02_channel_disappointed5,CH02.E8g,New approved seeded synthetic testing response
+Synthetic addition,call_agent_contact,Q7a,2,ch02_call_agent_contact,CH02.Q7a,New approved seeded synthetic testing response
+Synthetic addition,queue_wait_csat5,Q7b,2,ch02_queue_wait_csat5,CH02.Q7b,New approved seeded synthetic testing response
+Synthetic addition,total_call_time_csat5,Q7c,2,ch02_total_call_time_csat5,CH02.Q7c,New approved seeded synthetic testing response
+Synthetic addition,agent_overall_csat5,Q7d,2,ch02_agent_overall_csat5,CH02.Q7d,New approved seeded synthetic testing response
+Synthetic addition,correct_person_first_transfer,Q7e,2,ch02_correct_person_first_transfer,CH02.Q7e,New approved seeded synthetic testing response
+Synthetic addition,agent_ownership5,Q8a,2,ch02_agent_ownership5,CH02.Q8a,New approved seeded synthetic testing response
+Synthetic addition,agent_promise_made,Q8b,2,ch02_agent_promise_made,CH02.Q8b,New approved seeded synthetic testing response
+Synthetic addition,agent_promises_kept5,Q8c,2,ch02_agent_promises_kept5,CH02.Q8c,New approved seeded synthetic testing response
+Synthetic addition,agent_patience5,Q8d,2,ch02_agent_patience5,CH02.Q8d,New approved seeded synthetic testing response
+Synthetic addition,urgency_need,Q8e,2,ch02_urgency_need,CH02.Q8e,New approved seeded synthetic testing response
+Synthetic addition,agent_urgency5,Q8f,2,ch02_agent_urgency5,CH02.Q8f,New approved seeded synthetic testing response
+Synthetic addition,ivr_availability5,Q9a,2,ch02_ivr_availability5,CH02.Q9a,New approved seeded synthetic testing response
+Synthetic addition,ivr_response_speed5,Q9b,2,ch02_ivr_response_speed5,CH02.Q9b,New approved seeded synthetic testing response
+Synthetic addition,ivr_information_accuracy5,Q9c,2,ch02_ivr_information_accuracy5,CH02.Q9c,New approved seeded synthetic testing response
+Synthetic addition,ivr_ease5,Q9d,2,ch02_ivr_ease5,CH02.Q9d,New approved seeded synthetic testing response
+Channel,respondent_id,SYS,3,respondent_id,C.SYS,Shared source values verified equal to company and retained once
+Channel,interview_date,SYS,3,interview_date,C.SYS,Shared source values verified equal to company and retained once
+Channel,wave,SYS,3,wave,C.SYS,Shared source values verified equal to company and retained once
+Channel,company,S2,3,company,C.S2,Shared source values verified equal to company and retained once
+Channel,weight,SYS,3,weight,C.SYS,Shared source values verified equal to company and retained once
+Channel,age,S1,3,age,C.S1,Shared source values verified equal to company and retained once
+Channel,age_band,S1,3,age_band,C.S1,Shared source values verified equal to company and retained once
+Channel,gender,D1,3,gender,C.D1,Shared source values verified equal to company and retained once
+Channel,province,D2,3,province,C.D2,Shared source values verified equal to company and retained once
+Channel,income,D3,3,income,C.D3,Shared source values verified equal to company and retained once
+Channel,settlement,D4,3,settlement,C.D4,Shared source values verified equal to company and retained once
+Channel,segment,SYS,3,segment,C.SYS,Shared source values verified equal to company and retained once
+Channel,tenure_months,S2,3,tenure_months,C.S2,Shared source values verified equal to company and retained once
+Channel,experience_id,SYS,3,ch03_experience_id,CH03.SYS,Preserved unchanged in channel block
+Channel,contact_date,E1,3,ch03_contact_date,CH03.E1,Preserved unchanged in channel block
+Channel,days_ago,E1,3,ch03_days_ago,CH03.E1,Preserved unchanged in channel block
+Channel,channel,CH1,3,ch03_channel,CH03.CH1,Preserved unchanged in channel block
+Channel,digital_mode,E2,3,ch03_digital_mode,CH03.E2,Preserved unchanged in channel block
+Channel,staff_contact,E2,3,ch03_staff_contact,CH03.E2,Preserved unchanged in channel block
+Channel,primary_reason,E1,3,ch03_primary_reason,CH03.E1,Preserved unchanged in channel block
+Channel,reasons_r01,E1,3,ch03_reasons_r01,CH03.E1,Preserved unchanged in channel block
+Channel,reasons_r02,E1,3,ch03_reasons_r02,CH03.E1,Preserved unchanged in channel block
+Channel,reasons_r03,E1,3,ch03_reasons_r03,CH03.E1,Preserved unchanged in channel block
+Channel,reasons_r04,E1,3,ch03_reasons_r04,CH03.E1,Preserved unchanged in channel block
+Channel,reasons_r05,E1,3,ch03_reasons_r05,CH03.E1,Preserved unchanged in channel block
+Channel,reasons_r06,E1,3,ch03_reasons_r06,CH03.E1,Preserved unchanged in channel block
+Channel,channel_csat5,E3,3,ch03_channel_csat5,CH03.E3,Preserved unchanged in channel block
+Channel,ease7,E4,3,ch03_ease7,CH03.E4,Preserved unchanged in channel block
+Channel,task_completed,E5,3,ch03_task_completed,CH03.E5,Preserved unchanged in channel block
+Channel,problem_present,E5,3,ch03_problem_present,CH03.E5,Preserved unchanged in channel block
+Channel,problem_resolution,E5,3,ch03_problem_resolution,CH03.E5,Preserved unchanged in channel block
+Channel,contacts_same_need,E6,3,ch03_contacts_same_need,CH03.E6,Preserved unchanged in channel block
+Channel,first_contact_resolution,E6,3,ch03_first_contact_resolution,CH03.E6,Preserved unchanged in channel block
+Channel,channel_reason_text,E7,3,ch03_channel_reason_text,CH03.E7,Preserved unchanged in channel block
+Channel,driver_reliable_accurate,Q1,3,ch03_driver_reliable_accurate,CH03.Q1,Preserved unchanged in channel block
+Channel,driver_reliable_correct,Q1,3,ch03_driver_reliable_correct,CH03.Q1,Preserved unchanged in channel block
+Channel,driver_responsive_speed,Q1,3,ch03_driver_responsive_speed,CH03.Q1,Preserved unchanged in channel block
+Channel,driver_responsive_updates,Q1,3,ch03_driver_responsive_updates,CH03.Q1,Preserved unchanged in channel block
+Channel,driver_assurance_knowledge,Q1,3,ch03_driver_assurance_knowledge,CH03.Q1,Preserved unchanged in channel block
+Channel,driver_assurance_confidence,Q1,3,ch03_driver_assurance_confidence,CH03.Q1,Preserved unchanged in channel block
+Channel,driver_empathy_understood,Q1,3,ch03_driver_empathy_understood,CH03.Q1,Preserved unchanged in channel block
+Channel,driver_empathy_respect,Q1,3,ch03_driver_empathy_respect,CH03.Q1,Preserved unchanged in channel block
+Channel,driver_access_ease,Q1,3,ch03_driver_access_ease,CH03.Q1,Preserved unchanged in channel block
+Channel,driver_access_clarity,Q1,3,ch03_driver_access_clarity,CH03.Q1,Preserved unchanged in channel block
+Channel,dimension_reliability,Derived,3,ch03_dimension_reliability,CH03.Derived,Preserved unchanged in channel block
+Channel,dimension_responsiveness,Derived,3,ch03_dimension_responsiveness,CH03.Derived,Preserved unchanged in channel block
+Channel,dimension_assurance,Derived,3,ch03_dimension_assurance,CH03.Derived,Preserved unchanged in channel block
+Channel,dimension_empathy,Derived,3,ch03_dimension_empathy,CH03.Derived,Preserved unchanged in channel block
+Channel,dimension_access_and_clarity,Derived,3,ch03_dimension_access_and_clarity,CH03.Derived,Preserved unchanged in channel block
+Channel,wait_minutes,Q2,3,ch03_wait_minutes,CH03.Q2,Preserved unchanged in channel block
+Channel,handling_minutes,Q2,3,ch03_handling_minutes,CH03.Q2,Preserved unchanged in channel block
+Channel,digital_response_seconds,Q2,3,ch03_digital_response_seconds,CH03.Q2,Preserved unchanged in channel block
+Channel,transferred,Q3/Q4,3,ch03_transferred,CH03.Q3/Q4,Preserved unchanged in channel block
+Channel,put_on_hold,Q3/Q4,3,ch03_put_on_hold,CH03.Q3/Q4,Preserved unchanged in channel block
+Channel,callback_promised,Q3/Q4,3,ch03_callback_promised,CH03.Q3/Q4,Preserved unchanged in channel block
+Channel,used_ivr,Q3/Q4,3,ch03_used_ivr,CH03.Q3/Q4,Preserved unchanged in channel block
+Channel,number_transfers,Q3,3,ch03_number_transfers,CH03.Q3,Preserved unchanged in channel block
+Channel,callback_outcome,Q3,3,ch03_callback_outcome,CH03.Q3,Preserved unchanged in channel block
+Channel,ivr_csat5,Q4,3,ch03_ivr_csat5,CH03.Q4,Preserved unchanged in channel block
+Channel,ivr_clarity5,Q4,3,ch03_ivr_clarity5,CH03.Q4,Preserved unchanged in channel block
+Channel,agent_introduced,Q5,3,ch03_agent_introduced,CH03.Q5,Preserved unchanged in channel block
+Channel,agent_polite,Q5,3,ch03_agent_polite,CH03.Q5,Preserved unchanged in channel block
+Channel,preferred_language_assisted,Q5,3,ch03_preferred_language_assisted,CH03.Q5,Preserved unchanged in channel block
+Channel,branch_tidy5,Q6,3,ch03_branch_tidy5,CH03.Q6,Preserved unchanged in channel block
+Channel,branch_accessible5,Q6,3,ch03_branch_accessible5,CH03.Q6,Preserved unchanged in channel block
+Channel,channel_reassured5,E8a,3,ch03_channel_reassured5,CH03.E8a,Preserved unchanged in channel block
+Channel,channel_valued5,E8b,3,ch03_channel_valued5,CH03.E8b,Preserved unchanged in channel block
+Channel,channel_frustrated5,E8c,3,ch03_channel_frustrated5,CH03.E8c,Preserved unchanged in channel block
+Channel,channel_anxious5,E8d,3,ch03_channel_anxious5,CH03.E8d,Preserved unchanged in channel block
+Channel,channel_emotion_why_text,E8e,3,ch03_channel_emotion_why_text,CH03.E8e,Preserved unchanged in channel block
+Channel,channel_preference5,E9,3,ch03_channel_preference5,CH03.E9,Preserved unchanged in channel block
+Synthetic addition,channel_angry5,E8f,3,ch03_channel_angry5,CH03.E8f,New approved seeded synthetic testing response
+Synthetic addition,channel_disappointed5,E8g,3,ch03_channel_disappointed5,CH03.E8g,New approved seeded synthetic testing response
+Synthetic addition,call_agent_contact,Q7a,3,ch03_call_agent_contact,CH03.Q7a,New approved seeded synthetic testing response
+Synthetic addition,queue_wait_csat5,Q7b,3,ch03_queue_wait_csat5,CH03.Q7b,New approved seeded synthetic testing response
+Synthetic addition,total_call_time_csat5,Q7c,3,ch03_total_call_time_csat5,CH03.Q7c,New approved seeded synthetic testing response
+Synthetic addition,agent_overall_csat5,Q7d,3,ch03_agent_overall_csat5,CH03.Q7d,New approved seeded synthetic testing response
+Synthetic addition,correct_person_first_transfer,Q7e,3,ch03_correct_person_first_transfer,CH03.Q7e,New approved seeded synthetic testing response
+Synthetic addition,agent_ownership5,Q8a,3,ch03_agent_ownership5,CH03.Q8a,New approved seeded synthetic testing response
+Synthetic addition,agent_promise_made,Q8b,3,ch03_agent_promise_made,CH03.Q8b,New approved seeded synthetic testing response
+Synthetic addition,agent_promises_kept5,Q8c,3,ch03_agent_promises_kept5,CH03.Q8c,New approved seeded synthetic testing response
+Synthetic addition,agent_patience5,Q8d,3,ch03_agent_patience5,CH03.Q8d,New approved seeded synthetic testing response
+Synthetic addition,urgency_need,Q8e,3,ch03_urgency_need,CH03.Q8e,New approved seeded synthetic testing response
+Synthetic addition,agent_urgency5,Q8f,3,ch03_agent_urgency5,CH03.Q8f,New approved seeded synthetic testing response
+Synthetic addition,ivr_availability5,Q9a,3,ch03_ivr_availability5,CH03.Q9a,New approved seeded synthetic testing response
+Synthetic addition,ivr_response_speed5,Q9b,3,ch03_ivr_response_speed5,CH03.Q9b,New approved seeded synthetic testing response
+Synthetic addition,ivr_information_accuracy5,Q9c,3,ch03_ivr_information_accuracy5,CH03.Q9c,New approved seeded synthetic testing response
+Synthetic addition,ivr_ease5,Q9d,3,ch03_ivr_ease5,CH03.Q9d,New approved seeded synthetic testing response
+Channel,respondent_id,SYS,4,respondent_id,C.SYS,Shared source values verified equal to company and retained once
+Channel,interview_date,SYS,4,interview_date,C.SYS,Shared source values verified equal to company and retained once
+Channel,wave,SYS,4,wave,C.SYS,Shared source values verified equal to company and retained once
+Channel,company,S2,4,company,C.S2,Shared source values verified equal to company and retained once
+Channel,weight,SYS,4,weight,C.SYS,Shared source values verified equal to company and retained once
+Channel,age,S1,4,age,C.S1,Shared source values verified equal to company and retained once
+Channel,age_band,S1,4,age_band,C.S1,Shared source values verified equal to company and retained once
+Channel,gender,D1,4,gender,C.D1,Shared source values verified equal to company and retained once
+Channel,province,D2,4,province,C.D2,Shared source values verified equal to company and retained once
+Channel,income,D3,4,income,C.D3,Shared source values verified equal to company and retained once
+Channel,settlement,D4,4,settlement,C.D4,Shared source values verified equal to company and retained once
+Channel,segment,SYS,4,segment,C.SYS,Shared source values verified equal to company and retained once
+Channel,tenure_months,S2,4,tenure_months,C.S2,Shared source values verified equal to company and retained once
+Channel,experience_id,SYS,4,ch04_experience_id,CH04.SYS,Preserved unchanged in channel block
+Channel,contact_date,E1,4,ch04_contact_date,CH04.E1,Preserved unchanged in channel block
+Channel,days_ago,E1,4,ch04_days_ago,CH04.E1,Preserved unchanged in channel block
+Channel,channel,CH1,4,ch04_channel,CH04.CH1,Preserved unchanged in channel block
+Channel,digital_mode,E2,4,ch04_digital_mode,CH04.E2,Preserved unchanged in channel block
+Channel,staff_contact,E2,4,ch04_staff_contact,CH04.E2,Preserved unchanged in channel block
+Channel,primary_reason,E1,4,ch04_primary_reason,CH04.E1,Preserved unchanged in channel block
+Channel,reasons_r01,E1,4,ch04_reasons_r01,CH04.E1,Preserved unchanged in channel block
+Channel,reasons_r02,E1,4,ch04_reasons_r02,CH04.E1,Preserved unchanged in channel block
+Channel,reasons_r03,E1,4,ch04_reasons_r03,CH04.E1,Preserved unchanged in channel block
+Channel,reasons_r04,E1,4,ch04_reasons_r04,CH04.E1,Preserved unchanged in channel block
+Channel,reasons_r05,E1,4,ch04_reasons_r05,CH04.E1,Preserved unchanged in channel block
+Channel,reasons_r06,E1,4,ch04_reasons_r06,CH04.E1,Preserved unchanged in channel block
+Channel,channel_csat5,E3,4,ch04_channel_csat5,CH04.E3,Preserved unchanged in channel block
+Channel,ease7,E4,4,ch04_ease7,CH04.E4,Preserved unchanged in channel block
+Channel,task_completed,E5,4,ch04_task_completed,CH04.E5,Preserved unchanged in channel block
+Channel,problem_present,E5,4,ch04_problem_present,CH04.E5,Preserved unchanged in channel block
+Channel,problem_resolution,E5,4,ch04_problem_resolution,CH04.E5,Preserved unchanged in channel block
+Channel,contacts_same_need,E6,4,ch04_contacts_same_need,CH04.E6,Preserved unchanged in channel block
+Channel,first_contact_resolution,E6,4,ch04_first_contact_resolution,CH04.E6,Preserved unchanged in channel block
+Channel,channel_reason_text,E7,4,ch04_channel_reason_text,CH04.E7,Preserved unchanged in channel block
+Channel,driver_reliable_accurate,Q1,4,ch04_driver_reliable_accurate,CH04.Q1,Preserved unchanged in channel block
+Channel,driver_reliable_correct,Q1,4,ch04_driver_reliable_correct,CH04.Q1,Preserved unchanged in channel block
+Channel,driver_responsive_speed,Q1,4,ch04_driver_responsive_speed,CH04.Q1,Preserved unchanged in channel block
+Channel,driver_responsive_updates,Q1,4,ch04_driver_responsive_updates,CH04.Q1,Preserved unchanged in channel block
+Channel,driver_assurance_knowledge,Q1,4,ch04_driver_assurance_knowledge,CH04.Q1,Preserved unchanged in channel block
+Channel,driver_assurance_confidence,Q1,4,ch04_driver_assurance_confidence,CH04.Q1,Preserved unchanged in channel block
+Channel,driver_empathy_understood,Q1,4,ch04_driver_empathy_understood,CH04.Q1,Preserved unchanged in channel block
+Channel,driver_empathy_respect,Q1,4,ch04_driver_empathy_respect,CH04.Q1,Preserved unchanged in channel block
+Channel,driver_access_ease,Q1,4,ch04_driver_access_ease,CH04.Q1,Preserved unchanged in channel block
+Channel,driver_access_clarity,Q1,4,ch04_driver_access_clarity,CH04.Q1,Preserved unchanged in channel block
+Channel,dimension_reliability,Derived,4,ch04_dimension_reliability,CH04.Derived,Preserved unchanged in channel block
+Channel,dimension_responsiveness,Derived,4,ch04_dimension_responsiveness,CH04.Derived,Preserved unchanged in channel block
+Channel,dimension_assurance,Derived,4,ch04_dimension_assurance,CH04.Derived,Preserved unchanged in channel block
+Channel,dimension_empathy,Derived,4,ch04_dimension_empathy,CH04.Derived,Preserved unchanged in channel block
+Channel,dimension_access_and_clarity,Derived,4,ch04_dimension_access_and_clarity,CH04.Derived,Preserved unchanged in channel block
+Channel,wait_minutes,Q2,4,ch04_wait_minutes,CH04.Q2,Preserved unchanged in channel block
+Channel,handling_minutes,Q2,4,ch04_handling_minutes,CH04.Q2,Preserved unchanged in channel block
+Channel,digital_response_seconds,Q2,4,ch04_digital_response_seconds,CH04.Q2,Preserved unchanged in channel block
+Channel,transferred,Q3/Q4,4,ch04_transferred,CH04.Q3/Q4,Preserved unchanged in channel block
+Channel,put_on_hold,Q3/Q4,4,ch04_put_on_hold,CH04.Q3/Q4,Preserved unchanged in channel block
+Channel,callback_promised,Q3/Q4,4,ch04_callback_promised,CH04.Q3/Q4,Preserved unchanged in channel block
+Channel,used_ivr,Q3/Q4,4,ch04_used_ivr,CH04.Q3/Q4,Preserved unchanged in channel block
+Channel,number_transfers,Q3,4,ch04_number_transfers,CH04.Q3,Preserved unchanged in channel block
+Channel,callback_outcome,Q3,4,ch04_callback_outcome,CH04.Q3,Preserved unchanged in channel block
+Channel,ivr_csat5,Q4,4,ch04_ivr_csat5,CH04.Q4,Preserved unchanged in channel block
+Channel,ivr_clarity5,Q4,4,ch04_ivr_clarity5,CH04.Q4,Preserved unchanged in channel block
+Channel,agent_introduced,Q5,4,ch04_agent_introduced,CH04.Q5,Preserved unchanged in channel block
+Channel,agent_polite,Q5,4,ch04_agent_polite,CH04.Q5,Preserved unchanged in channel block
+Channel,preferred_language_assisted,Q5,4,ch04_preferred_language_assisted,CH04.Q5,Preserved unchanged in channel block
+Channel,branch_tidy5,Q6,4,ch04_branch_tidy5,CH04.Q6,Preserved unchanged in channel block
+Channel,branch_accessible5,Q6,4,ch04_branch_accessible5,CH04.Q6,Preserved unchanged in channel block
+Channel,channel_reassured5,E8a,4,ch04_channel_reassured5,CH04.E8a,Preserved unchanged in channel block
+Channel,channel_valued5,E8b,4,ch04_channel_valued5,CH04.E8b,Preserved unchanged in channel block
+Channel,channel_frustrated5,E8c,4,ch04_channel_frustrated5,CH04.E8c,Preserved unchanged in channel block
+Channel,channel_anxious5,E8d,4,ch04_channel_anxious5,CH04.E8d,Preserved unchanged in channel block
+Channel,channel_emotion_why_text,E8e,4,ch04_channel_emotion_why_text,CH04.E8e,Preserved unchanged in channel block
+Channel,channel_preference5,E9,4,ch04_channel_preference5,CH04.E9,Preserved unchanged in channel block
+Synthetic addition,channel_angry5,E8f,4,ch04_channel_angry5,CH04.E8f,New approved seeded synthetic testing response
+Synthetic addition,channel_disappointed5,E8g,4,ch04_channel_disappointed5,CH04.E8g,New approved seeded synthetic testing response
+Synthetic addition,call_agent_contact,Q7a,4,ch04_call_agent_contact,CH04.Q7a,New approved seeded synthetic testing response
+Synthetic addition,queue_wait_csat5,Q7b,4,ch04_queue_wait_csat5,CH04.Q7b,New approved seeded synthetic testing response
+Synthetic addition,total_call_time_csat5,Q7c,4,ch04_total_call_time_csat5,CH04.Q7c,New approved seeded synthetic testing response
+Synthetic addition,agent_overall_csat5,Q7d,4,ch04_agent_overall_csat5,CH04.Q7d,New approved seeded synthetic testing response
+Synthetic addition,correct_person_first_transfer,Q7e,4,ch04_correct_person_first_transfer,CH04.Q7e,New approved seeded synthetic testing response
+Synthetic addition,agent_ownership5,Q8a,4,ch04_agent_ownership5,CH04.Q8a,New approved seeded synthetic testing response
+Synthetic addition,agent_promise_made,Q8b,4,ch04_agent_promise_made,CH04.Q8b,New approved seeded synthetic testing response
+Synthetic addition,agent_promises_kept5,Q8c,4,ch04_agent_promises_kept5,CH04.Q8c,New approved seeded synthetic testing response
+Synthetic addition,agent_patience5,Q8d,4,ch04_agent_patience5,CH04.Q8d,New approved seeded synthetic testing response
+Synthetic addition,urgency_need,Q8e,4,ch04_urgency_need,CH04.Q8e,New approved seeded synthetic testing response
+Synthetic addition,agent_urgency5,Q8f,4,ch04_agent_urgency5,CH04.Q8f,New approved seeded synthetic testing response
+Synthetic addition,ivr_availability5,Q9a,4,ch04_ivr_availability5,CH04.Q9a,New approved seeded synthetic testing response
+Synthetic addition,ivr_response_speed5,Q9b,4,ch04_ivr_response_speed5,CH04.Q9b,New approved seeded synthetic testing response
+Synthetic addition,ivr_information_accuracy5,Q9c,4,ch04_ivr_information_accuracy5,CH04.Q9c,New approved seeded synthetic testing response
+Synthetic addition,ivr_ease5,Q9d,4,ch04_ivr_ease5,CH04.Q9d,New approved seeded synthetic testing response

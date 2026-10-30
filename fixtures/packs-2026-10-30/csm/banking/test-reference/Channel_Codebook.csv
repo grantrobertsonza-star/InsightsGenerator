@@ -1,4 +1,4 @@
-variable,label,question,data_type,question_type,universe,mr_set,selected_value,derivation,unit
+﻿variable,label,question,data_type,question_type,universe,mr_set,selected_value,derivation,unit
 respondent_id,Anonymous customer ID,SYS,text,text,All records,,,,code
 interview_date,Interview date,SYS,text,text,All records,,,,code
 wave,Wave,SYS,numeric,categorical,All records,,,,code
@@ -70,3 +70,20 @@ channel_frustrated5,This latest channel experience left customer frustrated,E8c,
 channel_anxious5,This latest channel experience left customer anxious,E8d,numeric,categorical,All records,,,,code
 channel_emotion_why_text,Reason for latest channel emotional outcome,E8e,text,text,All records,,,,code
 channel_preference5,This latest channel experience gives reason to choose provider,E9,numeric,categorical,All records,,,,code
+channel_angry5,This latest channel experience left customer angry,E8f,numeric,categorical,All records,,,,code
+channel_disappointed5,This latest channel experience left customer disappointed,E8g,numeric,categorical,All records,,,,code
+call_agent_contact,Spoke with a live agent during this call,Q7a,numeric,categorical,channel=1,,,,code
+queue_wait_csat5,Satisfaction with wait to speak to a live agent including no wait,Q7b,numeric,categorical,channel=1 and call_agent_contact=1,,,,code
+total_call_time_csat5,Satisfaction with total duration of this call,Q7c,numeric,categorical,channel=1,,,,code
+agent_overall_csat5,Overall satisfaction with the live agent on this call,Q7d,numeric,categorical,channel=1 and call_agent_contact=1,,,,code
+correct_person_first_transfer,Reached the right person on the first transfer,Q7e,numeric,categorical,channel=1 and call_agent_contact=1 and transferred=1,,,,code
+agent_ownership5,The agent took ownership of helping resolve the need,Q8a,numeric,categorical,channel=1 and call_agent_contact=1,,,,code
+agent_promise_made,Agent made a specific promise about something to happen after the call,Q8b,numeric,categorical,channel=1 and call_agent_contact=1,,,,code
+agent_promises_kept5,The agent kept the promises that were due by now,Q8c,numeric,categorical,channel=1 and call_agent_contact=1 and agent_promise_made=1,,,,code
+agent_patience5,The agent was patient with me,Q8d,numeric,categorical,channel=1 and call_agent_contact=1,,,,code
+urgency_need,Told the agent that the need was urgent,Q8e,numeric,categorical,channel=1 and call_agent_contact=1,,,,code
+agent_urgency5,The agent responded appropriately to the urgency of my need,Q8f,numeric,categorical,channel=1 and call_agent_contact=1 and urgency_need=1,,,,code
+ivr_availability5,Availability of the automated telephone service when needed,Q9a,numeric,categorical,channel=1 and used_ivr=1,,,,code
+ivr_response_speed5,Speed of the automated telephone service responses,Q9b,numeric,categorical,channel=1 and used_ivr=1,,,,code
+ivr_information_accuracy5,Accuracy of information supplied by the automated telephone service,Q9c,numeric,categorical,channel=1 and used_ivr=1,,,,code
+ivr_ease5,Ease of using the automated telephone service,Q9d,numeric,categorical,channel=1 and used_ivr=1,,,,code

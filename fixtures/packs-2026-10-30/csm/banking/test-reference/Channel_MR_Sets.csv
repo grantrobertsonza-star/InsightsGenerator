@@ -1,0 +1,7 @@
+﻿set_id,variable,selected_value,label,universe
+experience_reasons,reasons_r01,1,Payment or transfer,All records
+experience_reasons,reasons_r02,1,Account balance or information,All records
+experience_reasons,reasons_r03,1,Account or personal detail change,All records
+experience_reasons,reasons_r04,1,Problem complaint or fraud concern,All records
+experience_reasons,reasons_r05,1,Product advice or application,All records
+experience_reasons,reasons_r06,1,Other,All records

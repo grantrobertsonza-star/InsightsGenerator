@@ -1,4 +1,4 @@
-variable,label,question,data_type,question_type,universe,mr_set,selected_value,derivation,unit
+﻿variable,label,question,data_type,question_type,universe,mr_set,selected_value,derivation,unit
 respondent_id,Anonymous customer ID,SYS,text,text,All records,,,,code
 interview_date,Interview date,SYS,text,text,All records,,,,code
 wave,Wave,SYS,numeric,categorical,All records,,,,code
@@ -97,3 +97,5 @@ benchmark_days_ago,Days since comparable other provider experience,B2c,numeric,c
 benchmark_channel,Channel of comparable other provider task experience,B2d,numeric,categorical,benchmark_recent_same_task30=1,,,,code
 benchmark_csat5,Overall satisfaction with other provider comparable task,B3,numeric,categorical,benchmark_recent_same_task30=1,,,,code
 benchmark_gap5,Main provider minus alternative paired task CSAT,DER,numeric,continuous,Both journey_csat5 and benchmark_csat5 valid 1-5,,,journey_csat5 - benchmark_csat5; descriptive paired difference only,scale points
+journey_angry5,Anchored journey left customer angry,J7f,numeric,categorical,journey_recent30=1,,,,code
+journey_disappointed5,Anchored journey left customer disappointed,J7g,numeric,categorical,journey_recent30=1,,,,code

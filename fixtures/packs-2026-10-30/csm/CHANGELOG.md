@@ -1,23 +1,16 @@
-# CSM additive expansion 30 October 2026
+# Separate CSM testing update on 30 October 2026
 
-## What changed
+## Added measures
 
-Both sectors retain all original current-customer and channel records, fields, codes and values. Forty-one relationship fields and six channel fields were appended. Questionnaires insert the additions at the relevant points rather than replacing the original instruments. Research briefs, dashboard guides, embedded metadata, master codebooks, CSV fixtures, optional JSON, metrics, validators and manifests are updated.
+- Company anchored journey: `journey_angry5` and `journey_disappointed5`.
+- Latest channel experience: `channel_angry5` and `channel_disappointed5`.
+- Call-centre diagnostics: live-agent contact screen; queue-wait, total-call-time and overall-agent satisfaction; reaching the correct person on the first transfer; ownership, promises, patience and urgency; IVR availability, response speed, information accuracy and ease.
+- Full item wording, response codes and routes in separate questionnaires and all codebooks. Promises not yet due (code 9) are excluded from valid ratings, not treated as failure.
 
-Each sector adds three independent supplemental noncustomer workbooks with 500 synthetic records each and a matching questionnaire. Noncustomer means no current use of the focal provider, not no use of the sector. Existing brands and allocation counts were not changed. New instructions give Claude a written implementation specification while preserving the app font, layout and #2563eb accent; no app changes or contact occurred.
+## Data contract
 
-## Measurement issues addressed
+Existing 98 company and 71 channel fields remain unchanged. Updated schemas have 100 and 88 fields respectively. Every new value is copied from frozen combined testing files; no RNG was rerun. Three company and three channel wave files per sector are updated in XLSX and CSV; pooled All_Waves files are exact row concatenations. All noncustomer data and questionnaires remain unchanged and separate.
 
-The old latest-experience-per-channel rows did not identify one continuous task. Joining them as a journey would have been a significant interpretation error. The expansion uses an independent respondent-level task anchor with its own ordered contacts and outcome, without rewriting the old channel records.
+## Supporting materials
 
-The existing customer sample could not provide an independent focal-noncustomer expectations sample. A clearly separate synthetic supplement is supplied, not a relabelling of existing customer rows. It must not be pooled for prevalence or market-share estimates.
-
-Alternative ratings now require personal recent use and comparable task type and period. Unavailable evidence remains Not measured. Experience, emotion, stated preference and reasons for continued use remain distinct constructs. No causal drivers, ROI, observed churn, market rankings or validated composite emotional scores are inferred.
-
-## Synthetic design and limitations
-
-The additions are deterministic synthetic fixtures, not new real-world research. Independent waves do not track individual change. Retention reasons can coexist. A paired competitor difference is descriptive and may reflect selection and task complexity. Expected future service and retrospective performance have different samples and time referents; the pack specifies separate profiles rather than a manufactured expectations gap.
-
-## Verification
-
-The source ZIP was retained. Exact old-cell preservation, embedded metadata coverage, route logic, CSV parity and independent reference arithmetic are checked in preservation_report.json and each sector test-reference/validation_results.json. Visual checks cover edited documents and spreadsheet ranges; fixture validation is not app acceptance. See QA_REPORT.md for the completed checks and any residual limitations.
+Both sectors include refreshed briefs, separate company/channel questionnaires, dashboard guides, Claude instructions, embedded metadata, master codebooks, all 6,213 reference metrics, import warnings, validators, manifests and preservation evidence. Choose one representation and one import mode per grain. No application or third-party contact was performed.
