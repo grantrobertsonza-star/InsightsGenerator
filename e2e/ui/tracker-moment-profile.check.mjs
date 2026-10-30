@@ -57,7 +57,9 @@ test("tracker dashboard page 02: Moment profile and Moment reach equal the refer
   try {
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
-    const run = await ui.createRun({ name: `tracker-moment-profile-${Date.now()}` });
+    // "BMW" in the project name pre-fills the client's brand (prefilledFocalBrand), as in tracker-associations; without
+    // it no client brand is set and the reach card rightly has no headline.
+    const run = await ui.createRun({ name: `BMW tracker-moment-profile-${Date.now()}` });
     await page.goto(`${run.url}?section=upload`, { waitUntil: "networkidle" });
     const file = path.join(dir, "bmw_w1.sav");
     copyFileSync(savFile, file);
@@ -99,6 +101,8 @@ test("tracker dashboard page 02: Moment profile and Moment reach equal the refer
     await expect(profile).toBeVisible({ timeout: 3 * 60_000 });
     await expect(card()).toContainText("Cue-specific recall among those aware of each brand; pick-any. Weighted by weight.");
     await expect(profile.getByTestId("moment-profile-line")).toHaveCount(5);
+    // The client's brand (BMW, code 8, pre-filled from the project name) is always one of the five.
+    expect(await profile.getByTestId("moment-profile-line").evaluateAll((ls) => ls.map((l) => l.getAttribute("data-code")))).toContain("8");
     const axis = await profile.locator('[data-testid="moment-profile-chart"] text title').allTextContents();
     expect(axis).toEqual(RANKED.map((c) => LABELS[Number(c.slice(1)) - 1]));
     await profile.getByTestId("moment-profile-table").locator("summary").click();
@@ -138,7 +142,14 @@ test("tracker dashboard page 02: Moment profile and Moment reach equal the refer
     // 4. Moment reach.
     const reach = dash.getByTestId("tracker-moment-reach");
     await expect(reach.getByTestId("moment-reach")).toBeVisible({ timeout: 3 * 60_000 });
-    await expect(reach.getByTestId("moment-reach-headline")).toContainText("moments per person");
+    // Headline for the client's brand (BMW, code 8 in this pack): rank among the brands by unrounded moments per person.
+    const byPerPerson = Object.keys(REACH).sort((a, b) => REACH[b].per_person - REACH[a].per_person);
+    const focalKey = bKey(8);
+    const nth = byPerPerson.indexOf(focalKey) + 1;
+    const ord = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+    await expect(reach.getByTestId("moment-reach-headline")).toHaveText(
+      `BMW: ${REACH[focalKey].per_person.toFixed(1)} moments per person, ${ord(nth)} of ${byPerPerson.length}; linked to at least one moment by ${Math.round(REACH[focalKey].penetration)}%`,
+    );
     await reach.getByTestId("moment-reach-table").locator("summary").click();
     for (const row of await reach.getByTestId("moment-reach-table-row").all()) {
       const x = REACH[bKey(await row.getAttribute("data-code"))];
@@ -148,7 +159,6 @@ test("tracker dashboard page 02: Moment profile and Moment reach equal the refer
       await expect(row.locator('td[data-measure="shareOfLinks"]')).toHaveText(pct(x.share));
     }
     const order = async () => reach.getByTestId("moment-reach-row").evaluateAll((rs) => rs.map((r) => r.getAttribute("data-code")));
-    const byPerPerson = Object.keys(REACH).sort((a, b) => REACH[b].per_person - REACH[a].per_person);
     expect((await order()).map(bKey)).toEqual(byPerPerson);
     await reach.getByRole("button", { name: "Moment penetration" }).click();
     const byPen = Object.keys(REACH).sort((a, b) => REACH[b].penetration - REACH[a].penetration);

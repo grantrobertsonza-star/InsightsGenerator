@@ -2,9 +2,11 @@
 
 Status: **implemented, ready for independent review.** Page 02 "Moments & needs" of the brand tracking dashboard:
 the "Moment profile" view of the moment by brand card and the "Moment reach" card (Grant's approved design, 30
-October 2026). Branch `r5moments`, base `b3e230f`, worktree `/home/claude/b118`. Commits: `b22a42f` (feature, engine
-row item, contracts, tests, browser check) and COMMIT_2 (Codex reference comparison, contract and registry
-references, this handover). No migration. Tier A (engine `api/parse-stats-file.py`, loaders in `src/lib`, server
+October 2026). Branch `claude/r5moments`. Local history (laptop worktree `/home/claude/b118`, base `b3e230f`):
+`b22a42f` (feature, engine row item, contracts, tests, browser check) and `256228d` (Codex reference comparison,
+contract and registry references, this handover). On GitHub that work is the checkpoint `6ad110a` (laptop tree at
+`256228d` on top of the cloud snapshot `6e42ca0`), followed by the cloud close-out commits listed under "Cloud
+close-out" below. No migration. Tier A (engine `api/parse-stats-file.py`, loaders in `src/lib`, server
 actions) with tier B screens.
 
 ## What the researcher sees
@@ -100,7 +102,7 @@ Commit `b22a42f`:
 - Contracts: `claude/d2-design-2026-10-29.md` (D3c Moment profile, Moment reach; D3d computation owner note),
   `claude/rules-registry.md` (two new rows; D3d row names the shared owner).
 
-COMMIT_2:
+`256228d`:
 - `src/lib/__tests__/trackerMomentCodexReference.db.test.ts` (new), `fixtures/tracker-packs/bmw_car/codex_moment_reference_w1_w2.json`
   (new), `claude/d2-design-2026-10-29.md` and `claude/rules-registry.md` (the second reference cited),
   this handover.
@@ -109,7 +111,34 @@ Callers and consumers checked: `TrackerDashboardPanel` (only caller of both card
 (`loadBrandAssociations`, through the refactored owner; its db test is in the library run below), the Cross tab
 engine's other row items (self-test).
 
-## Gates (worktree b118)
+## Cloud close-out (30 October 2026)
+
+What was missing at the checkpoint and was done in the cloud worktree:
+
+- **Tests added** (`src/lib/__tests__/momentProfileView.test.tsx`, mounted): the Moment profile when the load throws
+  (the reason and "Try again", no lines and no table, "Try again" draws the five lines); the Moment reach card when
+  the load is refused (`ok: false`: the reason and "Try again", no bars, "Try again" recovers); and the reach card's
+  late answer: switching from file A to B with A's answer arriving last keeps B's figures. Shown failing without the
+  guard: with the `id !== latest.current` check removed from the reach card's success path, the late-answer test
+  fails (1 failed, 7 passed) and passes again once restored.
+- **Browser check repaired** (`e2e/ui/tracker-moment-profile.check.mjs`): its first run failed at the reach headline
+  ("No client brand is set, so there is no headline."). The check created its project without "BMW" in the name, so
+  no client brand was pre-filled; the card was right and the check was wrong. It now names the project as
+  `tracker-associations.check.mjs` does, asserts the client's brand (BMW, code 8) is one of the five lines, and
+  asserts the whole headline against the reference (value to one decimal, rank by unrounded moments per person,
+  penetration rounded): "BMW: 1.9 moments per person, 4th of 10; linked to at least one moment by 77%".
+  Why the tests missed it: the mounted test sets a client brand itself, and the browser check had never been run.
+- **Citations:** the research sources (Romaniuk and Sharp) are now named in the contract only
+  (`claude/d2-design-2026-10-29.md`, D3c "Moment reach"); the registry row and the header comment of
+  `src/lib/trackerMomentReach.ts` point to the contract instead.
+- **Housekeeping:** the checkpoint had committed the disposable stack's output folder `e2e-results-r5mom/` (synthetic
+  account passwords and grants of a stack that no longer exists); it is removed from git and `/e2e-results-*/` added to
+  `.gitignore`. The registry row and header of `e2e/ui/tracker-moments.check.mjs` record its first run.
+- **Screenshots** at 1440 x 900 from the production build, written by the browser check with `SCREENSHOT_DIR`:
+  `docs/screenshots/r5moments/page02-recall-table-1440.png`, `page02-moment-profile-1440.png`,
+  `page02-moment-profile-card.png`, `page02-moment-reach-1440.png`, `page02-moment-reach-card.png`.
+
+## Gates (cloud worktree, final tree)
 
 GATES_PLACEHOLDER
 
@@ -130,4 +159,8 @@ the model client (stubbed, never called), `revalidatePath` and `after`. The moun
 - The Codex reference covers the BMW pack only (waves 1 and 2, every respondent eligible, no blanks); the blank,
   small-base, nobody-links and unmapped-awareness cases rest on our own pandas reference and the boundary variants.
 - Effective bases are compared to the engine's one-decimal reporting precision.
-- Not run: the full browser suite and the smoke suite.
+- The x axis labels of the Moment profile are rotated and truncated; at 1440 wide the first label is clipped at the
+  chart's left edge (visible in `page02-moment-profile-1440.png`). The full wording is in each label's tooltip and the
+  table. Not changed here.
+- The headline's rank counts every listed brand with a known value; ties keep the brand list's order.
+- Not run: the full browser suite and the smoke suite (only the two page 02 checks were run).

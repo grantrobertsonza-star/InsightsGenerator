@@ -9,7 +9,7 @@
 //      no statistical comparison is implied.
 //   4. Compare: removing a brand removes its column; Brand overview is still there when switching back.
 //   5. At 760 wide the menu is replaced by page tabs and the page still fits.
-// Written 29 October 2026; not yet run (another process was using the stack).
+// Written 29 October 2026; first run 30 October 2026 (branch r5moments, production build): passed.
 import { expect, test } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
