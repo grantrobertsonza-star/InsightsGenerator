@@ -8,7 +8,9 @@
 //     detractor shares, switching 8 to 10; valid raw base and eligible raw base exactly (eligible = valid + the
 //     non-answers disclosed), valid weighted base within 1e-6. Pooled rows read the All_Waves file unfiltered.
 //   - The existing CSM dashboard's tiles on each wave file (loadBrandOverview): satisfaction top two and mean, stay
-//     top two and switching 8 to 10 by company within 1e-6, NPS from the NPS tool with its raw base exactly.
+//     top two and switching 8 to 10 by company within 1e-6, NPS from the NPS tool with its raw base exactly; the NPS
+//     tool returns its score rounded to one decimal, so the tile is checked against Codex's value rounded once and
+//     every such row is listed (the unrounded NPS agrees at 1e-6 through the reading).
 // Not compared: Kish effective bases (the reading keeps raw and weighted bases; the tiles show the engine's own
 // effective base, rounded) and the scope inventory (documentation). Disagreements are reported row by row.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -75,12 +77,25 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("R6 CSM extension against Code
     await pool.end().catch(() => {});
     await db?.drop();
     console.log("R6 Codex comparisons:", JSON.stringify(counts), "disagreements:", disagreements.length ? disagreements.join("\n") : "none");
+    console.log(`R6 Codex NPS tiles shown to one decimal (${npsRounded.length} rows):\n${npsRounded.join("\n")}`);
   });
 
   const check = (label: string, actual: number | null, expected: number | undefined, exact = false) => {
     if (expected === undefined) return 0;
     const ok = actual !== null && (exact ? actual === expected : Math.abs(actual - expected) <= TOL);
     if (!ok) disagreements.push(`${label}: app ${actual} vs Codex ${expected}`);
+    return 1;
+  };
+
+  // The NPS tile is the NPS tool's own score, which the tool returns rounded once to one decimal (npsActions,
+  // computeNps: "rounds only its results"); the unrounded NPS is compared at 1e-6 through the reading above. Here the
+  // tile must equal Codex's value rounded to one decimal, and each such row is listed (a finding, not a pass at 1e-6).
+  const npsRounded: string[] = [];
+  const checkRounded = (label: string, actual: number | null, expected: number | undefined) => {
+    if (expected === undefined) return 0;
+    const one = Math.round(expected * 10) / 10;
+    if (actual === null || Math.abs(actual - one) > 1e-9) disagreements.push(`${label}: app ${actual} vs Codex ${expected} (rounded ${one})`);
+    else if (Math.abs(actual - expected) > TOL) npsRounded.push(`${label}: app ${actual} vs Codex ${expected}`);
     return 1;
   };
 
@@ -191,10 +206,10 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("R6 CSM extension against Code
         const nps = o.csm.find((x) => x.id === "recommend")!;
         if (nps.status !== "ok" || nps.id !== "recommend" || !Array.isArray(nps.byCompany)) disagreements.push(`${sector} wave ${w} tile recommend: ${nps.status}`);
         else {
-          n += check(`${sector} wave ${w} tile NPS all`, nps.nps, row("recommend_0to10", "0").estimates.weighted.nps);
+          n += checkRounded(`${sector} wave ${w} tile NPS all`, nps.nps, row("recommend_0to10", "0").estimates.weighted.nps);
           n += check(`${sector} wave ${w} tile NPS base all`, nps.base, row("recommend_0to10", "0").bases_by_weighting.weighted.valid.raw, true);
           for (const c of nps.byCompany) {
-            n += check(`${sector} wave ${w} tile NPS company ${c.code}`, c.nps, row("recommend_0to10", c.code).estimates.weighted.nps);
+            n += checkRounded(`${sector} wave ${w} tile NPS company ${c.code}`, c.nps, row("recommend_0to10", c.code).estimates.weighted.nps);
             n += check(`${sector} wave ${w} tile NPS base company ${c.code}`, c.base, row("recommend_0to10", c.code).bases_by_weighting.weighted.valid.raw, true);
           }
         }

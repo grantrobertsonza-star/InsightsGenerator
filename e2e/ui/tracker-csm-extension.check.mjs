@@ -110,7 +110,7 @@ test("CSM extension: journey, emotions and preference, competitive and noncustom
     await dash.getByRole("tab", { name: "Emotions and preference" }).click();
     const e = dash.getByTestId("csmx-section-experience");
     await expect(e.getByTestId("csmx-journey-emotion-table")).toBeVisible({ timeout: 5 * 60_000 });
-    await expect(e.getByTestId("csmx-journey-emotion-table").getByTestId("csmx-emotion-row")).toHaveCount(4);
+    await expect(e.getByTestId("csmx-journey-emotion-table").getByTestId("csmx-emotion-row")).toHaveCount(6);
     await expect(e.locator('[data-testid="csmx-journey-emotion-table"] [data-emotion="frustrated"]')).toContainText(ref("Relationship", "journey_frustrated5", "mean5").expected.toFixed(2));
     await expect(e.locator('[data-testid="csmx-channel-emotion-table"] [data-emotion="reassured"]')).toContainText(ref("Channel", "channel_reassured5", "mean5").expected.toFixed(2));
     await expect(e.getByTestId("csmx-channel-people")).toContainText("distinct customers");
@@ -154,7 +154,22 @@ test("CSM extension: the combined company and channel file", async ({ page }, te
   const combined = path.resolve("fixtures/packs-2026-10-30/csm-combined/banking");
   const csv = readFileSync(path.join(combined, "reference", "Reference_Metrics.csv"), "utf8").replace(/^﻿/, "").split(/\r?\n/).filter(Boolean);
   const cols = csv[0].split(",");
-  const rows = csv.slice(1).map((l) => Object.fromEntries(l.split(",").map((c, i) => [cols[i], c])));
+  // Quoted cells may hold commas (the pooled rows name four variables).
+  const split = (line) => {
+    const out = [];
+    let cur = "";
+    let quoted = false;
+    for (const ch of line) {
+      if (ch === '"') quoted = !quoted;
+      else if (ch === "," && !quoted) {
+        out.push(cur);
+        cur = "";
+      } else cur += ch;
+    }
+    out.push(cur);
+    return out;
+  };
+  const rows = csv.slice(1).map((l) => Object.fromEntries(split(l).map((c, i) => [cols[i], c])));
   const cref = (section, source, statistic, channel = "0") => Number(rows.find((r) => r.wave === "1" && r.section === section && r.company === "0" && r.channel === channel && r.source_variable === source && r.statistic === statistic).expected);
   const name = "Banking_CSM_Combined_Wave_1.xlsx";
   const dir = mkdtempSync(path.join(tmpdir(), "csm-comb-"));
