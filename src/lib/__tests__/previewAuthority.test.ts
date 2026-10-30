@@ -12,6 +12,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as XLSX from "xlsx";
 
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("../db", () => ({ withTenant: vi.fn(), withTenantRead: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: vi.fn() } } }));
 vi.mock("../anthropic", () => ({ anthropic: {}, CLAUDE_MODEL: "test-model" }));
@@ -38,7 +40,7 @@ vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequest
 
 vi.setConfig({ testTimeout: 20000 });
 
-const RUN = "run-1";
+const RUN = "00000000-0000-4000-8000-0000000000cc";
 const DOC = "doc-1";
 
 /** Sparse: 10 columns, 1 real row, formatted far down. Dense: 2 columns, 10 real rows.

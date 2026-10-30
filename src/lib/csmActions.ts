@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { withTenant } from "./db";
-import { assertRunOwned } from "./runOwnership";
+import { RUN_NOT_AVAILABLE, assertRunOwned, runAccessible } from "./runOwnership";
 import { findingProvenanceAvailable, recordHumanReview } from "./findingProvenance";
 import { loadVariableDictionary } from "./crosstabs";
 import { defaultWeight } from "./starterTables";
@@ -65,6 +65,7 @@ export async function loadCsmCandidatesAction(
   documentId: string,
 ): Promise<{ ok: true; variables: VariableInfo[]; weightVar: string | null } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const dict = await loadVariableDictionary(TENANT_ID, runId, documentId);
     const usable = dict.variables.filter((v) => !v.weightLike && !v.text && v.nDistinct >= 2);
@@ -128,6 +129,7 @@ export async function buildCsmDashboardAction(
   waveLabel?: string | null,
 ): Promise<{ ok: true; dashboard: CsmDashboard } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const dict = await loadVariableDictionary(TENANT_ID, runId, documentId);
     const weightVar = defaultWeight(dict);
@@ -212,7 +214,8 @@ export async function buildCsmWaveDashboardsAction(
   mapping: CsmMapping,
 ): Promise<{ ok: true; dashboards: CsmDashboard[] } | Fail> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const dashboards: CsmDashboard[] = [];
   for (const f of files) {
     const res = await buildCsmDashboardAction(runId, f.documentId, mapping, f.label);
@@ -227,6 +230,7 @@ export async function loadCsmModuleAction(
   documentId: string,
 ): Promise<{ ok: true; mapping: CsmMapping | null } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const mapping = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ mapping: CsmMapping }>(
@@ -426,6 +430,7 @@ export async function csmFindingStatusAction(
   groupVar: string | null,
 ): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

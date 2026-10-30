@@ -161,9 +161,14 @@ describe.skipIf(!TEST_DATABASE_URL)("SEC1 tenant isolation without row-level sec
     it("finding status, bulk status and theme on B's finding change nothing and report not found", async () => {
       const f = await import("../findingActions");
       const before = await snapshotB();
-      expect(await f.setFindingStatus(runB, findingB, "rejected")).toMatchObject({ ok: false, error: expect.stringContaining("no longer in this project") });
+      // SEC2: B's project id is refused at the action's entry, like a missing project.
+      expect(await f.setFindingStatus(runB, findingB, "rejected")).toMatchObject({ ok: false, error: "That project is not available." });
       expect(await f.setManyFindingStatuses(runB, [findingB], "rejected")).toMatchObject({ ok: false });
-      expect(await f.setFindingTheme(runB, findingB, "Hijacked")).toMatchObject({ ok: false, error: expect.stringContaining("no longer in this project") });
+      expect(await f.setFindingTheme(runB, findingB, "Hijacked")).toMatchObject({ ok: false, error: "That project is not available." });
+      // SEC1: with A's own project id and B's finding id, the statements' own tenant scoping refuses.
+      expect(await f.setFindingStatus(runA, findingB, "rejected")).toMatchObject({ ok: false, error: expect.stringContaining("no longer in this project") });
+      expect(await f.setManyFindingStatuses(runA, [findingB], "rejected")).toMatchObject({ ok: false });
+      expect(await f.setFindingTheme(runA, findingB, "Hijacked")).toMatchObject({ ok: false, error: expect.stringContaining("no longer in this project") });
       expect(await snapshotB()).toEqual(before);
       // Control: A's own finding saves.
       expect(await f.setFindingStatus(runA, findingA, "accepted")).toEqual({ ok: true });
@@ -208,8 +213,9 @@ describe.skipIf(!TEST_DATABASE_URL)("SEC1 tenant isolation without row-level sec
     it("a stated-objective edit on B's project and candidate changes nothing and reports not found", async () => {
       const { editStatedObjective } = await import("../runContextActions");
       const before = await snapshotB();
-      await expect(editStatedObjective(runB, "Grow B", "Shrink B", { candidateId: candB })).rejects.toThrow(/not found/);
-      await expect(editStatedObjective(runB, "Grow B", null, { candidateId: candB })).rejects.toThrow(/not found/);
+      // SEC2: refused at the entry ("not available"); before SEC2 the locked run read refused it ("not found").
+      await expect(editStatedObjective(runB, "Grow B", "Shrink B", { candidateId: candB })).rejects.toThrow(/not available/);
+      await expect(editStatedObjective(runB, "Grow B", null, { candidateId: candB })).rejects.toThrow(/not available/);
       expect(await snapshotB()).toEqual(before);
     });
 
@@ -219,7 +225,9 @@ describe.skipIf(!TEST_DATABASE_URL)("SEC1 tenant isolation without row-level sec
       const before = await snapshotB();
       expect(await saveCsmModuleAction(runA, docB, { owner: "A" } as never)).toMatchObject({ ok: false, error: expect.stringContaining("not in this project") });
       expect(await saveCsmModuleAction(runB, docB, { owner: "A" } as never)).toMatchObject({ ok: false, error: expect.stringContaining("not available") });
-      await rejectRecommendation(runB, recB);
+      await expect(rejectRecommendation(runB, recB)).rejects.toThrow(/not available/);
+      // SEC1: A's own project id with B's recommendation is an unchanged no-op (the statement names the tenant).
+      await rejectRecommendation(runA, recB);
       expect(await snapshotB()).toEqual(before);
     });
   });

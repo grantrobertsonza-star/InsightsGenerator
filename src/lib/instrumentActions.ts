@@ -26,6 +26,7 @@ import {
 import { getGuideCoverage, type GuideReport } from "./guides";
 import { loadLabelDocumentation, type LabelDocumentation } from "./labelDocumentation";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 import type { DataFileMatch } from "./instrumentMatchMessage";
 
 type Fail = { ok: false; error: string };
@@ -43,6 +44,7 @@ export async function readInstrumentAction(
   documentId: string,
 ): Promise<Ok<{ items: number; complete: boolean; failedChunks: number; incompleteItems: number; questionMetaNotStored?: boolean; automaticRecheck?: InstrumentReadResult["automaticRecheck"] }> | (Fail & { inFlight?: true })> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const r = await readInstrumentItems(TENANT_ID, runId, documentId);
     revalidatePath(`/runs/${runId}`);
@@ -68,6 +70,7 @@ export async function readInstrumentAction(
  */
 export async function instrumentReadInFlightAction(runId: string, documentId: string): Promise<Ok<{ inFlight: boolean }> | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const inFlight = await isInstrumentReadInFlight(TENANT_ID, runId, documentId);
     if (!inFlight) revalidatePath(`/runs/${runId}`);
@@ -83,6 +86,7 @@ export async function setInstrumentTargetAction(
   dataDocumentId: string,
 ): Promise<Ok<{ suggested: number; fromCodebook: number; codebookUnavailable: boolean; autoConfirmed: number; autoUnavailable: boolean }> | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const r = await suggestInstrumentLinks(TENANT_ID, runId, instrumentId, dataDocumentId);
     revalidatePath(`/runs/${runId}`);
@@ -112,6 +116,7 @@ export async function matchInstrumentAutomaticallyAction(
   | Fail
 > {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if ((await instrumentTypeOf(TENANT_ID, runId, instrumentId)) === "codebook") {
       const r = await matchCodebookToDataFiles(TENANT_ID, runId, instrumentId);
@@ -139,6 +144,7 @@ export async function matchCodebookToNewDataFilesAction(
   instrumentId: string,
 ): Promise<Ok<{ files: DataFileMatch[]; suggested: number; autoConfirmed: number; autoUnavailable: boolean }> | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const r = await matchCodebookToDataFiles(TENANT_ID, runId, instrumentId, { onlyUnlinked: true });
     if (r.files.some((f) => f.status === "matched")) revalidatePath(`/runs/${runId}`);
@@ -151,6 +157,7 @@ export async function matchCodebookToNewDataFilesAction(
 /** The Labels and documentation tab of a raw data file (LBL-01). Read only. */
 export async function loadLabelDocumentationAction(runId: string, dataDocumentId: string): Promise<Ok<{ documentation: LabelDocumentation }> | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, documentation: await loadLabelDocumentation(TENANT_ID, runId, dataDocumentId) };
   } catch (e) {
@@ -176,6 +183,7 @@ export async function setLinkStatusAction(
   status: "suggested" | "confirmed" | "rejected",
 ): Promise<Ok | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     // Confirming follows the one rule every confirmation path shares (IR-04): a variable confirmed
     // for another question of the same data file is refused, with that question named.
@@ -198,6 +206,7 @@ export async function confirmLinksAction(
   minConfidence: number = AUTO_CONFIRM_MIN,
 ): Promise<Ok<{ confirmed: number; refused: { variable: string; reason: string }[] }> | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const r = await confirmInstrumentLinks(TENANT_ID, runId, instrumentId, minConfidence);
     revalidatePath(`/runs/${runId}`);
@@ -221,6 +230,7 @@ export async function confirmQuestionLinksAction(
   dataDocumentId: string,
 ): Promise<Ok<{ confirmed: number; refused: { variable: string; reason: string }[] }> | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   if (!/^[0-9a-f-]{36}$/i.test(itemId)) return { ok: false, error: "That question is not in this questionnaire." };
   if (!/^[0-9a-f-]{36}$/i.test(dataDocumentId)) return { ok: false, error: "Choose the data file first." };
   try {
@@ -235,6 +245,7 @@ export async function confirmQuestionLinksAction(
 /** How well the sessions in this run followed a guide. Computed from the stored text, nothing is saved. */
 export async function guideCoverageAction(runId: string, guideId: string, onlyDocumentId?: string): Promise<Ok<{ report: GuideReport }> | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, report: await getGuideCoverage(TENANT_ID, runId, guideId, onlyDocumentId) };
   } catch (e) {
@@ -251,6 +262,7 @@ export async function listLinkableVariablesAction(
 ): Promise<Ok<{ variables: { name: string; label: string }[] }> | Fail> {
   if (!UUID.test(runId) || !UUID.test(dataDocumentId)) return { ok: false, error: "Unknown project or data file." };
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const d = await loadVariableDictionary(TENANT_ID, runId, dataDocumentId);
     return { ok: true, variables: d.variables.map((v) => ({ name: v.name, label: v.label })) };
@@ -270,6 +282,7 @@ export async function chooseInstrumentLinkFamilyAction(
   if (![runId, instrumentId, itemId, dataDocumentId].every((x) => UUID.test(x))) return { ok: false, error: "Unknown question or data file." };
   if (typeof variable !== "string" || variable.trim() === "") return { ok: false, error: "Choose a variable." };
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const r = await chooseInstrumentLinkFamily(TENANT_ID, runId, instrumentId, itemId, dataDocumentId, variable);
     revalidatePath(`/runs/${runId}`);
@@ -290,6 +303,7 @@ export async function chooseInstrumentLinkAction(
   if (![runId, instrumentId, itemId, dataDocumentId].every((x) => UUID.test(x))) return { ok: false, error: "Unknown question or data file." };
   if (typeof variable !== "string" || variable.trim() === "") return { ok: false, error: "Choose a variable." };
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await chooseInstrumentLink(TENANT_ID, runId, instrumentId, itemId, dataDocumentId, variable);
     revalidatePath(`/runs/${runId}`);

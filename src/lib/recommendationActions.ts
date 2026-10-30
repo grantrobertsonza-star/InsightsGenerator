@@ -5,6 +5,7 @@ import { withTenant } from "./db";
 import { generateRecommendations, generateSynthesizedRecommendations } from "./recommendationAgent";
 import { refreshRecommendationQuality } from "./recommendationQualityScorer";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, assertRunAccessible, runAccessible } from "./runOwnership";
 import {
   addResearcherRecommendation,
   isRequestKey,
@@ -30,6 +31,7 @@ import {
  */
 export async function acceptRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2 and tenant_id = $3", [
       recommendationId,
@@ -42,6 +44,7 @@ export async function acceptRecommendation(runId: string, recommendationId: stri
 
 export async function rejectRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update recommendations set status = 'rejected' where id = $1 and run_id = $2 and tenant_id = $3", [
       recommendationId,
@@ -59,6 +62,7 @@ export async function rejectRecommendation(runId: string, recommendationId: stri
  */
 export async function restoreRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2 and tenant_id = $3", [
       recommendationId,
@@ -88,6 +92,7 @@ export async function updateAndAcceptRecommendation(
   expected?: RecommendationFields
 ): Promise<RecommendationEditResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const checked = parseRecommendationFields(fields);
   if (!checked || (expected !== undefined && !parseRecommendationFields(expected))) {
     return { ok: false, error: "This recommendation could not be saved: a field is missing or its priority is not high, medium or low." };
@@ -117,6 +122,7 @@ export async function addOwnRecommendation(
   requestKey: string
 ): Promise<RecommendationAddResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const checked = parseRecommendationFields(fields);
   if (!checked) return { ok: false, error: "This recommendation needs an action, and a priority of high, medium or low." };
   if (!isRequestKey(requestKey)) return { ok: false, error: "This form could not be identified. Reload the page and add the recommendation again." };
@@ -127,6 +133,7 @@ export async function addOwnRecommendation(
 
 export async function deleteRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await withTenant(TENANT_ID, async (client) => {
     await client.query("delete from recommendations where id = $1 and run_id = $2 and tenant_id = $3", [recommendationId, runId, TENANT_ID]);
   });
@@ -146,6 +153,7 @@ export async function regenerateRecommendations(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await generateRecommendations(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
@@ -176,6 +184,7 @@ export async function addOwnSynthesizedRecommendation(
   requestKey: string
 ): Promise<RecommendationAddResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const checked = parseRecommendationFields(fields);
   if (!checked) return { ok: false, error: "This recommendation needs an action, and a priority of high, medium or low." };
   if (!isRequestKey(requestKey)) return { ok: false, error: "This form could not be identified. Reload the page and add the recommendation again." };
@@ -196,6 +205,7 @@ export async function regenerateSynthesizedRecommendations(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await generateSynthesizedRecommendations(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
@@ -223,6 +233,7 @@ export async function setServedDecisionsAction(
   expectedServed: unknown,
 ): Promise<{ ok: true; changed: boolean } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   if (!Array.isArray(chosenKeys) || chosenKeys.length > 100 || !chosenKeys.every((k) => typeof k === "string") || typeof expectedServed !== "string")
     return { ok: false, error: "The decisions chosen were not understood. Reload and try again." };
   try {

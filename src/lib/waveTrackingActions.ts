@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { withTenant, withTenantRead } from "./db";
-import { assertRunOwned } from "./runOwnership";
+import { RUN_NOT_AVAILABLE, assertRunOwned, runAccessible } from "./runOwnership";
 import { recordHumanReview } from "./findingProvenance";
 import { loadVariableDictionary } from "./crosstabs";
 import { waveOrderText, type OrderedWave } from "./waves";
@@ -27,6 +27,7 @@ export type WaveFile = OrderedWave;
  */
 export async function listWaveFilesAction(runId: string): Promise<{ ok: true; files: WaveFile[]; excluded: WaveFile[]; order: string } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const files = await loadProjectWaves(TENANT_ID, runId);
     return { ok: true, files: files.included, excluded: files.excluded, order: waveOrderText(files.basis) };
@@ -45,6 +46,7 @@ export async function sharedWaveVariablesAction(
   documentIds: string[],
 ): Promise<{ ok: true; variables: { name: string; label: string }[]; weights: { name: string; label: string }[] } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if (documentIds.length === 0) return { ok: true, variables: [], weights: [] };
     const dicts = await Promise.all(documentIds.map((id) => loadVariableDictionary(TENANT_ID, runId, id)));
@@ -72,7 +74,8 @@ export async function runWaveChartAction(
   weightVar: string | null,
 ): Promise<{ ok: true; result: ChartResult } | Fail> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if (files.length < 2) return { ok: false, error: "Label at least two files as waves to compare them." };
     const perWave: { f: WaveFile; result: ChartResult }[] = [];
@@ -135,7 +138,8 @@ export async function runWaveNpsAction(
   weightVar: string | null,
 ): Promise<{ ok: true; result: NpsResult } | Fail> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if (files.length < 2) return { ok: false, error: "Label at least two files as waves to compare them." };
     const perWave: { f: WaveFile; result: NpsResult }[] = [];
@@ -277,6 +281,7 @@ export async function removeWaveNpsFindingAction(runId: string, variable: string
 
 export async function waveNpsFindingStatusAction(runId: string, variable: string): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(
@@ -381,6 +386,7 @@ export async function removeWaveChartFindingAction(runId: string, variable: stri
 
 export async function waveChartFindingStatusAction(runId: string, variable: string): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(
@@ -432,6 +438,7 @@ export async function runWaveDriverAction(
   request: WaveDriverRequest,
 ): Promise<{ ok: true; table: WaveDriverTable; perWave: { wave: string; report: DriverReport }[] } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if (files.length < 2) return { ok: false, error: "Label at least two files as waves to compare them." };
     const perWave: { f: WaveFile; report: Awaited<ReturnType<typeof runDriverAnalysisFor>> }[] = [];
@@ -564,6 +571,7 @@ export async function removeWaveDriverFindingAction(runId: string, outcome: stri
 
 export async function waveDriverFindingStatusAction(runId: string, outcome: string): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

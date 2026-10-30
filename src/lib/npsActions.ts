@@ -8,7 +8,7 @@ import type { CrosstabRequest } from "./parseStatsFile";
 import { resolveSurveyDesign, effectiveDesignChoice, type SurveyDesignChoice } from "./surveyDesign";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { withTenant } from "./db";
-import { assertRunOwned } from "./runOwnership";
+import { RUN_NOT_AVAILABLE, assertRunOwned, runAccessible } from "./runOwnership";
 import { recordHumanReview } from "./findingProvenance";
 import { defaultWeight } from "./starterTables";
 import { baseOf, computeNps, leadingNumber } from "./descriptiveFindings";
@@ -145,6 +145,7 @@ export async function runNpsAction(
   table: "save" | "compute" = "save",
 ): Promise<{ ok: true; result: NpsResult } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     // ANA-NPS-003 (Brief 37 repair): the dictionary's build/cache path depends on the
     // document's persisted layout - a required saved input distinct from design. An explicit
@@ -454,6 +455,7 @@ export async function removeNpsFindingAction(runId: string, documentId: string, 
 /** Whether this NPS question is currently committed to findings (for the button state in the tool). */
 export async function npsFindingStatusAction(runId: string, documentId: string, variable: string): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

@@ -16,6 +16,8 @@
 // one, so addCrosstabAction's own test below covers both.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("../verifyAfterGenerate", () => ({ verifyAfterGenerate: vi.fn() }));
@@ -91,21 +93,21 @@ describe("the real caller-to-builder chain refuses to build on a failed required
   });
 
   it("runNpsAction with an EXPLICIT design still never reaches the stats engine - the real buildCrosstab's own check blocks it even though the caller-level design override bypassed its own", async () => {
-    const r = await runNpsAction("run-1", "doc-1", "q1", undefined, "psu_var", null);
+    const r = await runNpsAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "q1", undefined, "psu_var", null);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/could not be read/);
     expect(runStatsTool).not.toHaveBeenCalled();
   });
 
   it("runNpsAction with an EXPLICIT no-design choice still never reaches the stats engine", async () => {
-    const r = await runNpsAction("run-1", "doc-1", "q1", undefined, null, null);
+    const r = await runNpsAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "q1", undefined, null, null);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/could not be read/);
     expect(runStatsTool).not.toHaveBeenCalled();
   });
 
   it("runDistributionAction never reaches the stats engine", async () => {
-    const r = await runDistributionAction("run-1", "doc-1", "q1", undefined, null);
+    const r = await runDistributionAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "q1", undefined, null);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/could not be read/);
     expect(runStatsTool).not.toHaveBeenCalled();
@@ -160,13 +162,13 @@ describe("the real caller-to-builder chain refuses to build on a failed required
       return cb(fakeClient as never);
     });
 
-    const stored = await evaluateEvidenceQuestion("tenant-1", "run-1", { id: "doc-1", name: "Wave 1" }, "ev-1");
+    const stored = await evaluateEvidenceQuestion("tenant-1", "00000000-0000-4000-8000-0000000000cc", { id: "doc-1", name: "Wave 1" }, "ev-1");
     expect(stored).toBe(true);
     expect(runStatsTool).not.toHaveBeenCalled();
   });
 
   it("addCrosstabAction (the manual/ask-resolved build path) never reaches the stats engine and saves no table", async () => {
-    const r = await addCrosstabAction("run-1", "doc-1", {
+    const r = await addCrosstabAction("00000000-0000-4000-8000-0000000000cc", "doc-1", {
       columnVars: [],
       rowItems: [{ key: "q1", label: "Q1", vars: ["q1"] }],
       weightVar: null,
@@ -207,7 +209,7 @@ describe("the real caller-to-builder chain refuses to build on a failed required
       } as never),
     );
 
-    const r = await buildStarterTablesAction("run-1", "doc-1");
+    const r = await buildStarterTablesAction("00000000-0000-4000-8000-0000000000cc", "doc-1");
     // buildStarterTablesAction plans its banners through the TOLERANT loadVariableDictionary -
     // deliberately out of this repair's scope (Brief 37 left it tolerant for every existing
     // caller except NPS/Objectives/charts) - so a "dictionary" engine call for PLANNING

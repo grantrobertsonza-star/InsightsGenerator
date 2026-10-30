@@ -1,6 +1,31 @@
 # Current engineering status
 
-Updated: 2026-10-30. State: **READY_FOR_CODEX** (BatchD3e on top of BatchD3c): the Brand tracking dashboard's remaining pages (Advertising & WOM, Audience & media, Category overview), D6 Indicator Analytics (Overview, Trends, Compare, Data & sources), and SEC1, tenant ownership checked by the code on every listed read and write. No migration.
+Updated: 2026-10-30. State: **READY_FOR_CODEX** (BatchSEC on top of BatchD3e): SEC2, the project's ownership checked at the entry of every server action that takes a project id (204 actions) with a source scan, and security headers on every response; SEC3, uploaded content reaches the Research assistant as delimited data and report revisions happen only when the researcher asked. No migration.
+
+## Claude: batch SEC, main copy (2026-10-30, night)
+
+Implemented, ready for review, on top of BatchD3e. Two parts, each with its handover:
+- SEC2: `claude/batchSEC2-handover-2026-10-29.md`. Ownership checked at the entry of every server action that takes a
+  project id (`runAccessible`, `assertRunAccessible` in `runOwnership.ts`); the source scan fails on an action without
+  it; a database test as a role that bypasses row-level security (10 of 15 failed before, 15 pass). Security headers
+  (Content-Security-Policy, frame, content type, referrer, HSTS, permissions) and no `X-Powered-By`.
+- SEC3: `claude/batchSEC3-handover-2026-10-29.md`. Uploaded content is wrapped as data for the Research assistant, and
+  `revise_narrative` is offered only when the researcher's own message asks to change the report; a planted
+  instruction in a document wrote to the report before and writes nothing now.
+The database role switch in `docs/database-roles.md` is still Grant's to do. No migration.
+
+Gates on the exact tree:
+- On `0c45b0c` (the same product code; later commits change only browser checks and this file): `npx tsc --noEmit`
+  passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed; library 365 files
+  (363 passed, 2 skipped), 2,750 tests passed, 92 skipped, 0 failed; browser suite 154 passed, 1 skipped, 2 failed
+  (`tracker-moments`, `tracker-advertising`); smoke 1 passed; objective review acceptance passed. The new security
+  headers did not break any browser check.
+- The two failures, and two in a later focused rerun (`tracker-dashboard`), were the checks opening a page while a
+  wave label's save was still queued behind the file's first read; the labels were saved (the database showed them).
+  The tracker checks now open the page again until the labelled file is listed or the label reads back. On a fresh
+  stack with the final tree: the five page checks and the three `tracker-dashboard` cases passed (8 passed).
+- Observed, not changed here: a wave label typed straight after adding a file can take a minute or more to save,
+  because it waits behind the file's first read, and the field shows no "saving" state. Worth a small screen change.
 
 ## Claude: batch D3e, main copy (2026-10-30, night)
 

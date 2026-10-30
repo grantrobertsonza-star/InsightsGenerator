@@ -11,6 +11,7 @@ import { isCaseTableFileName, isStatsFileName } from "./statsFileName";
 import { marginForSample, sampleSizeForMargin } from "./sampleSize";
 import { readHelp, searchHelp } from "./helpIndex";
 import { loadTechnicalDocuments, readPassage, searchPassages } from "./technicalDocuments";
+import { neutraliseMarkers, wrapUploadedContent } from "./untrustedContent";
 
 /**
  * The Research assistant's tools (Grant, 2026-10-22: the assistant as the project's expert). Every
@@ -23,6 +24,11 @@ import { loadTechnicalDocuments, readPassage, searchPassages } from "./technical
  * assistant badge, so each quoted figure can be opened, committed or deleted like any other draft.
  * A tool that cannot do what was asked returns an error result the model must pass on; nothing is
  * filled in.
+ *
+ * Results that carry uploaded content (technical-document passages and search snippets, data-file
+ * names, variable and category labels, table text) are wrapped as delimited data
+ * (untrustedContent.ts, SEC3): the app's own notes stay outside the wrapper, so only they read as the
+ * app speaking. Calculator and Knowledge base results are the app's own text and are not wrapped.
  */
 
 /** At most this many tables per message, so a loose question cannot fill the table set. */
@@ -170,14 +176,17 @@ export async function runTechnicalDocumentTool(tenantId: string, runId: string, 
   }
   if (name === "search_technical_documents") {
     const hits = searchPassages(documents, String(input.query ?? ""));
-    if (hits.length === 0) return { content: `No passage of ${documents.map((d) => d.label).join(", ")} uses those words. Try other words, or say the technical documents do not cover it.`, isError: false };
-    return { content: hits.map((h) => `${h.ref} | ${h.document}, passage ${h.passage} of ${h.of}\n${h.snippet}`).join("\n\n"), isError: false };
+    if (hits.length === 0) return { content: `No passage of ${neutraliseMarkers(documents.map((d) => d.label).join(", "))} uses those words. Try other words, or say the technical documents do not cover it.`, isError: false };
+    return {
+      content: hits.map((h) => `${h.ref} | ${neutraliseMarkers(h.document)}, passage ${h.passage} of ${h.of}\n${wrapUploadedContent(`${h.document}, passage ${h.passage} of ${h.of} (search snippet)`, h.snippet)}`).join("\n\n"),
+      isError: false,
+    };
   }
   if (name === "read_technical_document") {
     const passage = readPassage(documents, String(input.ref ?? ""));
     if (!passage) return { content: `"${String(input.ref ?? "")}" is not a passage of this project's technical documents. Use search_technical_documents to find one.`, isError: true };
     return {
-      content: `${passage.document}, passage ${passage.passage} of ${passage.of}\n\n${passage.text}`,
+      content: `${neutraliseMarkers(passage.document)}, passage ${passage.passage} of ${passage.of}\n\n${wrapUploadedContent(`${passage.document}, passage ${passage.passage} of ${passage.of}`, passage.text)}`,
       isError: false,
       document: { documentId: passage.documentId, document: passage.document, passage: passage.passage, of: passage.of },
     };
@@ -259,7 +268,10 @@ export async function runAssistantTool(
     if (name === "search_technical_documents" || name === "read_technical_document") return runTechnicalDocumentTool(tenantId, runId, name, input);
     const files = await dataFiles(tenantId, runId);
     if (name === "list_data_files") {
-      return { content: files.length ? files.map((f) => `${f.id}: ${f.name}`).join("\n") : "This project has no data files that tables can be built from.", isError: false };
+      return {
+        content: files.length ? wrapUploadedContent("this project's data files (id: file name)", files.map((f) => `${f.id}: ${f.name}`).join("\n")) : "This project has no data files that tables can be built from.",
+        isError: false,
+      };
     }
     // Ownership: only a data file of this project.
     const file = files.find((f) => f.id === String(input.data_file_id ?? ""));
@@ -267,7 +279,7 @@ export async function runAssistantTool(
     const dictStatus = await loadVariableDictionaryWithStatus(tenantId, runId, file.id);
     if (!dictStatus.ok) return { content: `The variables of ${file.name} could not be read: ${dictStatus.error}`, isError: true };
     const dict = dictStatus.dictionary;
-    if (name === "find_variables") return { content: searchVariables(dict, String(input.query ?? "")), isError: false };
+    if (name === "find_variables") return { content: wrapUploadedContent(`variables of ${file.name}`, searchVariables(dict, String(input.query ?? ""))), isError: false };
     if (name === "describe_weighting") {
       // Weight variables are hidden from find_variables (they are never rows or columns), which once
       // let the assistant tell a researcher a weighted file had none. This says what is there.
@@ -293,7 +305,7 @@ export async function runAssistantTool(
         );
       }
       lines.push("Analytics (driver analysis and regression) uses the weight only, never the survey design.");
-      return { content: lines.join("\n"), isError: false };
+      return { content: wrapUploadedContent(`weighting and design of ${file.name}`, lines.join("\n")), isError: false };
     }
     if (name !== "build_table") return { content: `Unknown tool "${name}".`, isError: true };
 
@@ -329,7 +341,7 @@ export async function runAssistantTool(
     // counts towards the cap and is listed under the reply even when its figures cannot be read back
     // (Codex B5-F04).
     const unread = (reason: string) => ({
-      content: `The table was built and saved as a draft (id ${built.tableId}, under Cross tabs, All tables), but its figures could not be read back: ${reason}. Do not build it again; tell the researcher to open it there.`,
+      content: `The table was built and saved as a draft (id ${built.tableId}, under Cross tabs, All tables), but its figures could not be read back: ${neutraliseMarkers(reason)}. Do not build it again; tell the researcher to open it there.`,
       isError: true,
       table: { tableId: built.tableId, label: `Table ${built.tableId}`, dataFile: file.name, readBack: false },
     });
@@ -350,7 +362,8 @@ export async function runAssistantTool(
       ...(built.skipped ?? []).map((s) => `Left out: ${s.variable} (${s.reason}).`),
       text.questionsShown < text.questionsTotal ? `Only the first ${text.questionsShown} of ${text.questionsTotal} questions are shown below.` : "",
     ].filter(Boolean);
-    return { content: `${notes.join("\n")}\n\n${text.text}`, isError: false, table: { tableId: built.tableId, label, dataFile: file.name, readBack: true } };
+    // The notes name the file, the table and its variables (uploaded text), so they cannot carry a marker either.
+    return { content: `${neutraliseMarkers(notes.join("\n"))}\n\n${wrapUploadedContent(`table "${label}" from ${file.name}`, text.text)}`, isError: false, table: { tableId: built.tableId, label, dataFile: file.name, readBack: true } };
   } catch (error) {
     return { content: `This could not be done: ${error instanceof Error ? error.message : String(error)}`, isError: true };
   }

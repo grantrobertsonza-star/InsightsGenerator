@@ -5,6 +5,8 @@
 // boundary; the action's own choice of path is what is tested.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("../crosstabs", () => ({
   loadVariableDictionaryWithStatus: vi.fn(),
   buildCrosstab: vi.fn(),
@@ -42,7 +44,7 @@ describe("runDistributionAction reports the method it applied", () => {
   it("a corrected categorical with 26 unlabelled values is one bar per value", async () => {
     const rows = Array.from({ length: 26 }, (_, i) => answerRow(i + 1));
     vi.mocked(loadCrosstab).mockResolvedValue({ result: { weightVar: null, questions: [{ kind: "single", rows: [{ label: "Base", isBase: true, total: { pct: null }, base: [78] }, ...rows] }] } } as never);
-    const r = await runDistributionAction("run-1", "doc-1", "score", null, null);
+    const r = await runDistributionAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "score", null, null);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.result.series[0].bars).toHaveLength(26);
@@ -54,7 +56,7 @@ describe("runDistributionAction reports the method it applied", () => {
     vi.mocked(loadCrosstab).mockResolvedValue({
       result: { weightVar: null, questions: [{ kind: "numeric", rows: [], desc: { n: 78, hist: [{ lo: 0, hi: 9, pct: 40 }, { lo: 10, hi: 19, pct: 60 }] } }] },
     } as never);
-    const r = await runDistributionAction("run-1", "doc-1", "score", null, null);
+    const r = await runDistributionAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "score", null, null);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.result.method).toBe("bins");
@@ -66,7 +68,7 @@ describe("runDistributionAction reports the method it applied", () => {
     vi.mocked(loadCrosstab).mockResolvedValue({
       result: { weightVar: null, columns: [{ name: "Female", n: 13 }, { name: "Male", n: 13 }], questions: [{ kind: "single", rows }] },
     } as never);
-    const r = await runDistributionAction("run-1", "doc-1", "score", null, "gender");
+    const r = await runDistributionAction("00000000-0000-4000-8000-0000000000cc", "doc-1", "score", null, "gender");
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.result.grouped).toBe(true);

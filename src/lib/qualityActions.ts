@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { scoreObjectiveQuality } from "./objectiveQualityScorer";
 import { scoreRecommendationQuality } from "./recommendationQualityScorer";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 export type QualityActionResult =
   { ok: true; message: string } | { ok: false; error: string };
@@ -14,6 +15,7 @@ export async function scoreObjectivesAction(
   force: boolean,
 ): Promise<QualityActionResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const r = await scoreObjectiveQuality(TENANT_ID, runId, { force });
     revalidatePath(`/runs/${runId}`);
@@ -48,6 +50,7 @@ export async function scoreRecommendationsAction(
   runId: string,
 ): Promise<QualityActionResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const n = await scoreRecommendationQuality(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);

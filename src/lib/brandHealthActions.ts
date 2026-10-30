@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { withTenant } from "./db";
-import { assertRunOwned } from "./runOwnership";
+import { RUN_NOT_AVAILABLE, assertRunOwned, runAccessible } from "./runOwnership";
 import { findingProvenanceAvailable, recordHumanReview } from "./findingProvenance";
 import { loadVariableDictionary, loadVariableDictionaryWithStatus } from "./crosstabs";
 import { defaultWeight } from "./starterTables";
@@ -177,6 +177,7 @@ export async function loadBrandHealthCandidatesAction(
   documentId: string,
 ): Promise<{ ok: true; variables: VariableInfo[]; sets: VariableSet[]; weightVar: string | null } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const dict = await loadVariableDictionary(TENANT_ID, runId, documentId);
     const usable = dict.variables.filter((v) => !v.weightLike && !v.text && v.nDistinct >= 2);
@@ -194,7 +195,8 @@ export async function loadBrandCategoriesAction(
   weightVar: string | null,
 ): Promise<{ ok: true; brands: string[] } | Fail> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const res = await runDistributionAction(runId, documentId, brandVar, weightVar, null);
   if (!res.ok) return { ok: false, error: res.error };
   return { ok: true, brands: res.result.series[0]?.bars.map((b) => b.label) ?? [] };
@@ -211,6 +213,7 @@ export async function loadBrandSetMembersAction(
   setKey: string,
 ): Promise<{ ok: true; members: BrandSetMember[]; setLabel: string } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const dictStatus = await loadVariableDictionaryWithStatus(TENANT_ID, runId, documentId);
     if (!dictStatus.ok) return { ok: false, error: `This file's saved set-up could not be read: ${dictStatus.error}` };
@@ -425,6 +428,7 @@ export async function buildBrandHealthDashboardAction(
   waveLabel?: string | null,
 ): Promise<{ ok: true; dashboard: BrandHealthDashboard } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const parsed = normaliseBrandHealthMapping(sentMapping);
     if (!parsed.ok) return parsed;
@@ -641,7 +645,8 @@ export async function buildBrandHealthWaveDashboardsAction(
   mapping: BrandHealthMapping,
 ): Promise<{ ok: true; dashboards: BrandHealthDashboard[] } | Fail> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const dashboards: BrandHealthDashboard[] = [];
   for (const f of files) {
     const res = await buildBrandHealthDashboardAction(runId, f.documentId, mapping, f.label);
@@ -656,6 +661,7 @@ export async function loadBrandHealthModuleAction(
   documentId: string,
 ): Promise<{ ok: true; mapping: BrandHealthMapping | null } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const stored = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ mapping: unknown }>(
@@ -681,6 +687,7 @@ export async function saveBrandHealthModuleAction(
   sentMapping: BrandHealthMapping,
 ): Promise<{ ok: true } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const parsed = normaliseBrandHealthMapping(sentMapping);
     if (!parsed.ok) return parsed;
@@ -902,6 +909,7 @@ export async function brandHealthFindingStatusAction(
   key: string,
 ): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

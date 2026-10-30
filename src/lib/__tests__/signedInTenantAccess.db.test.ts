@@ -232,9 +232,10 @@ describe.skipIf(!TEST_DATABASE_URL)("signed-in tenant access (actual actions and
 
   it("user B cannot change user A's finding through the actual action; user A can", async () => {
     as("token-b");
-    // Row-level security hides A's row from B, so the update matches nothing, and the action says
-    // the finding is not in the project (Codex TR500-F03) rather than acknowledging a save.
-    expect(await m.findings.setFindingStatus(runA, findingA, "rejected")).toMatchObject({ ok: false, error: expect.stringMatching(/no longer in this project/) });
+    // A's project is not B's, so the action refuses at its entry, exactly as for a missing project
+    // (SEC2), rather than acknowledging a save. (Before SEC2 the update matched nothing and the
+    // action said the finding was not in the project, Codex TR500-F03.)
+    expect(await m.findings.setFindingStatus(runA, findingA, "rejected")).toMatchObject({ ok: false, error: "That project is not available." });
     expect((await q(`select status from findings where id = $1`, [findingA])).rows[0].status).toBe("accepted");
     jar = new Map();
     as("token-a");

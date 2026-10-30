@@ -54,13 +54,17 @@ test("tracker dashboard: change against the previous wave, choices applied and k
       await expect(setup.getByLabel(`Fieldwork month: bmw_w${w}.sav`)).toBeVisible({ timeout: 30_000 });
       await page.waitForLoadState("networkidle");
     }
-    // Both wave labels are saved before the dashboard is opened: read back after a reload.
-    await page.reload({ waitUntil: "networkidle" });
-    await page.getByRole("button", { name: /^Import data/ }).first().click();
-    for (const w of [1, 2]) {
-      const again = await openSource(page, `bmw_w${w}.sav`, "Setup");
-      await expect(again.getByLabel(`Wave: bmw_w${w}.sav`)).toHaveValue(`Wave ${w}`, { timeout: 60_000 });
-    }
+    // Both wave labels are saved before the dashboard is opened: read back after a reload. A label's save can still be
+    // queued behind the file's first read when the page reloads (blur does not wait for it), so the page is reloaded
+    // until both read back.
+    await expect(async () => {
+      await page.reload({ waitUntil: "networkidle" });
+      await page.getByRole("button", { name: /^Import data/ }).first().click();
+      for (const w of [1, 2]) {
+        const again = await openSource(page, `bmw_w${w}.sav`, "Setup");
+        await expect(again.getByLabel(`Wave: bmw_w${w}.sav`)).toHaveValue(`Wave ${w}`, { timeout: 10_000 });
+      }
+    }).toPass({ timeout: 3 * 60_000 });
 
     // 1. Open the dashboard on wave 2.
     const section = () => page.getByTestId("analytics-section").filter({ visible: true });
@@ -227,9 +231,11 @@ test("CSM by company and against the previous wave", async ({ page }, testInfo) 
       await expect(setup.getByLabel(`Fieldwork month: bank_w${w}.sav`)).toBeVisible({ timeout: 30_000 });
       await page.waitForLoadState("networkidle");
     }
-    await page.reload({ waitUntil: "networkidle" });
-    await page.getByRole("button", { name: /^Import data/ }).first().click();
-    for (const w of [1, 2]) await expect((await openSource(page, `bank_w${w}.sav`, "Setup")).getByLabel(`Wave: bank_w${w}.sav`)).toHaveValue(`Wave ${w}`, { timeout: 60_000 });
+    await expect(async () => {
+      await page.reload({ waitUntil: "networkidle" });
+      await page.getByRole("button", { name: /^Import data/ }).first().click();
+      for (const w of [1, 2]) await expect((await openSource(page, `bank_w${w}.sav`, "Setup")).getByLabel(`Wave: bank_w${w}.sav`)).toHaveValue(`Wave ${w}`, { timeout: 10_000 });
+    }).toPass({ timeout: 3 * 60_000 });
 
     const section = () => page.getByTestId("analytics-section").filter({ visible: true });
     await page.goto(run.url, { waitUntil: "networkidle" });

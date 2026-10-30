@@ -30,10 +30,29 @@ vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequest
 // returned, not thrown); throws: it throws, as when logging the failure itself fails.
 // readFail: the next tenant read fails once (a database outage after the change committed).
 const state = vi.hoisted(() => ({ fail: false, throws: false, during: null as null | (() => Promise<void>), insightRuns: 0, readFail: false }));
+// The outage is injected into the first read made after the action's entry check (SEC2: the
+// action first confirms the project is the signed-in tenant's, through runOwnership.runAccessible,
+// which reads too); that next read is the owed-refresh marker lookup this test is about.
 vi.mock("../db", async (original) => {
   const actual = await original<typeof import("../db")>();
   return { ...actual, withTenantRead: async (...args: Parameters<typeof actual.withTenantRead>) => {
-    if (state.readFail) { state.readFail = false; throw new Error("Synthetic marker lookup outage"); }
+    const [tenantId, callback] = args;
+    if (state.readFail) {
+      return actual.withTenantRead(tenantId, async (client) => {
+        const isEntryCheck = { value: false };
+        const watched = new Proxy(client, {
+          get(target, key, receiver) {
+            if (key !== "query") return Reflect.get(target, key, receiver);
+            return (text: unknown, ...rest: unknown[]) => {
+              if (typeof text === "string" && /^select id from runs where id = \$1 and tenant_id = \$2/.test(text)) isEntryCheck.value = true;
+              else if (!isEntryCheck.value) { state.readFail = false; throw new Error("Synthetic marker lookup outage"); }
+              return (target.query as (...a: unknown[]) => unknown).call(target, text, ...rest);
+            };
+          },
+        });
+        return callback(watched);
+      });
+    }
     return actual.withTenantRead(...args);
   } };
 });

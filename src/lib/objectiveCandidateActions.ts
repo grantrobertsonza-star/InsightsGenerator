@@ -8,6 +8,7 @@ import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { refreshObjectiveValidationQuietly } from "./objectiveValidator";
 import { normalizeObjectiveLine, objectiveIdentityKey, parseObjectiveLines } from "./objectiveLines";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 /** A refused objective action, returned rather than thrown so its wording reaches the researcher. */
 // On a conflict, `currentText` is the objective's wording as stored now (null when it was deleted),
@@ -26,6 +27,7 @@ const REVIEW_EDIT_CONFLICT =
  */
 export async function acceptObjectiveCandidate(runId: string, candidateId: string, editedText?: string, expectedText?: string): Promise<ObjectiveActionResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE, conflict: false };
   const refused = await withTenant(TENANT_ID, async (client): Promise<ObjectiveActionResult | null> => {
     const owned = await client.query("select id from runs where id = $1 and tenant_id = $2 for update", [runId, TENANT_ID]);
     if (!owned.rowCount) return { ok: false, error: "This project was not found.", conflict: false };
@@ -222,6 +224,7 @@ export async function restoreObjectiveCandidate(runId: string, candidateId: stri
  */
 export async function addOwnObjectiveCandidate(runId: string, candidateText: string): Promise<ObjectiveActionResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE, conflict: false };
   const text = normalizeObjectiveLine(candidateText);
   const key = objectiveIdentityKey(text);
   if (!key) return { ok: false, error: "Type an objective to add.", conflict: false };
@@ -313,6 +316,7 @@ export async function regenerateObjectiveCandidates(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await generateObjectiveCandidates(TENANT_ID, runId);
     await refreshObjectiveQuality(TENANT_ID, runId);

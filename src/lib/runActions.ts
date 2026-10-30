@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 import { finishProjectStorageCleanup, PROJECT_CLEANUP_MIGRATION, projectCleanupAvailable, projectStoragePaths, queueProjectStorageCleanup } from "./projectStorageCleanup";
 
 export type DeleteRunResult = { ok: true; cleanupPending: boolean } | { ok: false; error: string };
@@ -16,6 +17,7 @@ export type DeleteRunResult = { ok: true; cleanupPending: boolean } | { ok: fals
  */
 export async function deleteRun(runId: string): Promise<DeleteRunResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   let cleanupId: string | null;
   try {
     cleanupId = await withTenant(TENANT_ID, async (client) => {
@@ -60,6 +62,7 @@ export type RenameResult = { ok: true } | { ok: false; error: string; conflict?:
  */
 export async function renameRun(runId: string, name: string, opened: string | null): Promise<RenameResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const trimmed = typeof name === "string" ? name.trim() : "";
   if (!trimmed) return { ok: false, error: "A project needs a name." };
   const result = await withTenant(TENANT_ID, async (client): Promise<RenameResult> => {

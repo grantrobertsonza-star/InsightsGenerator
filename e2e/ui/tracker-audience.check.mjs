@@ -57,9 +57,13 @@ test("tracker dashboard page 05: age profile and media use of BMW recent acquire
 
     // 1. Page 05 is a button in the menu.
     const section = () => page.getByTestId("analytics-section").filter({ visible: true });
-    await page.goto(run.url, { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: /^Analytics/ }).first().click();
-    await section().getByTestId("analytics-file-select").selectOption({ label: "Wave 1: bmw_w1.sav" });
+    // The wave label's save can still be on its way when the page is opened (blur does not wait for it); the page shows
+    // it once saved, so the page is opened again until the labelled file is there.
+    await expect(async () => {
+      await page.goto(run.url, { waitUntil: "networkidle" });
+      await page.getByRole("button", { name: /^Analytics/ }).first().click();
+      await section().getByTestId("analytics-file-select").selectOption({ label: "Wave 1: bmw_w1.sav" }, { timeout: 10_000 });
+    }).toPass({ timeout: 2 * 60_000 });
     await section().getByTestId("tracker-dashboards").getByRole("button", { name: /^Brand tracking dashboard/ }).click({ timeout: 60_000 });
     const dash = page.getByRole("dialog", { name: "Brand tracking dashboard" });
     await expect(dash.getByTestId("tracker-compare")).toBeVisible({ timeout: 3 * 60_000 });

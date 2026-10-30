@@ -15,10 +15,16 @@
 // A deleted run makes a later child insert fail on its foreign key and a later update match no
 // row, so it cannot be turned into a cross-tenant write either way.
 //
+// SEC2: every exported server action that takes a run id calls runAccessible (or
+// assertRunAccessible) at its entry, before any database or library call, so library code it
+// delegates to never sees another tenant's run id. That entry check is a plain read; writes keep
+// their own in-transaction checks (assertRunOwned with the writing client) where they have them.
+//
 // src/lib/__tests__/tenantOwnershipCoverage.test.ts fails when an entry point writes without
-// this scoping; src/lib/__tests__/tenantScopingWithoutRls.db.test.ts proves it on a real database
+// this scoping or an action skips the entry check; src/lib/__tests__/tenantScopingWithoutRls.db.test.ts proves it on a real database
 // through a role that bypasses row-level security.
 import type { PoolClient } from "pg";
+import { withTenantRead } from "./db";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -70,4 +76,22 @@ export async function assertProgramOwned(client: PoolClient, tenantId: string, p
     UUID.test(programId) &&
     (await client.query("select id from programs where id = $1 and tenant_id = $2", [programId, tenantId])).rows.length === 1;
   if (!found) throw new ProgramNotFoundError();
+}
+
+/**
+ * SEC2: the entry check for a server action handed a run id by the browser. True when the run
+ * exists, belongs to `tenantId` and is not a project's bin (a bin is never a project anyone opens).
+ * A malformed id is answered without a database call. Non-locking, in its own read: an action that
+ * writes keeps its in-transaction check as well (see the note at the top on why an earlier check
+ * stays true). The caller answers false with its usual refusal and RUN_NOT_AVAILABLE, so another
+ * tenant's run and a missing run look the same.
+ */
+export async function runAccessible(tenantId: string, runId: string): Promise<boolean> {
+  if (typeof runId !== "string" || !UUID.test(runId)) return false;
+  return withTenantRead(tenantId, (client) => runOwned(client, tenantId, runId, { excludeBin: true }));
+}
+
+/** As runAccessible, for an action that reports failure by throwing: throws RunNotFoundError. */
+export async function assertRunAccessible(tenantId: string, runId: string): Promise<void> {
+  if (!(await runAccessible(tenantId, runId))) throw new RunNotFoundError();
 }

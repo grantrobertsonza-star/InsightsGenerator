@@ -80,13 +80,14 @@ describe.skipIf(!TEST_DATABASE_URL)("COD500-F01/F02 coding writes check the tran
       const b = await transcript(B, runB);
       const { saveCodeMetaAction, saveTurnNoteAction } = await actions();
       as(A);
-      // Naming B's project or A's own project: either way the transcript is not A's.
-      for (const run of [runB, runA]) {
-        const m = await saveCodeMetaAction(run, b.doc, [{ name: "Price", theme: "Cost", note: "n", keywords: "k" }]);
-        expect(m).toEqual({ ok: false, error: "That transcript is not in this project." });
-        const n = await saveTurnNoteAction(run, b.doc, 0, "A's note");
-        expect(n).toEqual({ ok: false, error: "That transcript is not in this project." });
-      }
+      // Naming B's project: refused at the action's entry, like a missing project (SEC2).
+      expect(await saveCodeMetaAction(runB, b.doc, [{ name: "Price", theme: "Cost", note: "n", keywords: "k" }])).toEqual({ ok: false, error: "That project is not available." });
+      expect(await saveTurnNoteAction(runB, b.doc, 0, "A's note")).toEqual({ ok: false, error: "That project is not available." });
+      // Naming A's own project: the transcript is still not A's (COD500-F01's own check).
+      const m = await saveCodeMetaAction(runA, b.doc, [{ name: "Price", theme: "Cost", note: "n", keywords: "k" }]);
+      expect(m).toEqual({ ok: false, error: "That transcript is not in this project." });
+      const n = await saveTurnNoteAction(runA, b.doc, 0, "A's note");
+      expect(n).toEqual({ ok: false, error: "That transcript is not in this project." });
       expect(await meta(b.doc)).toEqual([]);
       expect(await notes(b.doc)).toEqual([]);
       // B, the owner, saves both keys normally afterwards.

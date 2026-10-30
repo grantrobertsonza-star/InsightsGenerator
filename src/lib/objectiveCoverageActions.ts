@@ -7,6 +7,7 @@ import { generateObjectiveCandidates } from "./objectiveFramer";
 import { coverageFreshnessNote, insightsNoItemCites, loadObjectiveCoverage } from "./objectiveCoverage";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -23,6 +24,7 @@ async function logError(runId: string, event: string, message: string) {
 /** Re-checks every stated objective and decision against the accepted insights. */
 export async function checkObjectiveCoverage(runId: string): Promise<Result> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await generateObjectiveValidation(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
@@ -41,6 +43,7 @@ export async function checkObjectiveCoverage(runId: string): Promise<Result> {
  */
 export async function suggestObjectivesFromUnmatched(runId: string): Promise<Result> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     // "Not cited by any objective" is only known from coverage that is current (CE-1): an out-of-date
     // check may miss an insight accepted since, or cite one since rejected.

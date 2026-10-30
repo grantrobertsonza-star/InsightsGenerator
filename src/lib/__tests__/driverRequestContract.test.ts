@@ -10,6 +10,8 @@ import { driverAnalysis } from "../driverAnalysis";
 import { DEFAULT_BOOTSTRAP, MAX_BOOTSTRAP, MIN_BOOTSTRAP, parseDriverRequest } from "../driverRequest";
 
 const reads = vi.hoisted(() => ({ file: 0, stats: 0 }));
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
@@ -117,7 +119,7 @@ describe("driverAnalysis: the method described is the method that ran (GT1000-F0
   });
 });
 
-describe("driver actions refuse a malformed request before any read or write (GT1000-F02)", () => {
+describe("driver actions refuse a malformed request before any read or write of the project's data (GT1000-F02)", () => {
   beforeEach(() => {
     reads.file = 0;
     reads.stats = 0;
@@ -136,7 +138,7 @@ describe("driver actions refuse a malformed request before any read or write (GT
     expect(reads.stats).toBe(0);
   });
 
-  it("save: a result whose request is malformed is refused before the database is touched", async () => {
+  it("save: a result whose request is malformed is refused before anything of the project is read or written (the entry ownership check aside)", async () => {
     const { saveDriverAnalysisAction } = await import("../driverActions");
     const s = sample();
     const result = driverAnalysis({ ...s, outcome: "continuous", bootstrap: 20, seed: 1 });

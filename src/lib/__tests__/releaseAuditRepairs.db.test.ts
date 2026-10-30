@@ -292,8 +292,9 @@ describe.skipIf(!TEST_DATABASE_URL)("release audit repairs RR-F01, RR-F02, RR-F0
       const { deleteRun } = await import("../runActions");
       const foreign = await newRun("Theirs", otherTenant);
       await newDoc(foreign, "report", "text", { t: otherTenant });
-      expect(await deleteRun(foreign)).toEqual({ ok: false, error: "That project was not found. Nothing was deleted." });
-      expect(await deleteRun(randomUUID())).toMatchObject({ ok: false });
+      // SEC2: both are refused at the action's entry with the same answer.
+      expect(await deleteRun(foreign)).toEqual({ ok: false, error: "That project is not available." });
+      expect(await deleteRun(randomUUID())).toEqual({ ok: false, error: "That project is not available." });
       expect((await db.pool.query("select 1 from runs where id=$1", [foreign])).rowCount).toBe(1);
       expect(storage.removed).toEqual([]);
       expect(await pending()).toEqual([]);

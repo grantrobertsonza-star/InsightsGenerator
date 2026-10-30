@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { finishDocumentStorageCleanup } from "./documentStorageCleanup";
 import { requireRequestContext, requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, assertRunAccessible, runAccessible } from "./runOwnership";
 import { eraseRemovedDocument, listBin, removeDocumentToBin, restoreDocumentFromBin } from "./documentBin";
 
 /**
@@ -14,6 +15,7 @@ import { eraseRemovedDocument, listBin, removeDocumentToBin, restoreDocumentFrom
  */
 export async function deleteDocument(runId: string, documentId: string) {
   const context = await requireRequestContext();
+  await assertRunAccessible(context.tenantId, runId);
   await removeDocumentToBin(context.tenantId, runId, documentId, context.userId);
   revalidatePath(`/runs/${runId}`);
 }
@@ -23,6 +25,7 @@ type BinResult = { ok: true; message: string } | { ok: false; error: string };
 /** Puts a removed file back, with its findings, review decisions and notes. */
 export async function restoreDocumentAction(runId: string, removalId: string): Promise<BinResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const { findings, linksWaiting, linksLost } = await restoreDocumentFromBin(TENANT_ID, runId, removalId);
     revalidatePath(`/runs/${runId}`);
@@ -43,6 +46,7 @@ export async function restoreDocumentAction(runId: string, removalId: string): P
 /** Erases a removed file for good (see documentBin.eraseRemovedDocument). */
 export async function eraseDocumentAction(runId: string, documentId: string): Promise<BinResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const { linksRemoved } = await eraseRemovedDocument(TENANT_ID, runId, documentId);
     revalidatePath(`/runs/${runId}`);
@@ -64,6 +68,7 @@ export async function eraseDocumentAction(runId: string, documentId: string): Pr
  */
 export async function emptyBinAction(runId: string): Promise<BinResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   let erased = 0;
   try {
     for (const item of await listBin(TENANT_ID, runId)) {
@@ -81,6 +86,7 @@ export async function emptyBinAction(runId: string): Promise<BinResult> {
 
 export async function retryDocumentStorageCleanup(runId: string): Promise<{ ok: boolean; error?: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await finishDocumentStorageCleanup(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);

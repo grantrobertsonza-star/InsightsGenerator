@@ -21,8 +21,8 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { pool, withTenantRead } from "./db";
-import { runOwned } from "./runOwnership";
+import { pool } from "./db";
+import { runAccessible } from "./runOwnership";
 import { ACCESS_COOKIE, AuthRejectedError, AuthUnavailableError, ORGANISATION_COOKIE, REFRESH_COOKIE, userForAccessToken } from "./authSession";
 
 export type Membership = { tenantId: string; organisationName: string; role: "owner" | "member" };
@@ -151,5 +151,5 @@ export async function routeRequestContext(): Promise<RequestContext | Response> 
  * directly so the check shares the write's transaction.
  */
 export async function runBelongsToTenant(tenantId: string, runId: string): Promise<boolean> {
-  return withTenantRead(tenantId, (client) => runOwned(client, tenantId, runId, { excludeBin: true }));
+  return runAccessible(tenantId, runId);
 }

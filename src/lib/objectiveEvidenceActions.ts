@@ -14,6 +14,7 @@ import {
   type ItemEvidence,
 } from "./objectiveEvidence";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 import { planMethodologyNote, promoteApprovedPlanTables, promoteEvidenceTable, setPlanLineApproval } from "./analysisPlan";
 
 type Fail = { ok: false; error: string };
@@ -62,6 +63,7 @@ export async function loadObjectiveEvidenceAction(
   | Fail
 > {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     // Counter-review on OBJ-REV-009: read back on every load, not only right after a fresh
     // "Gather evidence" click, so the warning survives a page reload instead of vanishing
@@ -96,6 +98,7 @@ export async function generateObjectiveEvidenceAction(
   runId: string,
 ): Promise<{ ok: true; created: number; items: number; skippedInferred: number; datasets: number; variablesTruncated: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const r = await generateEvidenceQuestions(TENANT_ID, runId);
     return { ok: true, ...r };
@@ -116,6 +119,7 @@ export async function evaluateObjectiveEvidenceAction(
   runId: string,
 ): Promise<{ ok: true; done: number; remaining: number } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const r = await evaluatePending(TENANT_ID, runId, 2);
     revalidatePath(`/runs/${runId}`);
@@ -131,6 +135,7 @@ export async function editObjectiveEvidenceAction(
   patch: { question?: string; request_text?: string; supports_if?: string; against_if?: string; excluded?: boolean },
 ): Promise<{ ok: true } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await editEvidenceQuestion(TENANT_ID, runId, id, patch);
     return { ok: true };
@@ -141,6 +146,7 @@ export async function editObjectiveEvidenceAction(
 
 export async function retryObjectiveEvidenceAction(runId: string, id?: string): Promise<{ ok: true } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await retryEvidence(TENANT_ID, runId, id);
     return { ok: true };
@@ -153,6 +159,7 @@ export async function retryObjectiveEvidenceAction(runId: string, id?: string): 
 /** Moves an evidence table into the Cross tabs draft set, where it can be edited and committed into findings like any other. */
 export async function promoteEvidenceTableAction(runId: string, tableId: string): Promise<{ ok: true } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     // CE-6: the plan line the table answers is recorded on it, so its findings are "planned".
     const moved = await withTenant(TENANT_ID, (client) => promoteEvidenceTable(client, runId, tableId));
@@ -179,6 +186,7 @@ export async function listEvidenceTablesAction(
   documentId: string,
 ): Promise<{ ok: true; tables: EvidenceTableListing[] } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const tables = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<EvidenceTableListing>(
@@ -205,6 +213,7 @@ const isLineList = (v: unknown): v is { id: string; expectedRevision: number }[]
 /** CE-6: approves plan lines at the wording shown (or withdraws approval). All or nothing. */
 export async function setPlanLineApprovalAction(runId: string, lines: unknown, approve: unknown): Promise<{ ok: true; changed: number } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   if (!isLineList(lines) || typeof approve !== "boolean") return { ok: false, error: "The plan lines to approve were not understood. Reload and try again." };
   try {
     return { ok: true, ...(await setPlanLineApproval(TENANT_ID, runId, lines, approve)) };
@@ -219,6 +228,7 @@ export async function promoteApprovedPlanTablesAction(
   documentId: string,
 ): Promise<{ ok: true; moved: number; alreadyInCrossTabs: number; withoutTable: number; approved: number; notCurrent: number } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   if (typeof documentId !== "string" || !documentId) return { ok: false, error: "Choose a data file." };
   try {
     const r = await promoteApprovedPlanTables(TENANT_ID, runId, documentId);

@@ -10,6 +10,7 @@ import { syncResearchObjective } from "./runSync";
 import { parseObjectiveLines, normalizeObjectiveLine, objectiveIdentityKey } from "./objectiveLines";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, assertRunAccessible, runAccessible } from "./runOwnership";
 import { loadFailedBriefFill, type FailedBriefFill } from "./briefFillRecord";
 import { rereadRationale } from "./briefFillText";
 import type { PoolClient } from "pg";
@@ -174,6 +175,7 @@ async function priorFillsOf(client: PoolClient, runId: string, documentIds: stri
 
 export async function saveRunContext(runId: string, formData: FormData): Promise<RunContextSaveResult> {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   const clean = (key: string) => {
     const v = String(formData.get(key) ?? "").trim();
     return v.length > 0 ? v : null;
@@ -581,7 +583,8 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
 /** The Set objectives form's action (useActionState passes the previous result first). */
 export async function saveRunContextFromForm(runId: string, _previous: RunContextSaveResult | null, formData: FormData): Promise<RunContextSaveResult> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   return saveRunContext(runId, formData);
 }
 
@@ -600,7 +603,8 @@ export async function saveStatedObjectiveEdit(
   target: StatedObjectiveTarget,
 ): Promise<{ ok: true } | { ok: false; error: string; conflict: boolean }> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE, conflict: false };
   try {
     await editStatedObjective(runId, oldText, newText, target);
     return { ok: true };
@@ -650,6 +654,7 @@ export async function editStatedObjective(runId: string, oldText: string, newTex
     throw new ObjectiveEditConflict(EDIT_CONFLICT_MESSAGE);
   }
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   // OBJ-SET-M02: only trimming here, instead of running the replacement through the same
   // normalizeObjectiveLine stripping parseObjectiveLines applies on every read, let a
   // bulleted/numbered edit ("- B", "1. B") get stored as typed while display (which always

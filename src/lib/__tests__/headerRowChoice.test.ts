@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("../db", () => ({ withTenant: vi.fn(), withTenantRead: vi.fn() }));
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -90,7 +92,7 @@ describe("saveDataSetupAction refuses an invalid header row before anything is w
 
   it("an invalid value is refused with the reason, and the database is not touched", async () => {
     for (const bad of [-1, 15, 2.5, "3"]) {
-      const r = await saveDataSetupAction("run-1", "doc-1", { ...base, headerRowsSkipped: bad } as unknown as DataSetup);
+      const r = await saveDataSetupAction("00000000-0000-4000-8000-0000000000cc", "doc-1", { ...base, headerRowsSkipped: bad } as unknown as DataSetup);
       expect(r).toEqual({ ok: false, error: expect.stringMatching(/header row must be a row from 1 to 15/) });
     }
     expect(withTenant).not.toHaveBeenCalled();
@@ -108,7 +110,7 @@ describe("saveDataSetupAction refuses an invalid header row before anything is w
         },
       } as never),
     );
-    const r = await saveDataSetupAction("run-1", "doc-1", { ...base, headerRowsSkipped: 2 });
+    const r = await saveDataSetupAction("00000000-0000-4000-8000-0000000000cc", "doc-1", { ...base, headerRowsSkipped: 2 });
     expect(r).toEqual({ ok: false, error: expect.stringMatching(/Only CSV, TSV, text and Excel files have a header row/) });
     expect(writes).toEqual([]);
   });

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { loadDocumentFile, loadVariableDictionaryWithStatus, overlayFor } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { withTenant, withTenantRead } from "./db";
-import { assertRunOwned } from "./runOwnership";
+import { RUN_NOT_AVAILABLE, assertRunOwned, runAccessible } from "./runOwnership";
 import { findingProvenanceAvailable, recordHumanReview } from "./findingProvenance";
 import type { LabelOverlay } from "./labelOverlay";
 import { canonicalJson } from "./researchQualityRules";
@@ -174,6 +174,7 @@ export async function runScatterAction(
   weightVar: string | null,
 ): Promise<{ ok: true; result: ScatterResult } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const d = await readPairs(TENANT_ID, runId, documentId, xVar, yVar, weightVar);
     const pairs = d.xs.map((v, i) => [v, d.ys[i]] as [number, number]);
@@ -286,6 +287,7 @@ export async function addScatterFindingAction(
   weightVar: string | null,
 ): Promise<{ ok: true; added: boolean; updated: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const d = await readPairs(TENANT_ID, runId, documentId, xVar, yVar, weightVar);
     const finding = scatterFinding({ x: d.xInfo, y: d.yInfo, xs: d.xs, ys: d.ys, ws: d.ws, weightVar: d.ws ? weightVar : null, casesInFile: d.casesInFile });
@@ -412,6 +414,7 @@ export async function scatterFindingStatusAction(
   weightVar: string | null,
 ): Promise<{ ok: true; committed: boolean; current: boolean | null; wordingReview: ScatterWordingReview | null } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const posted = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ basis: string | null; without_hash: boolean; wording_review: ScatterWordingReview | null }>(

@@ -8,6 +8,8 @@
 // reimplementation of the segment-flattening logic.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: vi.fn() } } }));
 vi.mock("../npsActions", () => ({ runNpsAction: vi.fn() }));
 
@@ -85,7 +87,7 @@ describe("runWaveNpsAction preserves per-wave design metadata (overnight queue, 
       { documentId: "doc-3", filename: "w3.csv", wave: "Wave 3", waveDate: null, uploadedAt: "2026-03-01" },
     ];
 
-    const r = await runWaveNpsAction("run-1", files, "nps", null);
+    const r = await runWaveNpsAction("00000000-0000-4000-8000-0000000000cc", files, "nps", null);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 

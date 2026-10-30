@@ -16,6 +16,7 @@ import {
   type SavedDriverAnalysis,
 } from "./drivers";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 type Fail = { ok: false; error: string };
 
@@ -36,6 +37,7 @@ export async function runDriverAnalysisAction(
   request: DriverRequest,
 ): Promise<{ ok: true; report: DriverReport } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, report: await runDriverAnalysisFor(TENANT_ID, runId, documentId, request) };
   } catch (error) {
@@ -50,6 +52,7 @@ export async function saveDriverAnalysisAction(
   report: DriverReport,
 ): Promise<{ ok: true; id: string } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const id = await saveDriverAnalysis(TENANT_ID, runId, documentId, title, report);
     revalidatePath(`/runs/${runId}`);
@@ -64,6 +67,7 @@ export async function listDriverAnalysesAction(
   documentId: string,
 ): Promise<{ ok: true; items: SavedDriverAnalysis[] } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, items: await listDriverAnalyses(TENANT_ID, runId, documentId) };
   } catch (error) {
@@ -73,6 +77,7 @@ export async function listDriverAnalysesAction(
 
 export async function deleteDriverAnalysisAction(runId: string, id: string): Promise<{ ok: true } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await deleteDriverAnalysis(TENANT_ID, runId, id);
     revalidatePath(`/runs/${runId}`);
@@ -87,6 +92,7 @@ export async function addDriverFindingsAction(
   analysisId: string,
 ): Promise<{ ok: true; added: number; alreadyPosted: number } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const { added, alreadyPosted } = await addDriverFindings(TENANT_ID, runId, analysisId);
     if (added > 0) after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -99,6 +105,7 @@ export async function addDriverFindingsAction(
 
 export async function removeDriverFindingsAction(runId: string, analysisId: string): Promise<{ ok: true; removed: number } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const removed = await removeDriverFindings(TENANT_ID, runId, analysisId);
     revalidatePath(`/runs/${runId}`);
@@ -110,6 +117,7 @@ export async function removeDriverFindingsAction(runId: string, analysisId: stri
 
 export async function driverFindingCountsAction(runId: string): Promise<{ ok: true; counts: Record<string, number> } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, counts: Object.fromEntries(await driverFindingCounts(TENANT_ID, runId)) };
   } catch (error) {

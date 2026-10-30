@@ -8,6 +8,7 @@ import { loadIndicatorAnalytics, loadIndicatorWorkspace, type IndicatorAnalytics
 import { MAX_TREND_PANELS } from "./indicatorAnalyticsFigures";
 import { indicatorPeriodValid } from "./indicatorLayouts";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const failure = (error: unknown) => (error instanceof IndicatorDocumentNotFoundError ? error.message : `The indicator dashboard could not be loaded: ${error instanceof Error ? error.message : String(error)}`);
@@ -15,6 +16,7 @@ const failure = (error: unknown) => (error instanceof IndicatorDocumentNotFoundE
 export async function indicatorWorkspaceAction(runId: string): Promise<{ ok: true; workspace: IndicatorWorkspace } | { ok: false; error: string }> {
   if (!UUID.test(runId)) return { ok: false, error: "That project could not be found." };
   const tenantId = await requireTenantId();
+  if (!(await runAccessible(tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, workspace: await loadIndicatorWorkspace(tenantId, runId) };
   } catch (error) {
@@ -51,6 +53,7 @@ export async function indicatorAnalyticsAction(runId: string, request: Indicator
   const checked = checkedRequest(request);
   if (!UUID.test(runId) || !checked) return { state: "error", message: "The dashboard request could not be read. Reload the page and try again." };
   const tenantId = await requireTenantId();
+  if (!(await runAccessible(tenantId, runId))) return { state: "error", message: RUN_NOT_AVAILABLE };
   try {
     return await loadIndicatorAnalytics(tenantId, runId, checked);
   } catch (error) {

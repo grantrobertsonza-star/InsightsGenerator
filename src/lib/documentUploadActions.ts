@@ -6,6 +6,7 @@ import { ingestOutputFiles } from "./outputIngest";
 import { readContextDocument } from "./extractFindings";
 import { DuplicateUploadError, INSTRUMENT_TYPES, StorageWriteError, storeUploadedDocument, markDocumentProcessingStatus, type InstrumentTypeChoice } from "./documentUpload";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 import { saveSourceRoles } from "./researchQualityRepository";
 import { readIndicatorDocument } from "./indicatorData";
 
@@ -74,6 +75,7 @@ const SET_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  */
 export async function uploadDocumentsAction(runId: string, formData: FormData): Promise<UploadResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE, added: [] };
   const files = (name: string) => (formData.getAll(name) as File[]).filter((f) => f instanceof File && f.size > 0);
   const reports = files("reportFiles");
   const tables = files("tableFiles");

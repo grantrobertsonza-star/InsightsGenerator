@@ -7,6 +7,7 @@ import { recordHumanEdit, recordHumanReview, reviewActionForStatus } from "./fin
 import { editFindingWordingTx, revertFindingWordingTx, type WordingEditResult } from "./findingWording";
 import { verifyAfterGenerate } from "./verifyAfterGenerate";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 // REP-IN-002: every function below is an explicit researcher action, so each records its own
 // provenance (findingProvenance.ts) in the same transaction as the change. A status choice is a
@@ -43,6 +44,7 @@ class MissingFindings extends Error {
 
 export async function setFindingStatus(runId: string, findingId: string, status: "accepted" | "rejected" | "pending"): Promise<FindingEditResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   if (!(STATUSES as readonly unknown[]).includes(status)) return { ok: false, error: `"${String(status)}" is not a review status. Nothing was saved.` };
   if (!isId(runId) || !isId(findingId)) return { ok: false, error: GONE };
   const saved = await withTenant(TENANT_ID, async (client) => {
@@ -74,6 +76,7 @@ export async function setManyFindingStatuses(
   status: "accepted" | "rejected" | "pending"
 ): Promise<FindingEditResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   if (!(STATUSES as readonly unknown[]).includes(status)) return { ok: false, error: `"${String(status)}" is not a review status. Nothing was saved.` };
   if (!Array.isArray(findingIds)) return { ok: false, error: "No findings were named. Nothing was saved." };
   const ids = [...new Set(findingIds)];
@@ -133,6 +136,7 @@ async function editField(TENANT_ID: string, runId: string, findingId: string, co
 
 export async function setFindingKind(runId: string, findingId: string, findingKind: FindingKind): Promise<FindingEditResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   if (!KINDS.includes(findingKind)) return { ok: false, error: `Choose one of the finding kinds${findingKind === null ? "; a kind cannot be cleared" : `, not "${String(findingKind)}"`}. Nothing was saved.` };
   return editField(TENANT_ID, runId, findingId, "finding_kind", findingKind);
 }
@@ -140,6 +144,7 @@ export async function setFindingKind(runId: string, findingId: string, findingKi
 /** A blank theme clears it. */
 export async function setFindingTheme(runId: string, findingId: string, theme: string): Promise<FindingEditResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   if (typeof theme !== "string") return { ok: false, error: "A theme must be text. Nothing was saved." };
   const trimmed = theme.trim();
   return editField(TENANT_ID, runId, findingId, "theme", trimmed === "" ? null : trimmed);
@@ -153,6 +158,7 @@ export async function setFindingTheme(runId: string, findingId: string, theme: s
  */
 export async function setFindingNote(runId: string, findingId: string, note: string): Promise<FindingEditResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   if (typeof note !== "string") return { ok: false, error: "A note must be text. Nothing was saved." };
   const trimmed = note.trim();
   return editField(TENANT_ID, runId, findingId, "researcher_note", trimmed === "" ? null : trimmed);
@@ -172,6 +178,7 @@ export async function editFindingWording(
   newText: string,
 ): Promise<WordingEditResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, reason: "missing", error: RUN_NOT_AVAILABLE };
   const result = await withTenant(TENANT_ID, (client) => editFindingWordingTx(client, TENANT_ID, runId, findingId, editedFrom, newText));
   if (result.ok && result.changed) {
     after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -183,6 +190,7 @@ export async function editFindingWording(
 /** Restores the extracted wording (and its grounding) exactly; re-checked the same way as an edit. */
 export async function revertFindingWording(runId: string, findingId: string, editedFrom: string): Promise<WordingEditResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, reason: "missing", error: RUN_NOT_AVAILABLE };
   const result = await withTenant(TENANT_ID, (client) => revertFindingWordingTx(client, TENANT_ID, runId, findingId, editedFrom));
   if (result.ok) {
     after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -197,6 +205,7 @@ export async function revertFindingWording(runId: string, findingId: string, edi
  */
 export async function recheckFindingWording(runId: string, findingId: string): Promise<{ ok: boolean; error?: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   await verifyAfterGenerate(TENANT_ID, runId);
   const has = await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ has: boolean }>(

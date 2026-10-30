@@ -15,6 +15,7 @@ import {
   type IndicatorReadOutcome,
 } from "./indicatorData";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,6 +24,7 @@ export type IndicatorCatalogueResult = { ok: true; catalogue: IndicatorCatalogue
 export async function indicatorCatalogueAction(runId: string, documentId: string): Promise<IndicatorCatalogueResult> {
   if (!UUID.test(runId) || !UUID.test(documentId)) return { ok: false, error: "That file is not in this project." };
   const tenantId = await requireTenantId();
+  if (!(await runAccessible(tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, catalogue: await loadIndicatorCatalogue(tenantId, runId, documentId) };
   } catch (error) {
@@ -44,6 +46,7 @@ export async function indicatorObservationsAction(
   }
   if (codes.length > MAX_INDICATOR_AREAS) return { ok: false, error: `Choose at most ${MAX_INDICATOR_AREAS} areas at once.` };
   const tenantId = await requireTenantId();
+  if (!(await runAccessible(tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return await loadIndicatorObservations(tenantId, runId, documentId, { readId: request.readId, seriesId: request.seriesId, areaCodes: codes });
   } catch (error) {
@@ -55,6 +58,7 @@ export async function indicatorObservationsAction(
 export async function readIndicatorFileAgainAction(runId: string, documentId: string): Promise<IndicatorReadOutcome> {
   if (!UUID.test(runId) || !UUID.test(documentId)) return { ok: false, error: "That file is not in this project.", previousVersionKept: false };
   const tenantId = await requireTenantId();
+  if (!(await runAccessible(tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE, previousVersionKept: false };
   const outcome = await readIndicatorDocument(tenantId, runId, documentId);
   revalidatePath(`/runs/${runId}`);
   return outcome;

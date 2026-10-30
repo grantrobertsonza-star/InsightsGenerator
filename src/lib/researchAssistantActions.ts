@@ -16,6 +16,7 @@ import { refreshSynthesizedInsightQuality } from "./synthesizedInsightQualitySco
 import { refreshRecommendations } from "./recommendationAgent";
 import { withTenant } from "./db";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 /** A database without migration 0108 (assistant_messages.request_id) says so, as the other migration checks do. */
 function needsMigration0108(message: string): string {
@@ -39,6 +40,7 @@ export async function sendAssistantMessage(
   requestId?: unknown,
 ): Promise<{ ok: true; reply: string } | { ok: false; error: string; stillRunning?: boolean }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if (requestId !== undefined && requestId !== null && typeof requestId !== "string") throw new Error("The request id is not valid.");
     const { reply } = await askResearchAssistant(TENANT_ID, runId, message, checkedPageContext(page), requestId ?? null);
@@ -66,6 +68,7 @@ export async function loadAssistantMessages(
   runId: string,
 ): Promise<{ ok: true; messages: AssistantMessage[] } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   if (!/^[0-9a-f-]{36}$/i.test(runId)) return { ok: false, error: "Not a project." };
   try {
     return { ok: true, messages: await loadAssistantConversation(TENANT_ID, runId, true) };
@@ -131,6 +134,7 @@ export async function uploadAssistantDocument(
   formData: FormData
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const file = formData.get("file") as File | null;
   if (!file || file.size === 0) {
     return { ok: false, error: "No file selected." };

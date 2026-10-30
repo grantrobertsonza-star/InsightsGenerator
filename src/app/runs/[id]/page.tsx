@@ -214,6 +214,7 @@ import {
 import { latestVerdictLateral } from "@/lib/latestVerdict";
 import { getSampleFailedVerdicts, getVerdictSummary } from "@/lib/verdictSummary";
 import { requireTenantId } from "@/lib/requestContext";
+import { RUN_NOT_AVAILABLE, assertRunAccessible, runAccessible } from "@/lib/runOwnership";
 import { loadProgramOptions, loadProgramWaves, loadRunHeader, type RunHeader } from "@/lib/projectReads";
 import { updateProgramLinkAction } from "@/lib/programActions";
 
@@ -2171,7 +2172,8 @@ async function recordSingleDocumentError(
 async function extractFindingsAction(runId: string, documentId: string) {
   "use server";
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await runReportExtraction(runId, documentId, {});
 }
 
@@ -2184,7 +2186,8 @@ async function extractFindingsAction(runId: string, documentId: string) {
 async function confirmLegacyReplacementAction(runId: string, documentId: string, formData: FormData) {
   "use server";
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   const findingIds = formData
     .getAll("findingId")
     .filter((value): value is string => typeof value === "string" && value.length > 0);
@@ -2273,6 +2276,7 @@ async function runReportExtraction(
 async function generateFindingsAction(runId: string, documentId: string) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await stampSingleDocumentBatch(runId, "single_document");
   try {
     await processTableDocument(TENANT_ID, runId, documentId);
@@ -2329,6 +2333,7 @@ async function reapplyCodebookAction(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   "use server";
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   await stampSingleDocumentBatch(runId, "single_document");
   try {
     // ANA-QUAL-001: reapplyCodebook stamps "ready"/"incomplete" itself now - see
@@ -2369,6 +2374,7 @@ async function reapplyCodebookAction(
 async function codeThemesAction(runId: string, documentId: string) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await stampSingleDocumentBatch(runId, "single_document");
   const waiting = await findUnconfirmedTranscripts(TENANT_ID, runId);
   if (waiting.some((w) => w.id === documentId)) {
@@ -2473,6 +2479,7 @@ async function importCodingAction(
 ) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await stampSingleDocumentBatch(runId, "single_document");
   const waiting = await findUnconfirmedTranscripts(TENANT_ID, runId);
   if (waiting.some((w) => w.id === documentId)) {
@@ -2588,6 +2595,7 @@ async function importCodingAction(
 async function reverifyFindingsAction(runId: string) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await reverifyFindings(TENANT_ID, runId);
   // reverifyFindings just wiped every verdict on this run, including the
   // chain-trace verdicts stated_insight claims had; without this they would
@@ -2614,6 +2622,7 @@ async function reverifyFindingsAction(runId: string) {
 async function synthesizeInsightsAction(runId: string) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   await refreshSynthesizedInsights(TENANT_ID, runId);
   await refreshSynthesizedInsightQuality(TENANT_ID, runId);
   // Every other workflow trigger in this file already chains
@@ -2648,6 +2657,7 @@ async function synthesizeInsightsAction(runId: string) {
 async function generateStoryReportAction(runId: string) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   try {
     await generateStoryNarrative(TENANT_ID, runId);
   } catch (error) {
@@ -2755,6 +2765,7 @@ async function processRunAction(
 ) {
   "use server";
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   // A previous click's later stages may still be running in the background.
   // Starting another pass on top of them would reset the progress card and
   // race the same writes, so do nothing; the status card shows it is running.

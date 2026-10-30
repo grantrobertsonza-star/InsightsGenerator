@@ -4,6 +4,7 @@ import { getDocumentProxy } from "unpdf";
 import { withTenantRead } from "./db";
 import { countWords, reviewCoverage, type ReviewCoverage } from "./documentIndicators";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 import { supabaseAdmin } from "./supabaseAdmin";
 
 const BUCKET = "documents";
@@ -32,6 +33,7 @@ const PAGE_CACHE_LIMIT = 500;
  */
 export async function documentIndicatorsAction(runId: string, documentId: string): Promise<DocumentIndicatorsResult> {
   const tenantId = await requireTenantId();
+  if (!(await runAccessible(tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const doc = await withTenantRead(tenantId, async (client) =>
     (
       await client.query<{ kind: string; storage_path: string; preview_storage_path: string | null; source_filename: string; extracted_text: string | null }>(

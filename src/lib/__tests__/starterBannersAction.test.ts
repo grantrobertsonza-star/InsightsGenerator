@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ builds: [] as { columnVars: string[]; rowItems: { key: string }[]; starter?: boolean }[] }));
 
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("../verifyAfterGenerate", () => ({ verifyAfterGenerate: vi.fn() }));
@@ -39,7 +41,7 @@ beforeEach(() => {
 
 describe("buildStarterTablesAction with chosen banners", () => {
   it("without a choice, builds from the recognised grouping (Segment)", async () => {
-    const r = await buildStarterTablesAction("run-1", "doc-1");
+    const r = await buildStarterTablesAction("00000000-0000-4000-8000-0000000000cc", "doc-1");
     expect(r).toMatchObject({ ok: true, tables: 1, banners: ["Segment"] });
     expect(state.builds.map((b) => b.columnVars)).toEqual([["Segment"]]);
     expect(state.builds[0].starter).toBe(true);
@@ -47,7 +49,7 @@ describe("buildStarterTablesAction with chosen banners", () => {
   });
 
   it("builds one table per chosen banner, with the other questions as rows", async () => {
-    const r = await buildStarterTablesAction("run-1", "doc-1", undefined, ["Transferred", "Segment"]);
+    const r = await buildStarterTablesAction("00000000-0000-4000-8000-0000000000cc", "doc-1", undefined, ["Transferred", "Segment"]);
     expect(r).toMatchObject({ ok: true, tables: 2, banners: ["Transferred", "Segment"] });
     expect(state.builds.map((b) => b.columnVars)).toEqual([["Transferred"], ["Segment"]]);
     // Rating_0to10 (11 answers) is a question here, not a column to split by (at most 10 answers).
@@ -64,7 +66,7 @@ describe("buildStarterTablesAction with chosen banners", () => {
       ["Segment", /not understood/],
       [[1, 2], /not understood/],
     ] as [unknown, RegExp][]) {
-      const r = await buildStarterTablesAction("run-1", "doc-1", undefined, banners);
+      const r = await buildStarterTablesAction("00000000-0000-4000-8000-0000000000cc", "doc-1", undefined, banners);
       expect(r.ok, JSON.stringify(banners)).toBe(false);
       if (!r.ok) expect(r.error).toMatch(message);
     }

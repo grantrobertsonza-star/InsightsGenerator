@@ -7,6 +7,7 @@ import { withTenant } from "./db";
 import { deleteDocument } from "./documentActions";
 import { checkOutputSet, compareOutputSets, generateOutputFindings, mergeOutputSets, type StoredChecks } from "./outputAnalysisRun";
 import { requireRequestContext, requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 import { removeOutputSetToBin } from "./documentBin";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -35,6 +36,7 @@ export async function saveOutputSetAction(
   opened: OutputSetLabels,
 ): Promise<OutputSetSaveResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const clean = name.trim();
     if (!clean) return { ok: false, error: "A set needs a name." };
@@ -79,6 +81,7 @@ export async function saveOutputSetAction(
 export async function deleteOutputSetAction(runId: string, setId: string): Promise<Result> {
   try {
     const context = await requireRequestContext();
+    if (!(await runAccessible(context.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
     // To the bin, files and set together (documentBin.removeOutputSetToBin).
     await removeOutputSetToBin(context.tenantId, runId, setId, context.userId);
     revalidatePath(`/runs/${runId}`);
@@ -90,7 +93,8 @@ export async function deleteOutputSetAction(runId: string, setId: string): Promi
 
 export async function deleteOutputFileAction(runId: string, documentId: string): Promise<Result> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await deleteDocument(runId, documentId);
     return { ok: true };
@@ -108,6 +112,7 @@ type CheckResult = { ok: true; checks: StoredChecks; saved: boolean; keptFrom: s
 /** Runs the set-level checks and stores them. Writes no findings. */
 export async function checkOutputSetAction(runId: string, setId: string): Promise<CheckResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const { stored, saved } = await checkOutputSet(TENANT_ID, runId, setId);
     revalidatePath(`/runs/${runId}`);
@@ -120,6 +125,7 @@ export async function checkOutputSetAction(runId: string, setId: string): Promis
 /** Replaces the set's findings with a fresh set built from its evidence files, each carrying its assurance notes. */
 export async function generateOutputFindingsAction(runId: string, setId: string): Promise<CheckResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const { checks, saved, keptFrom } = await generateOutputFindings(TENANT_ID, runId, setId);
     after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -134,6 +140,7 @@ export async function generateOutputFindingsAction(runId: string, setId: string)
 /** Compares two sets as an earlier and a later wave and writes the changes as findings. */
 export async function compareWavesAction(runId: string, earlierId: string, laterId: string): Promise<{ ok: true; findings: number; notes: string[] } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const r = await compareOutputSets(TENANT_ID, runId, earlierId, laterId);
     if (r.findings > 0) after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -147,6 +154,7 @@ export async function compareWavesAction(runId: string, earlierId: string, later
 
 export async function mergeOutputSetsAction(runId: string, fromId: string, intoId: string): Promise<{ ok: true; moved: number } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const moved = await mergeOutputSets(TENANT_ID, runId, fromId, intoId);
     revalidatePath(`/runs/${runId}`);

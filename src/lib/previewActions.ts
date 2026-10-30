@@ -8,6 +8,7 @@ import { isPlainTableFileName, parseTableDocument, type ParsedTable, type Previe
 import { resolveAuthoritativeSheet } from "./crosstabs";
 import { readProvenanceAvailable } from "./documentTables";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 import { loadDataSetupWithStatus } from "./dataSetup";
 
 const BUCKET = "documents";
@@ -42,6 +43,7 @@ export async function getDocumentPreviewUrl(
   source: { sourceDocumentId: string | null; sourceTableId: string | null }
 ): Promise<PreviewResult> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { error: RUN_NOT_AVAILABLE };
   if (source.sourceTableId) {
     const tableRow = await withTenant(TENANT_ID, async (client) => {
       const result = await client.query<{ headers: string[]; rows: Record<string, TableCell>[]; document_id: string; table_index: number; row_count: number; read_provenance: unknown }>(

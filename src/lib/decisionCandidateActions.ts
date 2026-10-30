@@ -6,6 +6,7 @@ import { generateDecisionCandidates } from "./decisionFramer";
 import { markDecisionRefreshPending, refreshDecisionDependants } from "./decisionRefresh";
 import { lockRunForContextChange, syncDecisionStatement } from "./runSync";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, assertRunAccessible, runAccessible } from "./runOwnership";
 
 /**
  * What a decision change reports back. The change itself either committed (this result) or
@@ -49,7 +50,8 @@ async function afterDecisionChange(runId: string): Promise<DecisionChangeResult>
 /** Retries the insight and recommendation refresh owed after an earlier decision change. */
 export async function retryDecisionRefresh(runId: string): Promise<DecisionChangeResult> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   return afterDecisionChange(runId);
 }
 
@@ -211,6 +213,7 @@ export async function unacceptDecisionCandidate(runId: string, candidateId: stri
  */
 export async function addOwnDecisionCandidate(runId: string, candidateText: string) {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   const text = candidateText.trim();
   if (!text) return;
 
@@ -272,6 +275,7 @@ export async function regenerateDecisionCandidates(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await generateDecisionCandidates(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);

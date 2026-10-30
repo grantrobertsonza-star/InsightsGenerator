@@ -2,6 +2,7 @@
 
 import { withTenantRead } from "./db";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 import { supabaseAdmin } from "./supabaseAdmin";
 
 const BUCKET = "documents";
@@ -26,6 +27,7 @@ export type OpenDocumentResult = { ok: true; url: string; opens: "pdf" | "downlo
 export async function openDocumentAction(runId: string, documentId: string, want: "view" | "download" = "view"): Promise<OpenDocumentResult> {
   if (want !== "view" && want !== "download") return { ok: false, error: "That is not a way this file can be opened." };
   const tenantId = await requireTenantId();
+  if (!(await runAccessible(tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const doc = await withTenantRead(tenantId, async (client) =>
     (
       await client.query<{ storage_path: string; preview_storage_path: string | null; source_filename: string }>(

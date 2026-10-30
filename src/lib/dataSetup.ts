@@ -90,7 +90,7 @@ export async function loadDataSetupWithStatus(
 ): Promise<{ setup: DataSetup; ok: true } | { setup: DataSetup; ok: false; error: string }> {
   try {
     const setup = await withTenantRead(tenantId, async (client) => {
-      const r = await client.query<{ data_setup: unknown }>("select data_setup from documents where id = $1", [documentId]);
+      const r = await client.query<{ data_setup: unknown }>("select data_setup from documents where id = $1 and tenant_id = $2", [documentId, tenantId]);
       return normaliseDataSetup(r.rows[0]?.data_setup);
     });
     return { setup, ok: true };

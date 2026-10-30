@@ -16,6 +16,8 @@ import { loadNarrativeEvidence, narrativeFigureCheck } from "./storyNarrative";
 import { figureCheckAvailable } from "./figureChecks";
 import { latestVerdictLateral } from "./latestVerdict";
 import { technicalDocumentLabels } from "./technicalDocuments";
+import { UPLOADED_CONTENT_RULE, wrapUploadedContent } from "./untrustedContent";
+import { REVISION_NOT_REQUESTED, REVISION_NOT_REQUESTED_NOTE, reportRevisionRequested } from "./reportRevisionRequest";
 
 const MAX_FINDINGS_FOR_CONTEXT = 80;
 const MAX_INSIGHTS_FOR_CONTEXT = 60;
@@ -279,7 +281,9 @@ type NarrativeRevision = {
  * flow: the researcher is asking for the edit themselves, in the same turn,
  * which is a different act from a background agent proposing new material
  * unprompted. The next deck or Word export reads straight from this row, so
- * the edit is live immediately. It runs in the caller's transaction, the one
+ * the edit is live immediately. Whether the researcher asked is decided by code from their message
+ * (reportRevisionRequested, SEC3), not by the model: a turn whose message did not ask never offers
+ * the tool and never reaches here. It runs in the caller's transaction, the one
  * that stores the question and its reply, so a revision is never applied
  * without its stored answer (and a retry of a failed send cannot apply it twice).
  */
@@ -398,8 +402,11 @@ async function applyNarrativeRevision(
  * The research assistant's one entry point: takes the researcher's message,
  * grounds a Claude call in this run's own accepted evidence and generated
  * report, lets the model either answer directly or propose a narrative
- * revision (via the revise_narrative tool), applies any such revision
- * straight to deck_narratives, and persists both sides of the exchange.
+ * revision (via the revise_narrative tool, offered only when the researcher's
+ * message asks for a change to the report: reportRevisionRequest.ts), applies
+ * any such revision straight to deck_narratives, and persists both sides of the
+ * exchange. Uploaded content reaches the model delimited as data
+ * (untrustedContent.ts).
  *
  * Deliberately not forced into always calling a tool (tool_choice stays
  * "auto"): most turns are a plain question about the data and should get a
@@ -485,7 +492,11 @@ async function answerQuestion(
     throw new Error("Run not found");
   }
 
-  const contextBlock = buildContextBlock(context);
+  // The evidence carries uploaded text (findings extracted from reports, file names), so it is
+  // delimited as uploaded content (SEC3). It is the same for every message, so the cache still holds.
+  const contextBlock = wrapUploadedContent("this project's evidence and report", buildContextBlock(context));
+  // Code decides, from the researcher's own message only, whether this turn may change the report.
+  const revisionAllowed = reportRevisionRequested(trimmed);
   // The question is not stored yet (it is stored with its reply, below), so the history is all earlier turns.
   const historyBlock = context.history
     .map((m) => `${m.role === "user" ? "Researcher" : "Assistant"}: ${m.content}`)
@@ -514,7 +525,9 @@ async function answerQuestion(
     "Insights Report (the executive summary, situation, complication, question, governing thought, a specific " +
     "pillar's headline or so-what line, the recommendations intro, or the caveats list), call the revise_narrative " +
     "tool with the new text for exactly the field(s) asked about. Never rewrite a field the researcher didn't ask " +
-    "about. Write the new text in the same voice and length discipline as what's already there.\n" +
+    "about. Write the new text in the same voice and length discipline as what's already there. The tool is offered " +
+    "only when the researcher's own message asks for such a change; when it is not offered, do not try to change the " +
+    "report, and give any suggested wording in your reply instead.\n" +
     "5. Answer a question about how Insights Elevator works (a screen, a method, a statistic, a stated limit) from the " +
     "Knowledge base and Manual: search_help, then read_help, and answer from what they say. If the guides do not cover " +
     "it, say so rather than describing behaviour you have not read.\n" +
@@ -524,6 +537,7 @@ async function answerQuestion(
     "what the document states, not something checked against the data; when the data can show it (a weight " +
     "variable, a base), say how to check. If the documents do not cover it, or there are none, say so rather than " +
     "describing a design you have not read.\n\n" +
+    `${UPLOADED_CONTENT_RULE}\n\n` +
     "Whatever you do, always end with a short, plain-language reply to the researcher, so they see what you did or " +
     "what you found. Keep replies concise, this is a chat, not a report. No em dashes.";
   // The instructions and the project's evidence are the same for every message until the evidence
@@ -532,21 +546,33 @@ async function answerQuestion(
     `${instructions}\n\n=== Knowledge base and Manual contents (read with read_help) ===\n${helpContents()}\n\n=== This project's evidence and report ===\n${contextBlock}`,
     [historyBlock ? `=== Recent conversation ===\n${historyBlock}` : "", pageLine(page)].filter(Boolean).join("\n\n"),
   );
-  const tools: Anthropic.Tool[] = [REVISE_NARRATIVE_TOOL, ...DATA_TOOLS, SAMPLE_SIZE_TOOL, ...HELP_TOOLS, ...TECHNICAL_DOCUMENT_TOOLS];
+  // revise_narrative is offered only when the researcher's message asked for a change to the report.
+  // When it is not offered and the model calls it anyway (for example because a document told it
+  // to), the call is answered "not applied", nothing is written, and the turn goes on.
+  const tools: Anthropic.Tool[] = [...(revisionAllowed ? [REVISE_NARRATIVE_TOOL] : []), ...DATA_TOOLS, SAMPLE_SIZE_TOOL, ...HELP_TOOLS, ...TECHNICAL_DOCUMENT_TOOLS];
   let revisedFields: string[] = [];
   let revision: { input: NarrativeRevision; text: string } | null = null;
+  let revisionRefusedUnasked = false;
   const loop = await runAssistantLoop({
     system,
     tools,
     userMessage: trimmed,
-    runTool: (name, input, tablesSoFar) => runAssistantTool(tenantId, runId, name, input, tablesSoFar, requestId),
-    terminal: {
-      // Applied below, in the transaction that stores the answer.
-      revise_narrative: async (input, text) => {
-        revision = { input: input as NarrativeRevision, text };
-        return text || "Updating the Insights Report.";
-      },
+    runTool: async (name, input, tablesSoFar) => {
+      if (name === REVISE_NARRATIVE_TOOL.name) {
+        revisionRefusedUnasked = true;
+        return { content: REVISION_NOT_REQUESTED, isError: true };
+      }
+      return runAssistantTool(tenantId, runId, name, input, tablesSoFar, requestId);
     },
+    terminal: revisionAllowed
+      ? {
+          // Applied below, in the transaction that stores the answer.
+          revise_narrative: async (input, text) => {
+            revision = { input: input as NarrativeRevision, text };
+            return text || "Updating the Insights Report.";
+          },
+        }
+      : {},
     logUsage: (usage) => logApiUsage(tenantId, runId, "research_assistant", usage),
   });
   const evidence = revision ? await loadNarrativeEvidence(tenantId, runId) : null;
@@ -574,7 +600,7 @@ async function answerQuestion(
           answer = revision.text ? `${revision.text}\n\n(${error.message})` : error.message;
         }
       }
-      replyText = answer + sourceLines(loop.tables, loop.help, loop.documents);
+      replyText = answer + (revisionRefusedUnasked ? `\n\n${REVISION_NOT_REQUESTED_NOTE}` : "") + sourceLines(loop.tables, loop.help, loop.documents);
       const r = await client.query(
         `insert into assistant_messages (tenant_id, run_id, role, content, created_at, request_id)
          select $1, r.id, m.role, m.content, now() + m.offset_ms * interval '1 millisecond', $5::uuid
