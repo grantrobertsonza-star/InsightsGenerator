@@ -11,6 +11,7 @@ export function filterText(f: CrosstabFilter, dict: VariableDictionary | null): 
     if (f.min != null && f.max != null) return `${label} from ${f.min} to ${f.max}`;
     return f.min != null ? `${label} at least ${f.min}` : `${label} at most ${f.max}`;
   }
+  if (f.op === "codes") return `${label} is code ${(f.codes ?? []).join(" or ")}`;
   return `${label} ${f.op === "notIn" ? "is not" : "is"} ${(f.values ?? []).join(" or ")}`;
 }
 

@@ -19,10 +19,25 @@ const DEMOGRAPHICS: RegExp[] = [
   /population group|\brace\b|ethnic/i,
   /education|highest (level|grade)/i,
   /employment|work status/i,
+  // Income and household stage (Grant, 30 October 2026: segment "on a segment (age, gender, etc.)", income named),
+  // ranked after the demographics above, so a starter set with those keeps them first.
+  /\bincome\b|\bLSM\b|socio-?economic/i,
+  /life ?stage|household (type|composition|size)|marital/i,
   // Customer and sample groupings (Grant, 2026-10-22: a call-centre tracker split only by Segment
   // got no starter set). Ranked after the demographics, so a file with both splits by those first.
   /segment|cohort|\btier\b|customer (type|group|class)|member type|\bchannel\b|\bbranch\b|\bstore\b|\bsite\b/i,
 ];
+
+/**
+ * Which kind of profile question a variable is, by its name read as words and its label: the index of the first
+ * DEMOGRAPHICS pattern it matches (gender 0, age 1, ... customer groupings last), or -1 when it is none. The one
+ * recognition of demographic and profile questions: starter tables split by these, and a tracker dashboard's
+ * segment is built from them (trackerSegment.segmentQuestionsOf).
+ */
+export function demographicKindOf(name: string, label: string): number {
+  const text = `${nameAsWords(name)} ${label}`;
+  return DEMOGRAPHICS.findIndex((re) => re.test(text));
+}
 
 const LIMITS = {
   small: { banners: 4, questions: 40 },
@@ -101,8 +116,7 @@ export function planStarterTables(dict: VariableDictionary, chosenBanners?: stri
   const candidates: { name: string; label: string; rank: number }[] = [];
   for (const v of dict.variables) {
     if (!isBannerCandidate(v)) continue;
-    const text = `${nameAsWords(v.name)} ${v.label}`;
-    const rank = DEMOGRAPHICS.findIndex((re) => re.test(text));
+    const rank = demographicKindOf(v.name, v.label);
     candidates.push({ name: v.name, label: v.label, rank });
     if (rank >= 0) banners.push({ name: v.name, label: v.label, rank });
   }

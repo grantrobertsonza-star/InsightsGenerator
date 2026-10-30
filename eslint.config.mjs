@@ -19,8 +19,6 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Independent review evidence (archived app copies), not this app's source.
-    "work/**",
   ]),
 ]);
 

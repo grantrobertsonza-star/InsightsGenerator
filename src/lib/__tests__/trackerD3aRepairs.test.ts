@@ -66,6 +66,20 @@ describe("D3A-F02: an explicit No is never selected", () => {
   });
 });
 
+describe("awareness wording counts as selected and not selected (Grant, 30 October 2026)", () => {
+  it("Aware / Not aware, Heard of / Never heard of: the aware code is selected; a lone Not aware or Unaware on 0 makes 1 selected", () => {
+    expect(selectedCode({ valueLabels: { "0": "Not aware", "1": "Aware" } }, ["0", "1"])).toBe("1");
+    expect(selectedCode({ valueLabels: { "2": "Never heard of it", "1": "Heard of it" } }, ["1", "2"])).toBe("1");
+    expect(selectedCode({ valueLabels: { "0": "Not aware" } }, ["0", "1"])).toBe("1");
+    expect(selectedCode({ valueLabels: { "0": "Unaware" } }, ["0", "1"])).toBe("1");
+  });
+  it("never from a label that only contains the words: Not aware, Don't know and Not applicable are not selected codes", () => {
+    expect(selectedCode({ valueLabels: { "0": "Not aware", "1": "Don't know" } }, ["0", "1"])).toBeNull();
+    expect(selectedCode({ valueLabels: { "0": "Not applicable" } }, ["0", "1"])).toBeNull();
+    expect(selectedCode({ valueLabels: { "0": "Aware of it", "1": "Aware" } }, ["0", "1"])).toBeNull();
+  });
+});
+
 describe("D3AR-F01: the box's scale top comes from the engine's own answers when the question has labels", () => {
   const bars = (codes: string[]) => ({ bars: codes.map((c) => ({ rawCode: c })) });
   it("1 to 5 with 6 = Don't know (dropped by the engine): top 5, box 4 and 5", () => {

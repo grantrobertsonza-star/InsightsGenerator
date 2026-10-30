@@ -16,7 +16,8 @@
 // Figures come from the Cross tab engine through computeCrosstab (nothing saved), with the dashboard's weight and the
 // file's survey design. Unknown stays unknown: no question is "not_measured", two candidates "mapping_needed", a
 // figure that cannot be read is n/a with the reason, never 0. A file whose figures cannot be read throws.
-import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import { loadVariableDictionaryWithStatus } from "./crosstabs";
+import { applySegment, computeInSegment, segmentReading, type Segment, type SegmentReading } from "./trackerSegment";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
 import { loadTrackerDashboard } from "./trackerDashboards";
@@ -54,6 +55,8 @@ export type CategoryOverview = {
   documentId: string;
   weighted: boolean;
   weightVar: string | null;
+  /** R5: the segment these figures were computed on, with its base (trackerSegment.ts); null for all eligible. */
+  segment: SegmentReading | null;
   /** Kish effective base of the file's respondents when weighted; null unweighted or not calculated. */
   effectiveBase: number | null;
   repertoire: Repertoire[];
@@ -111,12 +114,13 @@ export function distributionFromResult(result: CrosstabResult | null, found: Fou
  * The Category overview page for one data file. Throws with the reason when the file's dictionary, set-up or a table
  * cannot be read; never returns an empty page for a failure.
  */
-export async function loadCategoryOverview(tenantId: string, runId: string, documentId: string): Promise<CategoryOverview & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
+export async function loadCategoryOverview(tenantId: string, runId: string, documentId: string, segment: Segment | null = null): Promise<CategoryOverview & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
   const [view, input] = await Promise.all([loadTrackerDashboard(tenantId, runId, documentId), loadRoleInput(tenantId, runId, documentId)]);
   const dashboard = view.dashboard;
   const rec = view.recognition;
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
   const roleVars = new Map(input.variables.map((v) => [v.name, v]));
+  const applied = applySegment(segment, input.variables, rec);
   const parts = repertoireParts(rec, dashboard);
   const brandVars = parts.flatMap((p) => ("variables" in p ? p.variables : []));
   const singles = [rec.decisionStyle, rec.acquisitionChannel].flatMap((f) => (f.status === "found" ? [f.variable] : []));
@@ -132,8 +136,9 @@ export async function loadCategoryOverview(tenantId: string, runId: string, docu
     const rowItems = (vars: string[]): CrosstabRequest["rowItems"] => vars.map((v) => ({ key: v, label: labelOf.get(v) || v, vars: [v] }));
     // Computed, not saved (computeCrosstab). The brands are read as the funnel reads them (the engine's default
     // treatment of don't know); the single-choice questions keep every answer code (excludeDk false).
-    if (brandVars.length > 0) brandTable = (await computeCrosstab(tenantId, runId, documentId, { columnVars: [], rowItems: rowItems(brandVars), weightVar, design })).result;
-    if (singles.length > 0) singleTable = (await computeCrosstab(tenantId, runId, documentId, { columnVars: [], rowItems: rowItems(singles), weightVar, design, excludeDk: false })).result;
+    // In the segment (computeInSegment): the repertoire's "every respondent" is every respondent in the segment.
+    if (brandVars.length > 0) brandTable = (await computeInSegment(tenantId, runId, documentId, { columnVars: [], rowItems: rowItems(brandVars), weightVar, design }, applied)).result;
+    if (singles.length > 0) singleTable = (await computeInSegment(tenantId, runId, documentId, { columnVars: [], rowItems: rowItems(singles), weightVar, design, excludeDk: false }, applied)).result;
   }
   const repertoire = parts.map((p): Repertoire => ("variables" in p ? repertoireFromResult(brandTable, p.stage, p.measure, p.variables, roleVars) : p));
   const anyTable = brandTable ?? singleTable;
@@ -142,6 +147,7 @@ export async function loadCategoryOverview(tenantId: string, runId: string, docu
     weighted: weightVar !== null,
     weightVar,
     effectiveBase: weightVar && anyTable ? (anyTable.total?.nEff ?? null) : null,
+    segment: segmentReading(applied, anyTable, weightVar !== null),
     repertoire,
     decisionStyle: distributionFromResult(singleTable, rec.decisionStyle, rec.decisionStyle.status === "found" ? roleVars.get(rec.decisionStyle.variable) : undefined),
     acquisitionChannel: distributionFromResult(singleTable, rec.acquisitionChannel, rec.acquisitionChannel.status === "found" ? roleVars.get(rec.acquisitionChannel.variable) : undefined),

@@ -13,13 +13,14 @@
 //     between cells is tested.
 // Unknown stays unknown: a part the file does not have, or that cannot be told, is "not_measured" or
 // "mapping_needed" with the reason, never zeros. A file whose figures cannot be read throws with the reason.
-import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import { loadVariableDictionaryWithStatus } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
 import { loadTrackerDashboard } from "./trackerDashboards";
 import { loadRoleInput } from "./trackerInput";
 import { selectedShareOf } from "./trackerFigures";
 import type { CrosstabResult } from "./parseStatsFile";
+import { applySegment, computeInSegment, segmentReading, type Segment, type SegmentReading } from "./trackerSegment";
 import type { ResolvedDashboard } from "./trackerDashboard";
 import type { BrandGrid, CategoryMoments, RoleVariable } from "./trackerRoles";
 
@@ -48,6 +49,8 @@ export type BrandMoments = {
   documentId: string;
   weighted: boolean;
   weightVar: string | null;
+  /** R5: the segment these figures were computed on, with its base (trackerSegment.ts); null for all eligible. */
+  segment: SegmentReading | null;
   /** Kish effective base of the file's respondents when weighted; null unweighted. */
   effectiveBase: number | null;
   /** Every moment of the relevance question, highest share first (ties in the question's order). */
@@ -134,10 +137,11 @@ export function momentVariables(moments: CategoryMoments, grid: BrandGrid | unde
  * The Moments & needs page for one data file. Throws with the reason when the file's dictionary, set-up or table
  * cannot be read; never returns an empty page for a failure.
  */
-export async function loadBrandMoments(tenantId: string, runId: string, documentId: string): Promise<BrandMoments & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
+export async function loadBrandMoments(tenantId: string, runId: string, documentId: string, segment: Segment | null = null): Promise<BrandMoments & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
   const [view, input] = await Promise.all([loadTrackerDashboard(tenantId, runId, documentId), loadRoleInput(tenantId, runId, documentId)]);
   const dashboard = view.dashboard;
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
+  const applied = applySegment(segment, input.variables, view.recognition);
   const moments = view.recognition.categoryMoments;
   const grid = view.recognition.grids.find((g) => g.kind === "moments");
   const vars = momentVariables(moments, grid, new Set(dashboard.brands.map((b) => b.code)));
@@ -149,7 +153,7 @@ export async function loadBrandMoments(tenantId: string, runId: string, document
     const design = resolveSurveyDesign(dict.dictionary, effectiveDesignChoice(setup.setup.design, undefined)).design ?? undefined;
     const labelOf = new Map(dict.dictionary.variables.map((v) => [v.name, v.label]));
     // Computed, not saved (computeCrosstab): opening the page adds no table to the file.
-    result = (await computeCrosstab(tenantId, runId, documentId, { columnVars: [], rowItems: vars.map((v) => ({ key: v, label: labelOf.get(v) || v, vars: [v] })), weightVar, design })).result;
+    result = (await computeInSegment(tenantId, runId, documentId, { columnVars: [], rowItems: vars.map((v) => ({ key: v, label: labelOf.get(v) || v, vars: [v] })), weightVar, design }, applied)).result;
   }
   const { relevance, recall } = momentsFromResult(result, moments, grid, dashboard.brands, new Map(input.variables.map((v) => [v.name, v])));
   return {
@@ -157,6 +161,7 @@ export async function loadBrandMoments(tenantId: string, runId: string, document
     weighted: weightVar !== null,
     weightVar,
     effectiveBase: weightVar && result ? (result.total?.nEff ?? null) : null,
+    segment: segmentReading(applied, result, weightVar !== null),
     relevance,
     recall,
     dashboard: { brands: dashboard.brands, focalBrand: dashboard.focalBrand },

@@ -1,5 +1,5 @@
 import { withTenant } from "./db";
-import { performanceScales, predictorPerformance, type PerformanceMeasure } from "./driverPerformance";
+import { outcomeTopBox, performanceScales, predictorPerformance, type AnswerDomain, type PerformanceMeasure } from "./driverPerformance";
 import { recordHumanReview } from "./findingProvenance";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { runStatsTool } from "./parseStatsFile";
@@ -8,6 +8,7 @@ import { driverAnalysis, type DriverResult } from "./driverAnalysis";
 import { driverRequestVariables, parseDriverRequest } from "./driverRequest";
 import { loadVariableOverrides } from "./variableOverrides";
 import { driverDisplayNames } from "./driverPresentation";
+import { parseSegment, segmentFilters, type Segment } from "./trackerSegment";
 
 export type DriverRequest = {
   outcome: string;
@@ -48,6 +49,10 @@ export type DriverPerformance = {
   measure?: PerformanceMeasure;
   scaleTop?: number | null;
   scaleStated?: boolean | null;
+  /** T2-F01 (absent on reports saved before 30 October 2026): the scale's lowest code, and whether the measure was read
+   * from the declared answer list or only from the answers present (driverPerformance.ts). */
+  scaleMin?: number | null;
+  domainSource?: AnswerDomain["source"];
 };
 
 /**
@@ -82,24 +87,31 @@ export type DriverReport = {
    * 2026, whose findings' corrections cannot be compared ("not checked", never current).
    */
   provenance?: DriverProvenance;
+  /** R5 CSM segment: the segment the model was run in (by codes), the engine's description of it, and the number of
+   * cases in it (`casesInFile` is then the same number). Absent when the model ran on every case. */
+  segment?: { segment: Segment; filters: { variable: string; text: string }[]; cases: number };
 };
 
 export type DriverProvenance = { documentId: string; overridesSnapshot: unknown; variables: string[] };
 
 type Columns = {
-  outcome: { name: string; label: string; min: number; max: number; distinct: number; valueLabels: Record<string, string> };
-  predictors: { name: string; label: string; min: number; max: number; distinct: number; scaleTop?: number; scaleStated?: boolean }[];
+  outcome: { name: string; label: string; min: number; max: number; distinct: number; valueLabels: Record<string, string>; answerDomain?: AnswerDomain };
+  predictors: { name: string; label: string; min: number; max: number; distinct: number; scaleTop?: number; scaleStated?: boolean; answerDomain?: AnswerDomain }[];
   y: (number | null)[];
   x: (number | null)[][];
   weights: (number | null)[] | null;
+  /** Cases read: every case in the file, or every case in the segment when filters were sent. */
   n: number;
+  /** The engine's description of the filters applied (R5 CSM segment); empty without any. */
+  filters?: { variable: string; label: string; op: string; text: string }[];
   skipped: { variable: string; reason: string }[];
   group: { name: string; label: string; categories: string[] } | null;
   groupValues: (string | null)[] | null;
 };
 
-/** A segment needs enough complete cases of its own before a driver model on it means anything. */
-const MIN_SEGMENT_CASES = 20;
+/** A segment needs enough complete cases of its own before a driver model on it means anything. The same minimum
+ * applies to a group of the group variable and to a tracker dashboard's segment (R5 CSM segment). */
+export const MIN_SEGMENT_CASES = 20;
 
 function wMean(values: number[], w: number[]): number {
   let s = 0;
@@ -111,17 +123,28 @@ function wMean(values: number[], w: number[]): number {
   return sw > 0 ? s / sw : NaN;
 }
 
-/** Reads the chosen columns from the data file and runs the driver analysis on them. */
+/**
+ * Reads the chosen columns from the data file and runs the driver analysis on them. With a segment (R5 CSM segment:
+ * profile questions by name, answers by raw code, trackerSegment.ts) the engine returns only the cases in the segment,
+ * through its one filter path and the segment owner's filters (segmentFilters), and the model, performance and stated
+ * importance are the segment's. A segment with fewer than MIN_SEGMENT_CASES cases is refused with the reason (the rule
+ * a group of the group variable already has); one nobody is in is refused by the engine ("No cases satisfy ...").
+ * Without a segment, behaviour is unchanged.
+ */
 export async function runDriverAnalysisFor(
   tenantId: string,
   runId: string,
   documentId: string,
   untrustedRequest: DriverRequest,
+  segmentRaw: unknown = null,
 ): Promise<DriverReport> {
   // GT1000-F02: refused here, before any read or calculation, whoever the caller is.
   const checked = parseDriverRequest(untrustedRequest);
   if (!checked.ok) throw new Error(checked.error);
   const request = checked.request;
+  const seg = parseSegment(segmentRaw);
+  if (!seg.ok) throw new Error(seg.error);
+  const filters = segmentFilters(seg.segment);
   const [doc, overlay, setupStatus, overrides] = await Promise.all([
     loadDocumentFile(tenantId, runId, documentId),
     overlayFor(tenantId, runId, documentId),
@@ -135,11 +158,15 @@ export async function runDriverAnalysisFor(
     predictors: request.predictors,
     weightVar: request.weightVar ?? null,
     groupVar: request.groupVar ?? null,
+    ...(filters.length ? { filters } : {}),
     overlay,
     layout: setup.layout,
     headerRowsSkipped: setup.headerRowsSkipped,
     selectedSheet: doc.selected_sheet,
   });
+  const segmentNote = seg.segment ? { segment: seg.segment, filters: (cols.filters ?? []).map((f) => ({ variable: f.variable, text: f.text })), cases: cols.n } : null;
+  if (segmentNote && cols.n < MIN_SEGMENT_CASES)
+    throw new Error(`Fewer than ${MIN_SEGMENT_CASES} cases in the segment (${segmentNote.filters.map((f) => f.text).join("; ")}: ${cols.n}), so the driver model is not run on it.`);
 
   const nan = (v: number | null) => (v === null ? NaN : v);
   let y = cols.y.map(nan);
@@ -151,10 +178,14 @@ export async function runDriverAnalysisFor(
   let outcomeNote = `Score on ${cols.outcome.label}, treated as a number.`;
   if (request.outcomeType === "binary") {
     const o = cols.outcome;
-    const min = request.topBoxMin ?? (o.distinct === 2 ? o.max : o.max - 1);
-    if (!(min > o.min)) throw new Error("The top box must start above the lowest answer code.");
+    // The default comes from the outcome's answer domain (driverPerformance.outcomeTopBox), never from the highest
+    // answer that happens to be present.
+    const box = outcomeTopBox(o);
+    const min = request.topBoxMin ?? box.min;
+    if (!(min > box.lowest)) throw new Error("The top box must start above the lowest answer code.");
     y = y.map((v) => (Number.isFinite(v) ? (v >= min ? 1 : 0) : NaN));
-    outcomeNote = `Top box on ${o.label}: answers from ${min} up to ${o.max}, against everyone else who answered.`;
+    const scaleNote = box.source === "declared" ? "" : " (no answer list, so the scale is the answers present)";
+    outcomeNote = `Top box on ${o.label}: answers from ${min} up to ${box.top}${scaleNote}, against everyone else who answered.`;
   }
 
   // Display names, unique within the report (driverPresentation.driverDisplayNames, Codex AN500-F01).
@@ -208,6 +239,8 @@ export async function runDriverAnalysisFor(
       predictors: impVars,
       weightVar: request.weightVar ?? null,
       groupVar: request.groupVar ?? null,
+      // The same segment, so the importance read lines up case by case with the first read.
+      ...(filters.length ? { filters } : {}),
       overlay,
       layout: setup.layout,
       headerRowsSkipped: setup.headerRowsSkipped,
@@ -232,10 +265,9 @@ export async function runDriverAnalysisFor(
           ws.push(wi);
         });
         if (vals.length === 0) continue;
-        const sw = ws.reduce((a, b) => a + b, 0);
-        const smallScale = meta.distinct >= 3 && meta.distinct <= 11;
-        const cut = meta.max - 1;
-        const topTwo = smallScale && sw > 0 ? vals.reduce((a, v, i) => a + (v >= cut ? ws[i] : 0), 0) / sw : null;
+        // The importance question's top two by the same answer-domain rule as performance (T2-F01): counted from its
+        // declared scale, not from the answers present in this file or segment.
+        const { topTwo } = predictorPerformance(meta, vals, ws);
         const mean = wMean(vals, ws);
         out.push({ name: names[k], predictor: pred, variable: imp, mean: Number.isFinite(mean) ? mean : null, topTwo });
       }
@@ -286,10 +318,11 @@ export async function runDriverAnalysisFor(
     skipped: cols.skipped,
     result: resultWithCodes,
     performance,
-    performanceScales: performanceScales(performance.map((x) => ({ mean: x.mean, topTwo: x.topTwo, measure: x.measure ?? "mean", scaleTop: x.scaleTop ?? null, scaleStated: x.scaleStated ?? null })), cols.predictors),
+    performanceScales: performanceScales(performance, cols.predictors),
     groupVariable: cols.group?.name ?? null,
     groupLabel: cols.group?.label ?? null,
     segments,
+    ...(segmentNote ? { segment: segmentNote } : {}),
   };
 }
 

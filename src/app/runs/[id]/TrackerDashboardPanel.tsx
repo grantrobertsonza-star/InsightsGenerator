@@ -24,6 +24,8 @@ import type { CompanyBox, CompanyNps, CsmTile, CsmTileId } from "@/lib/trackerCs
 import type { FunnelStage } from "@/lib/trackerRoles";
 import { searchVariables } from "@/lib/variableSearch";
 import { QuestionPicker, variableText } from "./QuestionPicker";
+import { CardSegmentBase, SegmentBaseContext, SegmentChip, useStoredSegment } from "./SegmentPicker";
+import type { SegmentQuestion } from "@/lib/trackerSegment";
 
 export type TrackerDashboardKind = "brand" | "csm";
 
@@ -111,6 +113,8 @@ function Card({ title, subtitle, children, testId, className = "" }: { title?: s
     <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${className}`} data-testid={testId} aria-label={title}>
       {title && <h3 className="text-lg font-semibold text-slate-900">{title}</h3>}
       {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+      {/* R5: under a segment every card names it with the page's segment base. */}
+      <CardSegmentBase />
       <div className={title || subtitle ? "mt-4" : ""}>{children}</div>
     </section>
   );
@@ -229,6 +233,12 @@ export default function TrackerDashboardPanel({
   const [advertising, setAdvertising] = useState<AdvertisingLoad>({ state: "idle" });
   const [audience, setAudience] = useState<AudienceLoad>({ state: "idle" });
   const [category, setCategory] = useState<CategoryLoad>({ state: "idle" });
+  // R5: the segment every page is computed on (SegmentPicker.tsx; remembered in this browser). A change reloads every
+  // page through reload() below, whose request counters drop any answer computed for an earlier segment.
+  const [segment, setSegment] = useStoredSegment(runId, kind);
+  // The file's profile questions from the last load, so the Segment chip stays usable while a segment is calculated
+  // or after one was refused.
+  const [segmentQuestions, setSegmentQuestions] = useState<SegmentQuestion[]>([]);
   // Only the latest request may update the screen: a slow earlier load (or one for another file) is ignored.
   const latest = useRef(0);
   const latestMoments = useRef(0);
@@ -240,42 +250,42 @@ export default function TrackerDashboardPanel({
   const loadMoments = useCallback(async () => {
     const id = ++latestMoments.current;
     setMoments({ state: "loading" });
-    const r = await loadBrandMomentsAction(runId, documentId);
+    const r = await loadBrandMomentsAction(runId, documentId, segment);
     if (id !== latestMoments.current) return;
     setMoments(r.ok ? { state: "ready", moments: r.moments } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
+  }, [runId, documentId, segment]);
 
   const loadAssociations = useCallback(async () => {
     const id = ++latestAssociations.current;
     setAssociations({ state: "loading" });
-    const r = await loadBrandAssociationsAction(runId, documentId);
+    const r = await loadBrandAssociationsAction(runId, documentId, segment);
     if (id !== latestAssociations.current) return;
     setAssociations(r.ok ? { state: "ready", associations: r.associations } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
+  }, [runId, documentId, segment]);
 
   const loadAdvertising = useCallback(async () => {
     const id = ++latestAdvertising.current;
     setAdvertising({ state: "loading" });
-    const r = await loadBrandAdvertisingAction(runId, documentId);
+    const r = await loadBrandAdvertisingAction(runId, documentId, segment);
     if (id !== latestAdvertising.current) return;
     setAdvertising(r.ok ? { state: "ready", advertising: r.advertising } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
+  }, [runId, documentId, segment]);
 
   const loadAudience = useCallback(async () => {
     const id = ++latestAudience.current;
     setAudience({ state: "loading" });
-    const r = await loadBrandAudienceAction(runId, documentId);
+    const r = await loadBrandAudienceAction(runId, documentId, segment);
     if (id !== latestAudience.current) return;
     setAudience(r.ok ? { state: "ready", audience: r.audience } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
+  }, [runId, documentId, segment]);
 
   const loadCategory = useCallback(async () => {
     const id = ++latestCategory.current;
     setCategory({ state: "loading" });
-    const r = await loadCategoryOverviewAction(runId, documentId);
+    const r = await loadCategoryOverviewAction(runId, documentId, segment);
     if (id !== latestCategory.current) return;
     setCategory(r.ok ? { state: "ready", category: r.category } : { state: "failed", error: r.error });
-  }, [runId, documentId]);
+  }, [runId, documentId, segment]);
 
   const reload = useCallback(async () => {
     const id = ++latest.current;
@@ -292,12 +302,13 @@ export default function TrackerDashboardPanel({
     setAudience({ state: "idle" });
     latestCategory.current += 1;
     setCategory({ state: "idle" });
-    const r = await loadBrandOverviewAction(runId, documentId, kind);
+    const r = await loadBrandOverviewAction(runId, documentId, kind, segment);
     if (id !== latest.current) return;
     if (!r.ok) return setLoad({ state: "failed", error: r.error });
     setLoad({ state: "ready", overview: r.overview });
+    setSegmentQuestions(r.overview.segmentQuestions);
     setDraft(r.overview.view.choices);
-  }, [runId, documentId, kind]);
+  }, [runId, documentId, kind, segment]);
 
   useEffect(() => {
     // The first load of this file; reload() sets state only after the server answers.
@@ -624,7 +635,7 @@ export default function TrackerDashboardPanel({
       <Chip label="Wave">{overview?.wave ?? "Not labelled"}</Chip>
       <Chip label="Compare" onClick={() => setPickingComparators((v) => !v)}>{comparators ? "Selected brands" : "Suggested brands"}</Chip>
       <Chip label="Weighting" onClick={() => chooseAt("brand")}>{weighted ? "On" : "Off"}</Chip>
-      <Chip label="Segment">All eligible</Chip>
+      <SegmentChip questions={segmentQuestions} segment={segment} onApply={setSegment} />
     </div>
   );
   // The brands compared (the Compare chip): one selection for every page, not saved yet.
@@ -675,6 +686,7 @@ export default function TrackerDashboardPanel({
             : overview.previous.status === "failed"
               ? `The previous wave (${overview.previous.wave}) could not be read, so no change is shown: ${overview.previous.error}`
               : overview.previous.reason}
+          {overview.segment && overview.previous.status === "ok" ? ` Within the segment ${overview.segment.text}, applied in both waves.` : ""}
         </p>
         {hiddenNote(blankStages.filter((id) => hidden.has(id)))}
         {!focal && dashboard.brands.length > 0 && <p className="text-xs text-slate-500">Choose your brand (the Brand chip) to see its figures in the tiles.</p>}
@@ -1477,6 +1489,7 @@ export default function TrackerDashboardPanel({
       return (
         <div key={t.id} className="rounded-2xl border border-red-200 bg-red-50 p-4" data-testid="tracker-csm-tile" data-failed="true">
           <p className="text-sm text-red-800">{meta.title}</p>
+          <CardSegmentBase />
           <p className="mt-1 text-xs text-red-800">Could not be calculated from {t.variable}: {t.error}</p>
           <button type="button" onClick={() => chooseAt(anchor)} className="mt-2 rounded border border-red-300 bg-white px-2 py-1 text-[11px]">
             Choose a different question
@@ -1487,6 +1500,8 @@ export default function TrackerDashboardPanel({
     const one = scope === "all" ? null : companyOf(t, scope);
     const splitFailed = scope !== "all" && !Array.isArray(t.byCompany) && t.byCompany !== null ? t.byCompany.failed : null;
     const change = csmChange(t.id, scope === "all" ? null : scope);
+    // Weighted: the number answering too (R5 CSM segment, raw beside effective), for all customers or the segment.
+    const rawOf = (x: CsmTile) => (scope === "all" && overview?.figures.weighted && x.status === "ok" && "rawBase" in x && x.rawBase != null ? `, answering ${x.rawBase.toLocaleString()}` : "");
     let big: string;
     let changeText: string;
     let foot: string;
@@ -1505,20 +1520,21 @@ export default function TrackerDashboardPanel({
       direction = change?.meanChange ?? 0;
       changeText = change?.meanChange !== null && change?.meanChange !== undefined ? `${change.meanChange >= 0 ? "↑" : "↓"} ${Math.abs(change.meanChange).toFixed(2)} vs ${prevLabel}` : (change?.reason ?? "");
       const tb = scope === "all" ? t.box : (box?.box ?? null);
-      foot = `Mean · top two ${tb === null ? "n/a" : `${tb.toFixed(1)}%`} · ${overview?.figures.weighted ? "effective" : "valid"} n = ${scope === "all" ? t.effectiveBase : (box?.effectiveBase ?? "-")}`;
+      foot = `Mean · top two ${tb === null ? "n/a" : `${tb.toFixed(1)}%`} · ${overview?.figures.weighted ? "effective" : "valid"} n = ${scope === "all" ? t.effectiveBase : (box?.effectiveBase ?? "-")}${rawOf(t)}`;
     } else {
       const box = one as CompanyBox | null;
       const v = scope === "all" ? t.box : (box?.box ?? null);
       big = v === null ? "Not available" : `${v.toFixed(0)}%`;
       direction = change?.changePp ?? 0;
       changeText = change?.changePp !== null && change?.changePp !== undefined ? `${change.changePp >= 0 ? "↑" : "↓"} ${Math.abs(change.changePp).toFixed(1)} pp vs ${prevLabel}` : (change?.reason ?? "");
-      foot = `${t.boxCodes === "8 to 10" ? "Answering 8 to 10" : "Top two box"} · ${v === null ? "" : `${v.toFixed(1)}% · `}${overview?.figures.weighted ? "effective" : "valid"} n = ${scope === "all" ? t.effectiveBase : (box?.effectiveBase ?? "-")}`;
+      foot = `${t.boxCodes === "8 to 10" ? "Answering 8 to 10" : "Top two box"} · ${v === null ? "" : `${v.toFixed(1)}% · `}${overview?.figures.weighted ? "effective" : "valid"} n = ${scope === "all" ? t.effectiveBase : (box?.effectiveBase ?? "-")}${rawOf(t)}`;
     }
     // Good news is green: up for satisfaction, NPS and staying, down for switching.
     const good = t.id === "switch" ? direction < 0 : direction > 0;
     return (
       <div key={t.id} className="rounded-2xl border border-slate-200 bg-white p-5" data-testid="tracker-csm-tile">
         <p className="text-sm text-slate-500">{meta.title}</p>
+        <CardSegmentBase />
         <p className="mt-3 text-[2.25rem] font-bold tabular-nums leading-none text-slate-900">{big}</p>
         <p className={`mt-3 text-xs ${direction === 0 ? "text-slate-500" : good ? "text-emerald-700" : "text-red-700"}`} data-testid="tracker-csm-change">
           {changeText.replace(" vs null", "")}
@@ -1588,6 +1604,8 @@ export default function TrackerDashboardPanel({
     const lowest = attrs.length ? attrs.reduce((a, b) => ((b.mean as number) / (b.scaleTop || 1) < (a.mean as number) / (a.scaleTop || 1) ? b : a)) : null;
     const satScoped = sat && sat.status === "ok" && sat.id === "satisfaction" ? (scope === "all" ? sat.effectiveBase : (companyOf(sat, scope) as CompanyBox | null)?.effectiveBase ?? null) : null;
     const baseN = satScoped;
+    // R5 CSM segment: under a segment the figures are about the customers in it, never "all customers".
+    const everyone = overview.segment ? "customers in the segment" : "all customers";
     return (
       <>
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1652,7 +1670,8 @@ export default function TrackerDashboardPanel({
             <Chip label="Company">All customers</Chip>
           )}
           <Chip label="Wave">{overview.wave ?? "Not labelled"}</Chip>
-          <Chip label="Segment">All segments</Chip>
+          {/* R5 CSM segment: the same picker as the brand dashboard's; every figure below is computed in it. */}
+          <SegmentChip questions={segmentQuestions} segment={segment} onApply={setSegment} />
           <Chip label="" onClick={() => chooseAt("overallSatisfaction")}>{overview.figures.weighted ? "Weighted" : "Unweighted"}</Chip>
           <span className="ml-auto text-xs text-slate-500">{baseN !== null ? `${scopeLabel} base n = ${baseN.toLocaleString()}` : ""}</span>
         </div>
@@ -1668,7 +1687,7 @@ export default function TrackerDashboardPanel({
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
               <Card
                 title="Overall satisfaction trend"
-                subtitle={`Mean${scaleTop ? ` on its ${scaleTop}-point scale` : ""} · all customers · ${overview.figures.weighted ? "weighted" : "unweighted"}`}
+                subtitle={`Mean${scaleTop ? ` on its ${scaleTop}-point scale` : ""} · ${everyone} · ${overview.figures.weighted ? "weighted" : "unweighted"}${overview.segment ? " · the segment applied in each wave" : ""}`}
                 testId="tracker-csm-trend"
               >
                 {overview.timeline.length > 0 ? (
@@ -1683,7 +1702,7 @@ export default function TrackerDashboardPanel({
                   <p className="text-xs text-slate-500">This file is not labelled as a wave, so there is no trend to draw.</p>
                 )}
               </Card>
-              <Card title="Service attributes" subtitle={`Mean on each attribute's own scale · ${scopeLabel === "All customers" ? "all customers" : "all customers (not split by company yet)"}`} testId="tracker-csm-attributes">
+              <Card title="Service attributes" subtitle={`Mean on each attribute's own scale · ${scopeLabel === "All customers" ? everyone : `${everyone} (not split by company yet)`}`} testId="tracker-csm-attributes">
                 {overview.attributes.length === 0 ? (
                   <BlankTile title="Service attributes" text="No driver ratings were found in this file." onChoose={() => chooseAt("drivers")} onHide={() => setHidden("csm:drivers", true)} testId="tracker-csm-attributes-blank" />
                 ) : (
@@ -1725,7 +1744,7 @@ export default function TrackerDashboardPanel({
       const pas = nps.passives;
       const pro = nps.promoters;
       return (
-        <Card title="NPS summary" subtitle={`From the NPS module · valid n = ${nps.base.toLocaleString()} · all customers`} testId="tracker-csm-nps">
+        <Card title="NPS summary" subtitle={`From the NPS module · valid n = ${nps.base.toLocaleString()}${overview!.figures.weighted && nps.effectiveBase !== undefined ? `, effective base ${nps.effectiveBase.toLocaleString()}` : ""} · ${everyone}`} testId="tracker-csm-nps">
           <div className="flex h-9 w-full overflow-hidden rounded text-sm font-semibold text-white" role="img" aria-label={`${det.toFixed(0)}% detractors, ${pas.toFixed(0)}% passives, ${pro.toFixed(0)}% promoters`}>
             <span className="flex items-center justify-center bg-[#d9887a]" style={{ width: `${det}%` }}>{det >= 6 ? det.toFixed(0) : ""}</span>
             <span className="flex items-center justify-center bg-[#a9b8cb]" style={{ width: `${pas}%` }}>{pas >= 6 ? pas.toFixed(0) : ""}</span>
@@ -1748,7 +1767,7 @@ export default function TrackerDashboardPanel({
       const top = drv.rows[0];
       const topMean = overview!.attributes.find((a) => a.variable === top?.variable);
       return (
-        <Card title="Driver priority" subtitle={`Driver analysis · target: ${drv.label} · ${drv.method === "shapley" ? "Shapley" : drv.method === "relative_weights" ? "relative weights" : "standardised coefficients"}, R² ${drv.rSquared.toFixed(2)}, ${drv.n} cases`} testId="tracker-drivers">
+        <Card title="Driver priority" subtitle={`Driver analysis · target: ${drv.label} · ${drv.method === "shapley" ? "Shapley" : drv.method === "relative_weights" ? "relative weights" : "standardised coefficients"}, R² ${drv.rSquared.toFixed(2)}, ${drv.n} complete cases${overview!.segment && drv.cases !== undefined ? ` of ${drv.cases} in the segment` : ""}`} testId="tracker-drivers">
           {top && (
             <>
               <p className="text-2xl font-bold text-slate-900">{top.label}</p>
@@ -1782,6 +1801,22 @@ export default function TrackerDashboardPanel({
     }
   })();
 
+  // R5: the segment reading of the page shown, for every card's base line (null on all eligible respondents).
+  const pageReading =
+    kind !== "brand"
+      ? (overview?.segment ?? null)
+      : section === 1
+        ? moments.state === "ready" ? moments.moments.segment : null
+        : section === 2
+          ? associations.state === "ready" ? associations.associations.segment : null
+          : section === 3
+            ? advertising.state === "ready" ? advertising.advertising.segment : null
+            : section === 4
+              ? audience.state === "ready" ? audience.audience.segment : null
+              : section === 5
+                ? category.state === "ready" ? category.category.segment : null
+                : (overview?.segment ?? null);
+  const pageSegment = pageReading ? { text: pageReading.text, n: pageReading.n, effectiveBase: pageReading.effectiveBase } : null;
   const title = kind === "brand" ? "Brand tracking dashboard" : "CSM dashboard";
   const body = (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#f5f7fb]" role="dialog" aria-label={title}>
@@ -1819,6 +1854,7 @@ export default function TrackerDashboardPanel({
         )}
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex max-w-[84rem] flex-col gap-5 px-6 py-6">
+            {load.state !== "ready" && segmentQuestions.length > 0 && <SegmentChip questions={segmentQuestions} segment={segment} onApply={setSegment} />}
             {load.state === "loading" && (
               <p className="text-sm text-slate-500" role="status">
                 Calculating the dashboard from this file...
@@ -1830,6 +1866,11 @@ export default function TrackerDashboardPanel({
                 <button type="button" onClick={() => void reload()} className="mt-2 rounded border border-red-300 bg-white px-2.5 py-1 text-xs">
                   Try again
                 </button>
+                {segment && (
+                  <button type="button" onClick={() => setSegment(null)} className="ml-2 mt-2 rounded border border-red-300 bg-white px-2.5 py-1 text-xs" data-testid="tracker-segment-clear-failed">
+                    Clear the segment
+                  </button>
+                )}
               </div>
             )}
             {kind === "brand" && (
@@ -1848,7 +1889,9 @@ export default function TrackerDashboardPanel({
                 ))}
               </div>
             )}
-            {kind === "brand" ? (section === 1 ? momentsView : section === 2 ? associationsView : section === 3 ? advertisingView : section === 4 ? audienceView : section === 5 ? categoryView : brandView) : csmView}
+            <SegmentBaseContext.Provider value={pageSegment}>
+              {kind === "brand" ? (section === 1 ? momentsView : section === 2 ? associationsView : section === 3 ? advertisingView : section === 4 ? audienceView : section === 5 ? categoryView : brandView) : csmView}
+            </SegmentBaseContext.Provider>
           </div>
         </div>
       </div>

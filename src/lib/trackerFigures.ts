@@ -13,11 +13,13 @@
 //     both waves, in percentage points, with no significance claim; anything else has no change, said so.
 // The base is the unweighted number of valid answers (the table's base row); the effective base is reported when
 // the figures are weighted. Nothing is saved here: no table, no finding.
-import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import { loadVariableDictionaryWithStatus } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
+import { isNonAnswerLabel } from "./nonAnswerLabel";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
 import type { CrosstabResult, CrosstabRow } from "./parseStatsFile";
 import type { ResolvedDashboard } from "./trackerDashboard";
+import { computeInSegment, segmentReading, type AppliedSegment, type SegmentReading } from "./trackerSegment";
 import type { FunnelStage, RoleVariable, TrackerRecognition } from "./trackerRoles";
 
 /** The funnel and behaviour stages the brand overview shows, in funnel order, when the file has them. */
@@ -47,13 +49,15 @@ export type BrandOverviewFigures = {
    * for awareness "saves but doesn't update the tile"): no brand list, or no chosen question asked about a listed
    * brand. Null when figures were calculated or no stage has a question. */
   noFigures: string | null;
+  /** The segment these figures were computed on (trackerSegment.ts), with its base; null for all eligible respondents. */
+  segment: SegmentReading | null;
 };
 
 /** The code of a yes/no variable that means "selected" (see the file comment); null when it cannot be told. */
 export function selectedCode(v: Pick<RoleVariable, "valueLabels">, observedCodes: string[]): string | null {
   const labels = v.valueLabels;
   if (labels && Object.keys(labels).length > 0) {
-    const yes = Object.entries(labels).filter(([, l]) => /^(selected|yes|mentioned|chosen|ticked|checked)\b/i.test(l.trim()));
+    const yes = Object.entries(labels).filter(([, l]) => SELECTED_LABEL.test(l.trim()));
     if (yes.length === 1) return yes[0][0];
     // No positive label (Codex D3A-F02): code 1 counts as selected only when the labels say what 0 is, as the
     // opposite of selected ("No", "Not selected", "Not mentioned"), leave 1 unlabelled, and the data holds no code
@@ -65,13 +69,63 @@ export function selectedCode(v: Pick<RoleVariable, "valueLabels">, observedCodes
       Object.keys(labels).length === 1 &&
       labels["0"] !== undefined &&
       labels["1"] === undefined &&
-      /^(no|not (selected|mentioned|chosen|ticked|checked))$/i.test(labels["0"].trim()) &&
+      NOT_SELECTED_LABEL.test(labels["0"].trim()) &&
       observedCodes.every((c) => c === "0" || c === "1")
     )
       return "1";
     return null;
   }
   return observedCodes.length > 0 && observedCodes.every((c) => c === "0" || c === "1") ? "1" : null;
+}
+
+/**
+ * An answer label that says "selected" ("Yes", "Selected", "Mentioned", ...). Awareness questions are often labelled
+ * "Aware" / "Not aware" or "Heard of" / "Never heard of" instead (Grant, 30 October 2026: aware and not aware make up
+ * everyone with a known answer), so those count too. Anchored at the start, so "Not aware" or "Don't know" never match.
+ */
+const SELECTED_LABEL = /^(selected|yes|mentioned|chosen|ticked|checked|aware|heard of)\b/i;
+
+/**
+ * An answer label that says "not selected": the opposite of selected ("No", "Not selected", "Not mentioned", and for
+ * awareness "Not aware", "Unaware", "Not heard of (it)", "Never heard of (it)"). Whole label only, so "Not applicable"
+ * or "No answer" stay unknown, never counted as not selected.
+ */
+const NOT_SELECTED_LABEL = /^(no|unaware|not (selected|mentioned|chosen|ticked|checked|aware)|(not|never) heard of( (it|this brand|the brand))?)$/i;
+
+/** Why an answer of a yes/no variable is neither its selected code nor an explicit not selected one. */
+export type UnknownAnswerKind = "non_answer" | "unlabelled" | "other_label";
+
+/**
+ * Every observed code of a yes/no variable sorted into selected (selectedCode), explicitly not selected, and unknown.
+ * Codex D3E-F01: "not the selected code" is not the same as "not selected". A code is not selected only when the
+ * answer list says so: its label is the opposite of selected (NOT_SELECTED_LABEL, the rule selectedCode already
+ * uses), or the variable has no labels and holds only 0 and 1 (0 is then not selected, as selectedCode reads 1 as
+ * selected). Every other code is unknown, never counted on either side: a non-answer label by the engine's rule
+ * (nonAnswerLabel.ts, don't know, refused, ...), a code the answer list does not label, or a label that is neither
+ * (for example "Maybe"). Null when the selected code itself cannot be told.
+ */
+export function answerSides(
+  v: Pick<RoleVariable, "valueLabels">,
+  observedCodes: string[],
+): { selected: string; notSelected: string[]; unknown: { code: string; kind: UnknownAnswerKind; label: string | null }[] } | null {
+  const selected = selectedCode(v, observedCodes);
+  if (selected === null) return null;
+  const labels = v.valueLabels && Object.keys(v.valueLabels).length > 0 ? v.valueLabels : null;
+  const notSelected: string[] = [];
+  const unknown: { code: string; kind: UnknownAnswerKind; label: string | null }[] = [];
+  for (const code of observedCodes) {
+    if (code === selected) continue;
+    if (!labels) {
+      // selectedCode reads an unlabelled variable only when it holds nothing but 0 and 1.
+      notSelected.push(code);
+      continue;
+    }
+    const label = labels[code]?.trim();
+    if (label === undefined || label === "") unknown.push({ code, kind: "unlabelled", label: null });
+    else if (NOT_SELECTED_LABEL.test(label)) notSelected.push(code);
+    else unknown.push({ code, kind: isNonAnswerLabel(label) ? "non_answer" : "other_label", label });
+  }
+  return { selected, notSelected, unknown };
 }
 
 /** The per-brand questions of one shape the dashboard maps to a stage (the recogniser's stage, or the researcher's
@@ -188,11 +242,13 @@ export async function brandOverviewFigures(
   rec: TrackerRecognition,
   dashboard: ResolvedDashboard,
   variables: RoleVariable[],
+  /** The dashboard's segment checked against this file (trackerSegment.applySegment); null for all eligible. */
+  segment: AppliedSegment | null = null,
 ): Promise<BrandOverviewFigures> {
   const { shown, unresolved } = overviewMeasures(rec, dashboard);
   const brandCodes = new Set(dashboard.brands.map((b) => b.code));
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
-  const base: Omit<BrandOverviewFigures, "stages" | "effectiveBase" | "noFigures"> = { documentId, weighted: weightVar !== null, weightVar, unresolvedStages: unresolved };
+  const base: Omit<BrandOverviewFigures, "stages" | "effectiveBase" | "noFigures"> = { documentId, weighted: weightVar !== null, weightVar, unresolvedStages: unresolved, segment: segmentReading(segment, null, weightVar !== null) };
   const rowVars = shown.flatMap(({ measure }) => measure.byBrand.filter((b) => brandCodes.has(b.code)).map((b) => b.variable));
   if (rowVars.length === 0) {
     const noFigures =
@@ -209,14 +265,11 @@ export async function brandOverviewFigures(
   const design = resolveSurveyDesign(dict.dictionary, effectiveDesignChoice(setup.setup.design, undefined)).design ?? undefined;
   const labelOf = new Map(dict.dictionary.variables.map((v) => [v.name, v.label]));
   // Computed, not saved: opening the dashboard must not add a table to the file each time (computeCrosstab).
-  const { result } = await computeCrosstab(tenantId, runId, documentId, {
-    columnVars: [],
-    rowItems: rowVars.map((v) => ({ key: v, label: labelOf.get(v) || v, vars: [v] })),
-    weightVar,
-    design,
-  });
+  // Restricted to the segment through its one owner (computeInSegment), so shares, bases and suppression are the segment's.
+  const { result } = await computeInSegment(tenantId, runId, documentId, { columnVars: [], rowItems: rowVars.map((v) => ({ key: v, label: labelOf.get(v) || v, vars: [v] })), weightVar, design }, segment);
   return {
     ...base,
+    segment: segmentReading(segment, result, weightVar !== null),
     noFigures: null,
     stages: sharesFromResult(result, shown, new Map(variables.map((v) => [v.name, v])), brandCodes),
     effectiveBase: weightVar ? result.total?.nEff ?? null : null,

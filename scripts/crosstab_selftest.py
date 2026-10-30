@@ -638,6 +638,59 @@ for bad_ in ([{"variable": "reg", "op": "in", "values": []}], [{"variable": "sc_
 fw = _flt([{"variable": "reg", "op": "in", "values": ["East"]}])
 mE = reg == 3
 check("filters: weighted percentage equals the subset", abs(data_rows(fw["questions"][0])[0]["total"]["pct"] - (w[mE] * (q1[mE] == 1)).sum() / w[mE].sum() * 100) < 0.06)
+# R5 segment: a "codes" filter selects by raw answer code (OR within one filter, AND with the others), never by label.
+fc = _flt([{"variable": "reg", "op": "codes", "codes": ["1", "3"]}, {"variable": "sc_1", "op": "between", "min": 2, "max": 4}])
+mC = np.isin(reg, [1, 3]) & (sc >= 2) & (sc <= 4) & (sc != 99)
+check("codes filter: base is codes 1 or 3 and the range", fc["total"]["n"] == int(mC.sum()), f"{fc['total']['n']} vs {mC.sum()}")
+check("codes filter: weighted percentage equals the subset", abs(data_rows(fc["questions"][0])[0]["total"]["pctExact"] - (w[mC] * (q1[mC] == 1)).sum() / w[mC].sum() * 100) < 1e-9)
+check("codes filter: described by the codes' labels", "Region is North or East" in fc["notes"]["filterNote"], fc["notes"]["filterNote"])
+for bad_ in ([{"variable": "reg", "op": "codes", "codes": []}], [{"variable": "reg", "op": "codes", "codes": ["7"]}]):
+    try:
+        _flt(bad_)
+        check("codes filter: no code, or a code nobody gave, is refused", False)
+    except ValueError:
+        check("codes filter: no code, or a code nobody gave, is refused", True)
+# Two codes sharing one label stay apart, a blank answer is outside, and an unlabelled CSV code matches its text form.
+_seg = pd.DataFrame({"g": [1.0, 2.0, 2.0, 3.0, np.nan, 1.0], "y": [1.0, 0.0, 1.0, 1.0, 1.0, 0.0]})
+_seg_path = os.path.join(tmp, "seg.sav")
+pyreadstat.write_sav(_seg, _seg_path, variable_value_labels={"g": {1: "Same", 2: "Same", 3: "Other"}, "y": {0: "No", 1: "Yes"}})
+_seg_b = open(_seg_path, "rb").read()
+_s2 = psf.crosstab(_seg_b, "seg.sav", {"columnVars": [], "weightVar": None, "filters": [{"variable": "g", "op": "codes", "codes": ["2"]}], "rowItems": [{"key": "y", "label": "Y", "vars": ["y"]}]})
+check("codes filter: code 2 only, though code 1 has the same label", _s2["total"]["n"] == 2, str(_s2["total"]))
+_s13 = psf.crosstab(_seg_b, "seg.sav", {"columnVars": [], "weightVar": None, "filters": [{"variable": "g", "op": "codes", "codes": ["1", "3"]}], "rowItems": [{"key": "y", "label": "Y", "vars": ["y"]}]})
+check("codes filter: a blank answer is outside every code", _s13["total"]["n"] == 3, str(_s13["total"]))
+_seg_csv = b"g,y\n1,1\n2,0\n,1\n2,1\n"
+_sc = psf.crosstab(_seg_csv, "seg.csv", {"columnVars": [], "weightVar": None, "filters": [{"variable": "g", "op": "codes", "codes": ["2"]}], "rowItems": [{"key": "y", "label": "Y", "vars": ["y"]}]})
+check("codes filter: an unlabelled CSV column (1.0 read with a blank) matches code 2", _sc["total"]["n"] == 2, str(_sc["total"]))
+# R5 CSM segment: the driver columns take the same filters through the same path (_case_filter_mask): only the cases in
+# the segment come back, in file order, with the engine's description; without filters every case, as before.
+_dseg = psf.driver_columns(_seg_b, "seg.sav", {"outcome": "y", "predictors": ["g"], "filters": [{"variable": "g", "op": "codes", "codes": ["1", "3"]}]})
+check("driver columns filter: the cases with codes 1 or 3, blank outside", _dseg["n"] == 3 and _dseg["y"] == [1.0, 1.0, 0.0] and [r[0] for r in _dseg["x"]] == [1.0, 3.0, 1.0], str((_dseg["n"], _dseg["y"], _dseg["x"])))
+check("driver columns filter: described as a crosstab describes it", [f["text"] for f in _dseg["filters"]] == ["g is Same or Other"], str(_dseg["filters"]))
+_dall = psf.driver_columns(_seg_b, "seg.sav", {"outcome": "y", "predictors": ["g"]})
+check("driver columns filter: none given, every case and no description", _dall["n"] == 6 and _dall["filters"] == [], str((_dall["n"], _dall["filters"])))
+try:
+    psf.driver_columns(_seg_b, "seg.sav", {"outcome": "y", "predictors": ["g"], "filters": [{"variable": "g", "op": "codes", "codes": ["7"]}]})
+    check("driver columns filter: a segment nobody is in is refused", False)
+except ValueError as _e:
+    check("driver columns filter: a segment nobody is in is refused", "No cases satisfy" in str(_e), str(_e))
+# R5 segment: under a filter, a banner column where everyone is selected must read exactly 100% with a standard error of
+# 0; the selected sum ran over the filtered-out cases' zero weights and came out one bit above its base (seed 1 below,
+# checked with numpy), and sqrt(p * (1 - p) / n) failed the whole table with "math domain error".
+_rng1 = np.random.default_rng(1)
+_w1 = _rng1.uniform(0.3, 2.7, 400)
+_keep1 = (_rng1.random(400) < 0.5).astype(float)
+_flag1 = (_rng1.random(400) < 0.6).astype(float)
+_sub_path = os.path.join(tmp, "subset.sav")
+pyreadstat.write_sav(pd.DataFrame({"keep": _keep1, "flag": _flag1, "wt": _w1}), _sub_path, variable_value_labels={"keep": {0: "Out", 1: "In"}, "flag": {0: "No", 1: "Yes"}})
+check("subset share: the bit-level excess this seed produces is real (numpy)", np.where(_keep1 == 1, _w1, 0.0)[_flag1 == 1].sum() / _w1[(_flag1 == 1) & (_keep1 == 1)].sum() > 1)
+try:
+    _sub = psf.crosstab(open(_sub_path, "rb").read(), "subset.sav", {"columnVars": ["flag"], "weightVar": "wt", "filters": [{"variable": "keep", "op": "codes", "codes": ["1"]}], "rowItems": [{"key": "flag", "label": "Flag", "vars": ["flag"]}]})
+    _yes = [r for r in data_rows(_sub["questions"][0]) if r.get("rawCode") == "1"][0]
+    _col = [c["rawCode"] for c in _sub["columns"]].index("1")
+    check("subset share: a filtered column where everyone is selected reads 100% with a standard error of 0", _yes["pctExact"][_col] == 100.0 and _yes["seExact"][_col] == 0.0, str((_yes["pctExact"], _yes["seExact"])))
+except ValueError as _e:
+    check("subset share: a filtered column where everyone is selected reads 100% with a standard error of 0", False, str(_e))
 
 # Share of responses
 rp = psf.crosstab(data, "t.sav", {"columnVars": ["reg"], "weightVar": "wgt", "rowItems": [{"key": "m", "label": "Brands", "vars": ["m_1", "m_2", "m_3", "m_4"], "stem": ""}]})
@@ -983,6 +1036,15 @@ check("D2b: driver columns drop 6 = Don't know", [r[0] for r in _dc["x"]] == [1.
 check("D2b: the scale top is the declared 5, unchosen, never the non-answer 6", _sat.get("scaleTop") == 5.0 and _sat.get("scaleStated") is True and _sat["max"] == 4.0, str(_sat))
 _dn = psf.driver_columns(_wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3], "q": [1, 2, 4]}), 0, True)}), "n.xlsx", {"outcome": "y", "predictors": ["q"]})["predictors"][0]
 check("D2b: without an answer list the scale top is the highest answer, said so", _dn.get("scaleTop") == 4.0 and _dn.get("scaleStated") is False, str(_dn))
+# Codex T2-F01 (30 October 2026): each predictor carries its answer domain, so the performance measure is read from the
+# declared scale, not from the answers that happen to be present. Declared 1 to 5 (and 6 = Don't know) answered 1 to 4
+# and 6: domain 1 to 5, five codes, declared. Declared 0 to 10 answered only 0 and 1: domain 0 to 10, eleven codes.
+# Without an answer list: the observed answers, said so.
+check("T2-F01: declared domain keeps the unchosen 5 and drops 6 = Don't know", _sat.get("answerDomain") == {"source": "declared", "min": 1.0, "max": 5.0, "count": 5, "integers": True}, str(_sat.get("answerDomain")))
+_lab3 = pd.DataFrame({"variable": ["nps"] * 11, "label": ["Recommend"] * 11, "value": list(range(11)), "value_label": [str(i) for i in range(11)]})
+_d10 = psf.driver_columns(_wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3, 4], "nps": [0, 1, 0, 1]}), 0, True), "Labels": (_lab3, 0, True)}), "d10.xlsx", {"outcome": "y", "predictors": ["nps"]})["predictors"][0]
+check("T2-F01: a declared 0 to 10 scale answered only 0 and 1 keeps its eleven-point domain", _d10.get("answerDomain") == {"source": "declared", "min": 0.0, "max": 10.0, "count": 11, "integers": True} and _d10["max"] == 1.0, str(_d10))
+check("T2-F01: without an answer list the domain is the observed answers, said so", _dn.get("answerDomain") == {"source": "observed", "min": 1.0, "max": 4.0, "count": 3, "integers": True}, str(_dn.get("answerDomain")))
 
 # Decision 9 (29 October 2026): title rows above a CSV, TSV or Excel header. First part: up to 14 leading rows holding
 # at most one written value are set aside by detection. Second part: the researcher's header row (headerRowsSkipped,

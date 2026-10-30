@@ -23,6 +23,13 @@
 // the same owner split by that question. The all-customers figure is still the owner's own unsplit reading, so it
 // equals the tile without a company. A company whose figure the owner withholds (a small base) is listed with no
 // figure, never dropped or shown as 0. Driver priority is for all customers only.
+//
+// R5 CSM segment (Grant, 30 October 2026: "CSM needs a segment tool as well"): every figure here takes the dashboard's
+// segment, already checked against the file by the loader (trackerOverview.ts), and hands it by codes (segmentOf) to
+// the owner that computes it: the distribution and NPS tools and the driver model each restrict to the segment through
+// the segment owner's engine filters, so means, boxes, scores, bases, suppression and the model are the segment's; a
+// company's figures are within the segment too. Driver priority on a segment with fewer cases than the driver owner's
+// minimum is "failed" with that reason. Each tile also carries the bases the engine counted (raw, weighted, effective).
 import { runDistributionAction } from "./chartActions";
 import { runNpsAction } from "./npsActions";
 import { runDriverAnalysisFor } from "./drivers";
@@ -30,6 +37,7 @@ import { shareOfCodes, summarizeSeries } from "./csmMetrics";
 import { codeNamesDiffer } from "./trackerFigures";
 import { scaleTop, type RoleVariable } from "./trackerRoles";
 import type { ResolvedDashboard } from "./trackerDashboard";
+import { segmentFailure, segmentOf, type AppliedSegment } from "./trackerSegment";
 
 export const CSM_TILES = ["satisfaction", "recommend", "stay", "switch", "drivers"] as const;
 export type CsmTileId = (typeof CSM_TILES)[number];
@@ -39,11 +47,15 @@ type Failed = { id: CsmTileId; status: "failed"; variable: string; error: string
 export type CompanyBox = { code: string; label: string; mean: number | null; box: number | null; effectiveBase: number | null };
 export type CompanyNps = { code: string; label: string; nps: number | null; lo: number | null; hi: number | null; base: number | null };
 /** byCompany: null without a company question; "failed" with the reason when the split could not be calculated. */
-export type CsmBoxFigure = { id: "satisfaction" | "stay" | "switch"; status: "ok"; variable: string; label: string; mean: number | null; /** The highest answer code of the scale (5 on a 1 to 5 scale), for "mean / scale". */ scaleTop: number | null; box: number | null; boxCodes: string; effectiveBase: number; byCompany: CompanyBox[] | { failed: string } | null };
-export type CsmNpsFigure = { id: "recommend"; status: "ok"; variable: string; label: string; nps: number; lo: number; hi: number; promoters: number; passives: number; detractors: number; base: number; byCompany: CompanyNps[] | { failed: string } | null };
+/** The answered base the engine counted (R5 CSM segment): unweighted n and weighted total (the effective base is the
+ * tile's own `effectiveBase`). Null or absent when the owner did not report it. */
+export type CsmBases = { rawBase?: number | null; weightedBase?: number | null };
+export type CsmBoxFigure = { id: "satisfaction" | "stay" | "switch"; status: "ok"; variable: string; label: string; mean: number | null; /** The highest answer code of the scale (5 on a 1 to 5 scale), for "mean / scale". */ scaleTop: number | null; box: number | null; boxCodes: string; effectiveBase: number; byCompany: CompanyBox[] | { failed: string } | null; /** Each answer code's share (unrounded, in percent; null where suppressed), in the distribution's order. */ shares?: { code: string; share: number | null }[] } & CsmBases;
+export type CsmNpsFigure = { id: "recommend"; status: "ok"; variable: string; label: string; nps: number; lo: number; hi: number; promoters: number; passives: number; detractors: number; base: number; /** Kish effective base as the NPS tool reports it (rounded). */ effectiveBase?: number; byCompany: CompanyNps[] | { failed: string } | null } & Pick<CsmBases, "weightedBase">;
 /** The company question and its companies (answer code and label), in code order. */
 export type CsmCompanies = { variable: string; companies: { code: string; label: string }[] };
-export type CsmDriverFigure = { id: "drivers"; status: "ok"; variable: string; label: string; method: string; rSquared: number; n: number; rows: { variable: string; label: string; share: number; rank: number }[] };
+/** `n`: complete cases in the model; `cases`: cases read (every case, or every case in the segment). */
+export type CsmDriverFigure = { id: "drivers"; status: "ok"; variable: string; label: string; method: string; rSquared: number; n: number; cases?: number; rows: { variable: string; label: string; share: number; rank: number; coefficient?: number }[] };
 export type CsmTile = Missing | Failed | CsmBoxFigure | CsmNpsFigure | CsmDriverFigure;
 
 const ROLE: Record<Exclude<CsmTileId, "drivers">, keyof Omit<ResolvedDashboard["csm"], "drivers">> = {
@@ -88,14 +100,18 @@ export function boxScaleTop(series: { bars: { rawCode?: string | null }[] }, rol
   return roleVariable ? scaleTop(roleVariable) : null;
 }
 
-async function boxTile(id: "satisfaction" | "stay" | "switch", runId: string, documentId: string, variable: string, weightVar: string | null, roleVariable: RoleVariable | undefined, company: CsmCompanies | null): Promise<CsmTile> {
+/** The segment by codes for a tool, or null (R5 CSM segment). */
+const toolSeg = (segment: AppliedSegment | null) => (segment ? segmentOf(segment) : null);
+
+async function boxTile(id: "satisfaction" | "stay" | "switch", runId: string, documentId: string, variable: string, weightVar: string | null, roleVariable: RoleVariable | undefined, company: CsmCompanies | null, segment: AppliedSegment | null = null): Promise<CsmTile> {
   // The unsplit distribution comes first: its answers fix the scale top (boxScaleTop), and so the box codes and the
-  // "mean / scale" divisor.
+  // "mean / scale" divisor. Under a segment the scale top still comes from the declared answer list (boxScaleTop), so
+  // a top answer nobody in the segment chose still counts as the top.
   const [r, split] = await Promise.all([
-    runDistributionAction(runId, documentId, variable, weightVar, null, "compute"),
-    company ? runDistributionAction(runId, documentId, variable, weightVar, company.variable, "compute") : Promise.resolve(null),
+    runDistributionAction(runId, documentId, variable, weightVar, null, "compute", toolSeg(segment)),
+    company ? runDistributionAction(runId, documentId, variable, weightVar, company.variable, "compute", toolSeg(segment)) : Promise.resolve(null),
   ]);
-  if (!r.ok) return { id, status: "failed", variable, error: r.error };
+  if (!r.ok) return { id, status: "failed", variable, error: segmentFailure(new Error(r.error), segment) };
   const series = r.result.series[0];
   if (!series) return { id, status: "failed", variable, error: "This question has no answers to read." };
   const top = boxScaleTop(series, roleVariable);
@@ -114,15 +130,29 @@ async function boxTile(id: "satisfaction" | "stay" | "switch", runId: string, do
       });
     }
   }
-  return { id, status: "ok", variable, label: r.result.label, mean: mean?.exact ?? null, scaleTop: top, box: shareOfCodes(series, box.codes).exact, boxCodes: box.text, effectiveBase: series.n, byCompany };
+  return {
+    id,
+    status: "ok",
+    variable,
+    label: r.result.label,
+    mean: mean?.exact ?? null,
+    scaleTop: top,
+    box: shareOfCodes(series, box.codes).exact,
+    boxCodes: box.text,
+    effectiveBase: series.n,
+    rawBase: series.base?.n ?? null,
+    weightedBase: series.base?.w ?? null,
+    shares: series.bars.map((b) => ({ code: b.rawCode ?? b.label, share: b.share === undefined ? b.pct : b.share })),
+    byCompany,
+  };
 }
 
-async function npsTile(runId: string, documentId: string, variable: string, weightVar: string | null, company: CsmCompanies | null): Promise<CsmTile> {
+async function npsTile(runId: string, documentId: string, variable: string, weightVar: string | null, company: CsmCompanies | null, segment: AppliedSegment | null = null): Promise<CsmTile> {
   const [r, split] = await Promise.all([
-    runNpsAction(runId, documentId, variable, weightVar, null, undefined, "compute"),
-    company ? runNpsAction(runId, documentId, variable, weightVar, company.variable, undefined, "compute") : Promise.resolve(null),
+    runNpsAction(runId, documentId, variable, weightVar, null, undefined, "compute", toolSeg(segment)),
+    company ? runNpsAction(runId, documentId, variable, weightVar, company.variable, undefined, "compute", toolSeg(segment)) : Promise.resolve(null),
   ]);
-  if (!r.ok) return { id: "recommend", status: "failed", variable, error: r.error };
+  if (!r.ok) return { id: "recommend", status: "failed", variable, error: segmentFailure(new Error(r.error), segment) };
   const x = r.result;
   let byCompany: CsmNpsFigure["byCompany"] = null;
   if (company && split) {
@@ -137,10 +167,10 @@ async function npsTile(runId: string, documentId: string, variable: string, weig
       });
     }
   }
-  return { id: "recommend", status: "ok", variable, label: x.label, nps: x.nps, lo: x.lo, hi: x.hi, promoters: x.promoters, passives: x.passives, detractors: x.detractors, base: x.rawN, byCompany };
+  return { id: "recommend", status: "ok", variable, label: x.label, nps: x.nps, lo: x.lo, hi: x.hi, promoters: x.promoters, passives: x.passives, detractors: x.detractors, base: x.rawN, effectiveBase: x.effectiveN, weightedBase: x.weightedBase, byCompany };
 }
 
-export async function csmOverviewFigures(tenantId: string, runId: string, documentId: string, dashboard: ResolvedDashboard, variables: RoleVariable[], company: CsmCompanies | null = null): Promise<CsmTile[]> {
+export async function csmOverviewFigures(tenantId: string, runId: string, documentId: string, dashboard: ResolvedDashboard, variables: RoleVariable[], company: CsmCompanies | null = null, segment: AppliedSegment | null = null): Promise<CsmTile[]> {
   const byName = new Map(variables.map((v) => [v.name, v]));
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
   const varOf = (id: Exclude<CsmTileId, "drivers">) => dashboard.csm[ROLE[id]].variable;
@@ -150,7 +180,7 @@ export async function csmOverviewFigures(tenantId: string, runId: string, docume
       const predictors = dashboard.csm.drivers.variables;
       if (!outcome || predictors.length < 2) return { id, status: "missing", reason: NO_ROLE.drivers };
       try {
-        const report = await runDriverAnalysisFor(tenantId, runId, documentId, { outcome, outcomeType: "continuous", predictors, weightVar, groupVar: null });
+        const report = await runDriverAnalysisFor(tenantId, runId, documentId, { outcome, outcomeType: "continuous", predictors, weightVar, groupVar: null }, toolSeg(segment));
         return {
           id,
           status: "ok",
@@ -159,16 +189,17 @@ export async function csmOverviewFigures(tenantId: string, runId: string, docume
           method: report.result.method,
           rSquared: report.result.fit.rSquared,
           n: report.result.n,
-          rows: [...report.result.rows].sort((a, b) => a.rank - b.rank).map((row) => ({ variable: row.variable ?? row.name, label: row.name, share: row.share, rank: row.rank })),
+          cases: report.casesInFile,
+          rows: [...report.result.rows].sort((a, b) => a.rank - b.rank).map((row) => ({ variable: row.variable ?? row.name, label: row.name, share: row.share, rank: row.rank, coefficient: row.coefficient })),
         };
       } catch (e) {
-        return { id, status: "failed", variable: outcome, error: e instanceof Error ? e.message : String(e) };
+        return { id, status: "failed", variable: outcome, error: segmentFailure(e, segment) };
       }
     }
     const variable = varOf(id);
     if (!variable) return { id, status: "missing", reason: NO_ROLE[id] };
-    if (id === "recommend") return npsTile(runId, documentId, variable, weightVar, company);
-    return boxTile(id, runId, documentId, variable, weightVar, byName.get(variable), company);
+    if (id === "recommend") return npsTile(runId, documentId, variable, weightVar, company, segment);
+    return boxTile(id, runId, documentId, variable, weightVar, byName.get(variable), company, segment);
   };
   return Promise.all(CSM_TILES.map(tile));
 }
@@ -248,30 +279,31 @@ export function csmChangesAgainst(
 }
 
 /** One driver's performance for "Service attributes": its mean on its own scale (`summarizeSeries`), or why not. */
-export type AttributeMean = { variable: string; label: string; mean: number | null; scaleTop: number | null; effectiveBase: number | null; error?: string };
+export type AttributeMean = { variable: string; label: string; mean: number | null; scaleTop: number | null; effectiveBase: number | null; /** R5 CSM segment: the engine's raw and weighted answered base (absent on an error). */ rawBase?: number | null; weightedBase?: number | null; error?: string };
 
 /**
  * The drivers' means (CSM "Service attributes", Grant's preview), each from the distribution owner and
  * `summarizeSeries`, as CSM Analytics reads an attribute, with the dashboard's weight. A driver that cannot be read
  * is listed with the reason, never dropped or shown as 0.
  */
-export async function csmAttributeMeans(runId: string, documentId: string, drivers: string[], weightVar: string | null): Promise<AttributeMean[]> {
+export async function csmAttributeMeans(runId: string, documentId: string, drivers: string[], weightVar: string | null, segment: AppliedSegment | null = null): Promise<AttributeMean[]> {
   return Promise.all(
     drivers.map(async (variable) => {
-      const r = await runDistributionAction(runId, documentId, variable, weightVar, null, "compute");
-      if (!r.ok) return { variable, label: variable, mean: null, scaleTop: null, effectiveBase: null, error: r.error };
+      const r = await runDistributionAction(runId, documentId, variable, weightVar, null, "compute", toolSeg(segment));
+      if (!r.ok) return { variable, label: variable, mean: null, scaleTop: null, effectiveBase: null, error: segmentFailure(new Error(r.error), segment) };
       const series = r.result.series[0];
       if (!series) return { variable, label: r.result.label, mean: null, scaleTop: null, effectiveBase: null, error: "No answers to read." };
       const codes = series.bars.map((b) => Number(b.rawCode ?? NaN)).filter(Number.isFinite);
-      return { variable, label: r.result.label, mean: summarizeSeries(series, "mean").exact, scaleTop: codes.length ? Math.max(...codes) : null, effectiveBase: series.n };
+      return { variable, label: r.result.label, mean: summarizeSeries(series, "mean").exact, scaleTop: codes.length ? Math.max(...codes) : null, effectiveBase: series.n, rawBase: series.base?.n ?? null, weightedBase: series.base?.w ?? null };
     }),
   );
 }
 
-/** Overall satisfaction's mean in one wave file, for the trend (the same reading as the satisfaction tile). */
-export async function satisfactionMean(runId: string, documentId: string, variable: string, weightVar: string | null): Promise<{ mean: number | null; effectiveBase: number | null; error?: string }> {
-  const r = await runDistributionAction(runId, documentId, variable, weightVar, null, "compute");
-  if (!r.ok) return { mean: null, effectiveBase: null, error: r.error };
+/** Overall satisfaction's mean in one wave file, for the trend (the same reading as the satisfaction tile), in the
+ * segment as applied to that wave when there is one. */
+export async function satisfactionMean(runId: string, documentId: string, variable: string, weightVar: string | null, segment: AppliedSegment | null = null): Promise<{ mean: number | null; effectiveBase: number | null; error?: string }> {
+  const r = await runDistributionAction(runId, documentId, variable, weightVar, null, "compute", toolSeg(segment));
+  if (!r.ok) return { mean: null, effectiveBase: null, error: segmentFailure(new Error(r.error), segment) };
   const series = r.result.series[0];
   if (!series) return { mean: null, effectiveBase: null, error: "No answers to read." };
   return { mean: summarizeSeries(series, "mean").exact, effectiveBase: series.n };

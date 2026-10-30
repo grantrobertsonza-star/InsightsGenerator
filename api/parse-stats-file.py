@@ -2949,6 +2949,17 @@ def _p_two_sided_design(z: float, dsg) -> float:
     return _p_two_sided_t(z, df)
 
 
+def _subset_share(sel, base):
+    """A selected weighted count over its base, the cases selected being a subset of the base: NaN for an empty base,
+    else held within 0 to 1. The two sums can differ in the last bit only (R5 segment: under a filter, the selected
+    sum runs over the zero weights of the cases filtered out and the base's does not, so numpy groups the additions
+    differently): a column where everyone is selected read 1.0000000000000002, and the standard error's
+    sqrt(p * (1 - p) / n) failed with "math domain error" for the whole table."""
+    if not base > 0:
+        return float("nan")
+    return min(1.0, max(0.0, sel / base))
+
+
 def _se_prop(p, n_eff):
     return math.sqrt(p * (1 - p) / n_eff)
 
@@ -4903,13 +4914,76 @@ def respondent_quality(file_bytes: bytes, source_filename: str, args=None) -> di
     }
 
 
+def _case_filter_mask(df, filters_arg, labels, vlabels, w_ok):
+    """The cases every filter holds for (AND), as `w_ok` narrowed, and each filter's description. The one filter path
+    of the engine: crosstab and the driver columns (driver_columns, a tracker dashboard's segment, R5 CSM segment)
+    both select cases here, so a segment means the same respondents in a table and in a driver model. `w_ok` is the
+    cases already usable (a crosstab's valid weights; every case for driver_columns). A filter nobody meets, or filters
+    nobody meets together, raise ValueError with the reason, never an empty table."""
+    import numpy as np
+    import pandas as pd
+
+    for f in filters_arg:
+        if f.get("op", "in") not in ("in", "notIn", "between", "codes"):
+            raise ValueError(f"Unknown filter type: {f.get('op')}")
+    filters_info = []
+    for f in filters_arg:
+        fv = f["variable"]
+        flab = labels.get(fv) or fv
+        op = f.get("op", "in")
+        if op == "between":
+            xf = pd.to_numeric(df[fv], errors="coerce").to_numpy(dtype=float)
+            fm = np.isfinite(xf)
+            dk_f = [k for k, v in (vlabels.get(fv) or {}).items() if _DK_RE.match(str(v).strip())]
+            if dk_f:
+                fm &= ~np.isin(xf, np.array([float(k) for k in dk_f]))
+            lo, hi = f.get("min"), f.get("max")
+            if lo is None and hi is None:
+                raise ValueError(f"Filter on {flab} needs a minimum, a maximum, or both.")
+            if lo is not None:
+                fm &= xf >= float(lo)
+            if hi is not None:
+                fm &= xf <= float(hi)
+            text = (f"{flab} from {lo:g} to {hi:g}" if lo is not None and hi is not None
+                    else f"{flab} at least {lo:g}" if lo is not None else f"{flab} at most {hi:g}")
+        elif op == "codes":
+            want = [str(c) for c in (f.get("codes") or [])]
+            if not want:
+                raise ValueError(f"Filter on {flab} needs at least one answer code.")
+            f_labels = vlabels.get(fv) or {}
+            ident_f = df[fv].map(lambda v: _raw_key(v, f_labels)).to_numpy(dtype=object)
+            fm = np.array([x is not None and _code_text(x) in want for x in ident_f], dtype=bool)
+            label_of = {_code_text(k): str(v) for k, v in f_labels.items()}
+            text = f"{flab} is " + " or ".join(label_of.get(c, c) for c in want)
+        else:
+            vals = [str(v) for v in (f.get("values") or [])]
+            if not vals:
+                raise ValueError(f"Filter on {flab} needs at least one answer.")
+            fd = _decode(df[fv], vlabels.get(fv))
+            farr = fd.to_numpy(dtype=object)
+            inset = np.array([str(x) in vals for x in farr], dtype=bool)
+            known = np.array([x is not None and not (isinstance(x, float) and math.isnan(x)) for x in farr], dtype=bool)
+            fm = inset if op == "in" else (~inset & known)
+            text = f"{flab} {'is' if op == 'in' else 'is not'} " + " or ".join(vals)
+        if not (fm & w_ok).any():
+            raise ValueError(f"No cases satisfy the filter: {text}.")
+        w_ok = w_ok & fm
+        filters_info.append({"variable": fv, "label": flab, "op": op, "text": text})
+    if filters_arg and not w_ok.any():
+        raise ValueError("No cases satisfy all of the filters together.")
+    return w_ok, filters_info
+
+
 def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     """The chosen outcome and predictor columns as numbers, case by case, for driver analysis.
     args: outcome, predictors [names], weightVar, optional groupVar. Codes whose label means "no
     usable answer" (don't know, refused, not applicable) become missing, as they do in a crosstab
     mean. A variable whose answers are text rather than numbers is skipped with the reason. When
     groupVar is given, its decoded category per case is also returned (group/groupValues), so the
-    caller can run the same analysis separately within each category without a second file read."""
+    caller can run the same analysis separately within each category without a second file read.
+    Optional filters (R5 CSM segment): the same filter list a crosstab takes, applied through the one filter path
+    (_case_filter_mask), so only the cases in a tracker dashboard's segment are returned; `n` is then the number of
+    cases in the segment and `filters` describes them. Without filters every case is returned, as before."""
     import numpy as np
     import pandas as pd
 
@@ -4919,11 +4993,19 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     group_var = args.get("groupVar") or None
     if group_var in (outcome, *predictors):
         group_var = None  # can't segment by the outcome or a predictor itself
-    wanted = list(dict.fromkeys([outcome] + predictors + ([weight_var] if weight_var else []) + ([group_var] if group_var else [])))
+    filters_arg = [dict(f) for f in (args.get("filters") or []) if f.get("variable")]
+    filter_vars = [f["variable"] for f in filters_arg]
+    wanted = list(dict.fromkeys([outcome] + predictors + ([weight_var] if weight_var else []) + ([group_var] if group_var else []) + filter_vars))
     df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"), header_rows_skipped=args.get("headerRowsSkipped"))
     labels = meta.column_names_to_labels or {}
     vlabels = meta.variable_value_labels or {}
     missing_ranges = getattr(meta, "missing_ranges", None) or {}
+    filters_info = []
+    if filters_arg:
+        # Every case is a candidate here (weights are checked case by case below); the cases outside the filters are
+        # dropped, since a driver model has no survey design to keep them in with zero weight.
+        keep, filters_info = _case_filter_mask(df, filters_arg, labels, vlabels, np.ones(len(df), dtype=bool))
+        df = df.loc[keep].reset_index(drop=True)
     n_rows = len(df)
 
     def non_answers(var):
@@ -4963,10 +5045,20 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         # D3AR-F01): with an answer list, the highest declared substantive answer or observed answer, so a declared
         # top nobody chose still counts and a non-answer (6 = Don't know) never does; without one, the highest answer
         # observed, said so (scaleStated false).
-        declared = [float(n) for n in (_num_or_none(k) for k in vl.keys()) if n is not None and float(n) not in non_answers(var)]
+        excluded = non_answers(var)
+        declared = [float(n) for n in (_num_or_none(k) for k in vl.keys()) if n is not None and float(n) not in excluded]
         top = max(declared + [float(finite.max())]) if declared else float(finite.max())
+        # The answer domain (claude/answer-domain.md; Codex T2-F01): with an answer list, every declared substantive
+        # code (non-answers left out by _non_answer_codes, as above) together with every observed answer, so a scale
+        # point nobody chose still sets the scale's range and length; without one, the observed answers only, said so
+        # (source "observed"). Summarised (range, number of codes, whole numbers) rather than listed, since a long
+        # numeric variable can have thousands of codes. driverPerformance.ts reads the performance measure from it.
+        domain = sorted(set(declared) | set(codes)) if declared else codes
+        answer_domain = {"source": "declared" if declared else "observed", "min": domain[0], "max": domain[-1],
+                         "count": len(domain), "integers": all(float(c).is_integer() for c in domain)}
         return {"name": var, "label": labels.get(var) or var, "min": float(finite.min()), "max": float(finite.max()),
-                "distinct": len(codes), "valueLabels": shown, "scaleTop": top, "scaleStated": bool(declared)}
+                "distinct": len(codes), "valueLabels": shown, "scaleTop": top, "scaleStated": bool(declared),
+                "answerDomain": answer_domain}
 
     skipped = []
     y_arr, why = numeric(outcome)
@@ -5010,6 +5102,7 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         "skipped": skipped,
         "group": group,
         "groupValues": group_values,
+        "filters": filters_info,
     }
 
 
@@ -5402,13 +5495,17 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     mean_rows = args.get("meanRows") is True
     mean_not_added: list = []
     # Filters: all conditions must hold (AND). op "in" / "notIn" take answer labels; "between" takes
-    # numeric min and/or max (inclusive). The older single `layer` is read as one "in" filter.
+    # numeric min and/or max (inclusive); "codes" takes raw answer codes (any of them, OR), matched by
+    # the one text form of a code (_code_text of _raw_key, the identity CrosstabRow.rawCode carries),
+    # never by label, so two codes sharing a label stay apart and a relabelled code still matches. A
+    # blank or declared-missing answer holds no code, so it is outside a "codes" filter (tracker
+    # dashboard segments, R5 segment). The older single `layer` is read as one "in" filter.
     filters_arg = [dict(f) for f in (args.get("filters") or []) if f.get("variable")]
     layer_arg = args.get("layer") or {}
     if layer_arg.get("variable") and layer_arg.get("category") not in (None, ""):
         filters_arg.append({"variable": layer_arg["variable"], "op": "in", "values": [layer_arg["category"]]})
     for f in filters_arg:
-        if f.get("op", "in") not in ("in", "notIn", "between"):
+        if f.get("op", "in") not in ("in", "notIn", "between", "codes"):
             raise ValueError(f"Unknown filter type: {f.get('op')}")
     filter_vars = [f["variable"] for f in filters_arg]
     # A banner variable can be a plain categorical column, or ("set:<key>") a multiple-response
@@ -5438,42 +5535,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     else:
         w = np.ones(n_rows)
         w_ok = np.ones(n_rows, dtype=bool)
-    filters_info = []
-    for f in filters_arg:
-        fv = f["variable"]
-        flab = labels.get(fv) or fv
-        op = f.get("op", "in")
-        if op == "between":
-            xf = pd.to_numeric(df[fv], errors="coerce").to_numpy(dtype=float)
-            fm = np.isfinite(xf)
-            dk_f = [k for k, v in (vlabels.get(fv) or {}).items() if _DK_RE.match(str(v).strip())]
-            if dk_f:
-                fm &= ~np.isin(xf, np.array([float(k) for k in dk_f]))
-            lo, hi = f.get("min"), f.get("max")
-            if lo is None and hi is None:
-                raise ValueError(f"Filter on {flab} needs a minimum, a maximum, or both.")
-            if lo is not None:
-                fm &= xf >= float(lo)
-            if hi is not None:
-                fm &= xf <= float(hi)
-            text = (f"{flab} from {lo:g} to {hi:g}" if lo is not None and hi is not None
-                    else f"{flab} at least {lo:g}" if lo is not None else f"{flab} at most {hi:g}")
-        else:
-            vals = [str(v) for v in (f.get("values") or [])]
-            if not vals:
-                raise ValueError(f"Filter on {flab} needs at least one answer.")
-            fd = _decode(df[fv], vlabels.get(fv))
-            farr = fd.to_numpy(dtype=object)
-            inset = np.array([str(x) in vals for x in farr], dtype=bool)
-            known = np.array([x is not None and not (isinstance(x, float) and math.isnan(x)) for x in farr], dtype=bool)
-            fm = inset if op == "in" else (~inset & known)
-            text = f"{flab} {'is' if op == 'in' else 'is not'} " + " or ".join(vals)
-        if not (fm & w_ok).any():
-            raise ValueError(f"No cases satisfy the filter: {text}.")
-        w_ok = w_ok & fm
-        filters_info.append({"variable": fv, "label": flab, "op": op, "text": text})
-    if filters_arg and not w_ok.any():
-        raise ValueError("No cases satisfy all of the filters together.")
+    w_ok, filters_info = _case_filter_mask(df, filters_arg, labels, vlabels, w_ok)
     wv = np.where(w_ok, w, 0.0)
 
     dsg = _Design.build(df, psu_var, strata_var, n_rows) if (psu_var or strata_var) else None
@@ -5643,7 +5705,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         counts_exact, pcts_exact, ses_exact = [], [], []
         tot_n, tot_w, tot_eff = base_stats(valid_mask)
         tot_sel = float(wv[valid_mask & sel_mask].sum())
-        pt = tot_sel / tot_w if tot_w > 0 else float("nan")
+        pt = _subset_share(tot_sel, tot_w)
         ps, sigs, ests, ses = [], [], [], []
         for k in range(K):
             vm = valid_mask & col_masks[k]
@@ -5653,7 +5715,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             counts.append(round(sel, 1))
             bases.append({"n": n, "w": round(sw, 1), "nEff": round(n_eff, 1)})
             ncell.append(int((vm & sel_mask & w_ok).sum()))
-            pj = sel / sw if sw > 0 else float("nan")
+            pj = _subset_share(sel, sw)
             suppressed = n < MIN_BASE_SUPPRESS
             pcts_exact.append(None if (math.isnan(pj) or suppressed) else pj * 100)
             pcts.append(None if (math.isnan(pj) or suppressed) else round(pj * 100, 1))
@@ -5663,7 +5725,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             cm = valid_mask & block_any[block_of_col[k]] & ~col_masks[k]
             _, csw, c_eff = base_stats(cm)
             csel = float(wv[cm & sel_mask].sum())
-            pc = csel / csw if csw > 0 else float("nan")
+            pc = _subset_share(csel, csw)
             tk = None
             if dsg is not None and sw > 0:
                 yk = (sel_mask & vm).astype(float)
@@ -5708,7 +5770,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             vm_b = valid_mask & block_any[b]
             nb, swb, neb = base_stats(vm_b)
             selb = float(wv[vm_b & sel_mask].sum())
-            pb = selb / swb if swb > 0 else float("nan")
+            pb = _subset_share(selb, swb)
             nets.append({
                 "block": b,
                 "count": round(selb, 1),

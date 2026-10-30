@@ -20,13 +20,14 @@
 // Unknown stays unknown: no awareness question mapped is "mapping_needed" (the base cannot be defined; never all
 // respondents instead), no associations grid is "not_measured", and a cell that cannot be read is n/a with the
 // reason. A file whose figures cannot be read throws with the reason.
-import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import { loadVariableDictionaryWithStatus } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
 import { loadTrackerDashboard } from "./trackerDashboards";
 import { loadRoleInput } from "./trackerInput";
 import { overviewMeasures, selectedAnswerOf, selectedShareOf } from "./trackerFigures";
 import type { CrosstabRequest, CrosstabResult } from "./parseStatsFile";
+import { applySegment, computeInSegment, segmentReading, type Segment, type SegmentReading } from "./trackerSegment";
 import type { ResolvedDashboard } from "./trackerDashboard";
 import type { BrandGrid, RoleVariable, TrackerRecognition } from "./trackerRoles";
 
@@ -52,6 +53,8 @@ export type BrandAssociations = {
   documentId: string;
   weighted: boolean;
   weightVar: string | null;
+  /** R5: the segment these figures were computed on, with its base (trackerSegment.ts); null for all eligible. */
+  segment: SegmentReading | null;
   profile:
     | {
         status: "ok";
@@ -129,11 +132,12 @@ const BRANDS_AT_ONCE = 4;
  * The Brand associations page for one data file. Throws with the reason when the file's dictionary, set-up or a
  * table cannot be read; never returns an empty page for a failure.
  */
-export async function loadBrandAssociations(tenantId: string, runId: string, documentId: string): Promise<BrandAssociations & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
+export async function loadBrandAssociations(tenantId: string, runId: string, documentId: string, segment: Segment | null = null): Promise<BrandAssociations & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
   const [view, input] = await Promise.all([loadTrackerDashboard(tenantId, runId, documentId), loadRoleInput(tenantId, runId, documentId)]);
   const dashboard = view.dashboard;
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
-  const out = { documentId, weighted: weightVar !== null, weightVar, dashboard: { brands: dashboard.brands, focalBrand: dashboard.focalBrand } };
+  const applied = applySegment(segment, input.variables, view.recognition);
+  const out = { documentId, weighted: weightVar !== null, weightVar, segment: segmentReading(applied, null, weightVar !== null), dashboard: { brands: dashboard.brands, focalBrand: dashboard.focalBrand } };
   const parts = associationParts(view.recognition, dashboard);
   if (parts.status !== "ok") return { ...out, profile: parts };
   const { grid, awareness } = parts;
@@ -151,7 +155,9 @@ export async function loadBrandAssociations(tenantId: string, runId: string, doc
     const labelOf = new Map(dict.dictionary.variables.map((v) => [v.name, v.label]));
     const rowItems = (vars: string[]): CrosstabRequest["rowItems"] => vars.map((v) => ({ key: v, label: labelOf.get(v) || v, vars: [v] }));
     // Computed, not saved (computeCrosstab): opening the page adds no table to the file.
-    const awareTable = (await computeCrosstab(tenantId, runId, documentId, { columnVars: [], rowItems: rowItems(awareVars), weightVar, design })).result;
+    // In the segment (computeInSegment): each brand's aware base is the aware respondents in the segment.
+    const awareTable = (await computeInSegment(tenantId, runId, documentId, { columnVars: [], rowItems: rowItems(awareVars), weightVar, design }, applied)).result;
+    out.segment = segmentReading(applied, awareTable, weightVar !== null);
     bases = awareBasesFromResult(awareTable, awareness, dashboard.brands, variables);
     const todo = bases
       .filter((b) => !b.reason && b.n !== null && b.n > 0)
@@ -162,16 +168,22 @@ export async function loadBrandAssociations(tenantId: string, runId: string, doc
         todo.slice(i, i + BRANDS_AT_ONCE).map(async ({ base, vars }) => {
           const code = Number(base.awareCode);
           const result = (
-            await computeCrosstab(tenantId, runId, documentId, {
-              columnVars: [],
-              rowItems: rowItems(vars),
-              weightVar,
-              design,
-              // Don't know stays in the base (the pack's rule); blanks and declared missing values stay outside.
-              excludeDk: false,
-              // Aware of this brand, by the raw awareness code (from the code to itself), never by its label.
-              filters: [{ variable: base.variable!, op: "between", min: code, max: code }],
-            })
+            await computeInSegment(
+              tenantId,
+              runId,
+              documentId,
+              {
+                columnVars: [],
+                rowItems: rowItems(vars),
+                weightVar,
+                design,
+                // Don't know stays in the base (the pack's rule); blanks and declared missing values stay outside.
+                excludeDk: false,
+                // Aware of this brand, by the raw awareness code (from the code to itself), never by its label.
+                filters: [{ variable: base.variable!, op: "between", min: code, max: code }],
+              },
+              applied,
+            )
           ).result;
           tables.set(base.code, result);
           base.effectiveBase = weightVar ? (result.total?.nEff ?? null) : null;

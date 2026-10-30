@@ -6,6 +6,14 @@
 // same saved programme choices, resolved against its own file. When there is no previous wave, or its figures
 // cannot be read, the overview still shows this wave and says why the change is missing: a failed read of the
 // previous wave is reported as failed, never shown as "no change" or as an earlier wave that does not exist.
+//
+// R5 segment: the brand dashboard's segment (trackerSegment.ts) is applied to this wave and to every wave compared
+// or drawn in the trend, each checked against that wave's own profile questions. A compared wave the segment cannot
+// be applied to in the same meaning (a question or code missing, or a code naming another answer) is "withheld" with
+// the reason: its change is not shown and it draws no trend point, never an unsegmented figure in its place. The CSM
+// dashboard takes the same segment (R5 CSM segment, Grant 30 October 2026: "CSM needs a segment tool as well"): its
+// tiles, attribute means, driver model and satisfaction trend are computed in the segment by the distribution, NPS and
+// driver tools (trackerCsmFigures.ts), and the page's segment base comes from segmentBase.
 import { loadTrackerDashboard, type TrackerDashboardView } from "./trackerDashboards";
 import { loadRoleInput } from "./trackerInput";
 import { brandOverviewFigures, changesAgainst, type BrandOverviewFigures, type StageChange } from "./trackerFigures";
@@ -15,11 +23,14 @@ import { OVERVIEW_STAGES } from "./trackerFigures";
 import { csmAttributeMeans, csmChangesAgainst, csmOverviewFigures, satisfactionMean, type AttributeMean, type CsmChange, type CsmCompanies, type CsmTile } from "./trackerCsmFigures";
 import type { FunnelStage, RoleVariable, TrackerRecognition } from "./trackerRoles";
 import { prefilledFocalBrand } from "./trackerDashboard";
+import { resolveSegment, segmentAgainstWave, segmentBase, segmentQuestionsOf, type AppliedSegment, type Segment, type SegmentQuestion, type SegmentReading } from "./trackerSegment";
 
 export type PreviousWave =
   | { status: "ok"; documentId: string; wave: string; filename: string }
   | { status: "none"; reason: string }
-  | { status: "failed"; documentId: string; wave: string; filename: string; error: string };
+  | { status: "failed"; documentId: string; wave: string; filename: string; error: string }
+  /** R5 segment: the previous wave was not compared because the segment cannot be applied to it in the same meaning. */
+  | { status: "withheld"; documentId: string; wave: string; filename: string; reason: string };
 
 export type BrandOverview = {
   /** The dashboard these figures are for; the other dashboard's figures are empty (not calculated). */
@@ -54,6 +65,11 @@ export type BrandOverview = {
   timeline: TimelinePoint[];
   /** CSM "Service attributes": each driver's mean on its own scale (csmAttributeMeans); empty on the brand dashboard. */
   attributes: AttributeMean[];
+  /** R5: the segment this wave's figures were computed on, with its base (also `figures.segment`); null for all
+   * eligible respondents. Anything recording provenance from the dashboard records this. */
+  segment: SegmentReading | null;
+  /** R5: this file's profile questions a segment can use (the Segment picker's list). */
+  segmentQuestions: SegmentQuestion[];
 };
 
 export type TimelinePoint = {
@@ -116,19 +132,53 @@ export function suggestedComparators(dashboard: Pick<ResolvedDashboard, "brands"
  * analysed together"): only that dashboard's figures are calculated, for this wave and the previous one. */
 export type TrackerDashboardKind = "brand" | "csm";
 
-async function figuresFor(tenantId: string, runId: string, documentId: string, kind: TrackerDashboardKind) {
-  const [view, input] = await Promise.all([loadTrackerDashboard(tenantId, runId, documentId), loadRoleInput(tenantId, runId, documentId)]);
-  const company = csmCompanyOf(input.variables, view.dashboard, view.choices.focalCompanyCode, view.scopeNames);
-  const noBrand: BrandOverviewFigures = { documentId, weighted: view.dashboard.weighted, weightVar: view.dashboard.weighted ? view.dashboard.weightVar : null, effectiveBase: null, stages: [], unresolvedStages: [], noFigures: null };
-  const [figures, csm] = await Promise.all([
-    kind === "brand" ? brandOverviewFigures(tenantId, runId, documentId, view.recognition, view.dashboard, input.variables) : Promise.resolve(noBrand),
-    kind === "csm" ? csmOverviewFigures(tenantId, runId, documentId, view.dashboard, input.variables, company && "companies" in company ? company : null) : Promise.resolve([] as CsmTile[]),
-  ]);
-  return { view, input, figures, csm, company };
+/** A compared wave the segment cannot be applied to in the same meaning (segmentAgainstWave). */
+class SegmentWithheld extends Error {}
+
+/**
+ * The segment as it applies to one wave file, checked against that file's profile questions: for the open wave
+ * (`against` null) a segment that cannot be applied throws with the reason; for a compared wave (`against`, the
+ * segment as applied to the open wave) one that cannot be applied in the same meaning throws SegmentWithheld before
+ * anything is computed. Null without a segment.
+ */
+function segmentForWave(segment: Segment | null, against: AppliedSegment | null, variables: RoleVariable[], segmentQuestions: SegmentQuestion[]): AppliedSegment | null {
+  if (!segment) return null;
+  if (against) {
+    const why = segmentAgainstWave(against, segmentQuestions);
+    if (why) throw new SegmentWithheld(why);
+  }
+  const r = resolveSegment(segment, segmentQuestions, variables);
+  if (!r.ok) throw against ? new SegmentWithheld(r.reason) : new Error(`The segment cannot be applied to this file: ${r.reason} Change or clear the segment.`);
+  return r.applied;
 }
 
-export async function loadBrandOverview(tenantId: string, runId: string, documentId: string, kind: TrackerDashboardKind = "brand"): Promise<BrandOverview> {
-  const [{ view, input, figures, csm, company }, waves] = await Promise.all([figuresFor(tenantId, runId, documentId, kind), loadProjectWaves(tenantId, runId)]);
+/** One wave's figures, in the segment as applied to this file (segmentForWave). */
+async function figuresFor(tenantId: string, runId: string, documentId: string, kind: TrackerDashboardKind, segment: Segment | null = null, against: AppliedSegment | null = null) {
+  const [view, input] = await Promise.all([loadTrackerDashboard(tenantId, runId, documentId), loadRoleInput(tenantId, runId, documentId)]);
+  const segmentQuestions = segmentQuestionsOf(input.variables, view.recognition);
+  const applied = segmentForWave(segment, against, input.variables, segmentQuestions);
+  const company = csmCompanyOf(input.variables, view.dashboard, view.choices.focalCompanyCode, view.scopeNames);
+  const weightVar = view.dashboard.weighted ? view.dashboard.weightVar : null;
+  const csmFigures = async (): Promise<BrandOverviewFigures> => ({
+    documentId,
+    weighted: view.dashboard.weighted,
+    weightVar,
+    effectiveBase: null,
+    stages: [],
+    unresolvedStages: [],
+    noFigures: null,
+    // R5 CSM segment: the segment's own base in this file (every tile also carries its question's answered base).
+    segment: await segmentBase(tenantId, runId, documentId, applied, weightVar),
+  });
+  const [figures, csm] = await Promise.all([
+    kind === "brand" ? brandOverviewFigures(tenantId, runId, documentId, view.recognition, view.dashboard, input.variables, applied) : csmFigures(),
+    kind === "csm" ? csmOverviewFigures(tenantId, runId, documentId, view.dashboard, input.variables, company && "companies" in company ? company : null, applied) : Promise.resolve([] as CsmTile[]),
+  ]);
+  return { view, input, figures, csm, company, applied, segmentQuestions };
+}
+
+export async function loadBrandOverview(tenantId: string, runId: string, documentId: string, kind: TrackerDashboardKind = "brand", segment: Segment | null = null): Promise<BrandOverview> {
+  const [{ view, input, figures, csm, company, applied, segmentQuestions }, waves] = await Promise.all([figuresFor(tenantId, runId, documentId, kind, segment), loadProjectWaves(tenantId, runId)]);
   const at = waves.included.findIndex((w) => w.documentId === documentId);
   let previous: PreviousWave;
   let previousStages = null;
@@ -145,14 +195,17 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
   else {
     const p = waves.included[at - 1];
     try {
-      const prev = await figuresFor(tenantId, runId, p.documentId, kind);
+      const prev = await figuresFor(tenantId, runId, p.documentId, kind, segment, applied);
       previousStages = prev.figures.stages;
       previousBrands = prev.view.dashboard.brands;
       previousCsm = prev.csm;
       previousCompanies = prev.company && "companies" in prev.company ? prev.company : null;
       previous = { status: "ok", documentId: p.documentId, wave: p.wave, filename: p.filename };
     } catch (e) {
-      previous = { status: "failed", documentId: p.documentId, wave: p.wave, filename: p.filename, error: e instanceof Error ? e.message : String(e) };
+      previous =
+        e instanceof SegmentWithheld
+          ? { status: "withheld", documentId: p.documentId, wave: p.wave, filename: p.filename, reason: `Not compared with ${p.wave}: ${e.message}` }
+          : { status: "failed", documentId: p.documentId, wave: p.wave, filename: p.filename, error: e instanceof Error ? e.message : String(e) };
     }
   }
   if (at >= 0) {
@@ -162,14 +215,20 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
       waves.included.slice(0, Math.max(0, at - 1)).map(async (w): Promise<TimelinePoint> => {
         const base = { documentId: w.documentId, wave: w.wave, waveDate: w.waveDate };
         try {
-          if (kind === "brand") return { ...base, status: "ok", stages: (await figuresFor(tenantId, runId, w.documentId, "brand")).figures.stages };
+          if (kind === "brand") return { ...base, status: "ok", stages: (await figuresFor(tenantId, runId, w.documentId, "brand", segment, applied)).figures.stages };
           const v = await loadTrackerDashboard(tenantId, runId, w.documentId);
+          // R5 CSM segment: the segment applied in that wave too, or the point withheld with the reason.
+          let waveSegment: AppliedSegment | null = null;
+          if (segment) {
+            const wi = await loadRoleInput(tenantId, runId, w.documentId);
+            waveSegment = segmentForWave(segment, applied, wi.variables, segmentQuestionsOf(wi.variables, v.recognition));
+          }
           const variable = v.dashboard.csm.overallSatisfaction.variable;
           if (!variable) return { ...base, status: "failed", error: "No overall satisfaction question in this wave." };
-          const m = await satisfactionMean(runId, w.documentId, variable, v.dashboard.weighted ? v.dashboard.weightVar : null);
+          const m = await satisfactionMean(runId, w.documentId, variable, v.dashboard.weighted ? v.dashboard.weightVar : null, waveSegment);
           return m.error ? { ...base, status: "failed", error: m.error } : { ...base, status: "ok", satisfaction: { mean: m.mean, effectiveBase: m.effectiveBase } };
         } catch (e) {
-          return { ...base, status: "failed", error: e instanceof Error ? e.message : String(e) };
+          return { ...base, status: "failed", error: e instanceof SegmentWithheld ? `Not drawn for ${w.wave}: ${e.message}` : e instanceof Error ? e.message : String(e) };
         }
       }),
     );
@@ -178,6 +237,7 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
       const p = waves.included[at - 1];
       const base = { documentId: p.documentId, wave: p.wave, waveDate: p.waveDate };
       if (previous.status === "failed") timeline.push({ ...base, status: "failed", error: previous.error });
+      else if (previous.status === "withheld") timeline.push({ ...base, status: "failed", error: previous.reason });
       else timeline.push(kind === "brand" ? { ...base, status: "ok", stages: previousStages ?? [] } : { ...base, status: "ok", satisfaction: satOf(previousCsm ?? []) });
     }
     const c = waves.included[at];
@@ -185,16 +245,16 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
   }
   const attributes =
     kind === "csm" && view.dashboard.csm.drivers.variables.length > 0
-      ? await csmAttributeMeans(runId, documentId, view.dashboard.csm.drivers.variables, view.dashboard.weighted ? view.dashboard.weightVar : null)
+      ? await csmAttributeMeans(runId, documentId, view.dashboard.csm.drivers.variables, view.dashboard.weighted ? view.dashboard.weightVar : null, applied)
       : [];
   const changes =
     previous.status === "ok"
       ? changesAgainst(figures.stages, previousStages, { current: view.dashboard.brands, previous: previousBrands })
-      : changesAgainst(figures.stages, null).map((c) => ({ ...c, reason: previous.status === "failed" ? "The previous wave's figures could not be read." : c.reason }));
+      : changesAgainst(figures.stages, null).map((c) => ({ ...c, reason: previous.status === "failed" ? "The previous wave's figures could not be read." : previous.status === "withheld" ? previous.reason : c.reason }));
   const csmChanges = csmChangesAgainst(
     csm,
     previous.status === "ok" ? previousCsm : null,
-    previous.status === "failed" ? "The previous wave's figures could not be read." : previous.status === "none" ? previous.reason : "",
+    previous.status === "failed" ? "The previous wave's figures could not be read." : previous.status === "none" || previous.status === "withheld" ? previous.reason : "",
     { current: company && "companies" in company ? company : null, previous: previousCompanies },
   );
   // The recognition is the server's working detail; the screen needs only the resolved dashboard.
@@ -219,5 +279,7 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
     csmChanges,
     timeline,
     attributes,
+    segment: figures.segment,
+    segmentQuestions,
   };
 }

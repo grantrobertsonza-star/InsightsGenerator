@@ -559,9 +559,12 @@ export type CrosstabRowItem = {
 /** One condition that cases must meet. All filters of a table must hold. */
 export type CrosstabFilter = {
   variable: string;
-  /** in / notIn: answer labels in `values`. between: numeric `min` and/or `max`, both included. */
-  op: "in" | "notIn" | "between";
+  /** in / notIn: answer labels in `values`. between: numeric `min` and/or `max`, both included. codes: raw answer
+   * codes in `codes` (any of them), matched by the code's one text form (CrosstabRow.rawCode), never by label; a blank
+   * or missing answer is outside. Built for tracker dashboard segments by trackerSegment.segmentFilters only. */
+  op: "in" | "notIn" | "between" | "codes";
   values?: string[];
+  codes?: string[];
   min?: number | null;
   max?: number | null;
 };

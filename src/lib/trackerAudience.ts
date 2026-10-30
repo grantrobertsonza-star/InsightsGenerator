@@ -19,7 +19,8 @@
 // file's survey design: one table of all eligible respondents, then one restricted to the acquirers. Unknown stays
 // unknown: a part the file does not have is "not_measured", one that two questions claim or that needs the client's
 // brand is "mapping_needed", a figure that cannot be read is n/a with the reason. A file that cannot be read throws.
-import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import { loadVariableDictionaryWithStatus } from "./crosstabs";
+import { applySegment, computeInSegment, segmentReading, type Segment, type SegmentReading } from "./trackerSegment";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
 import { loadTrackerDashboard } from "./trackerDashboards";
@@ -46,6 +47,8 @@ export type BrandAudience = {
   documentId: string;
   weighted: boolean;
   weightVar: string | null;
+  /** R5: the segment these figures were computed on, with its base (trackerSegment.ts); null for all eligible. */
+  segment: SegmentReading | null;
   /** Kish effective base of all eligible respondents when weighted; null unweighted or not calculated. */
   effectiveBase: number | null;
   acquirers:
@@ -120,12 +123,13 @@ export function mediaRowsFromResults(category: CrosstabResult, acquirers: Crosst
  * The Audience & media page for one data file. Throws with the reason when the file's dictionary, set-up or a table
  * cannot be read; never returns an empty page for a failure.
  */
-export async function loadBrandAudience(tenantId: string, runId: string, documentId: string): Promise<BrandAudience & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
+export async function loadBrandAudience(tenantId: string, runId: string, documentId: string, segment: Segment | null = null): Promise<BrandAudience & { dashboard: Pick<ResolvedDashboard, "brands" | "focalBrand"> }> {
   const [view, input] = await Promise.all([loadTrackerDashboard(tenantId, runId, documentId), loadRoleInput(tenantId, runId, documentId)]);
   const dashboard = view.dashboard;
   const rec = view.recognition;
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
   const variables = new Map(input.variables.map((v) => [v.name, v]));
+  const applied = applySegment(segment, input.variables, rec);
   const parts = acquirerParts(rec, dashboard);
   const ageVar = rec.ageGroups.status === "found" ? rec.ageGroups.variable : null;
   const media = rec.mediaUse.status === "found" ? rec.mediaUse : null;
@@ -145,7 +149,8 @@ export async function loadBrandAudience(tenantId: string, runId: string, documen
     const request = (vars: string[]): CrosstabRequest => ({ columnVars: [], rowItems: rowItems(vars), weightVar, design, excludeDk: false });
     // Computed, not saved (computeCrosstab). All eligible respondents first, with the acquisition answer to read the
     // acquirers' code and count.
-    category = (await computeCrosstab(tenantId, runId, documentId, request([...(parts.status === "ok" ? [parts.variable] : []), ...profileVars]))).result;
+    // In the segment (computeInSegment): "all eligible" and the acquirers are those in the segment.
+    category = (await computeInSegment(tenantId, runId, documentId, request([...(parts.status === "ok" ? [parts.variable] : []), ...profileVars]), applied)).result;
     if (parts.status === "ok") {
       const a = selectedAnswerOf(category, parts.variable, variables.get(parts.variable));
       if (a.code === null) acquirers = { ...parts, code: null, n: null, effectiveBase: null, level: null, reason: `Which answer means acquired could not be told: ${a.reason ?? "unknown"}` };
@@ -156,7 +161,7 @@ export async function loadBrandAudience(tenantId: string, runId: string, documen
         if (a.selectedN > 0 && profileVars.length > 0) {
           const code = Number(a.code);
           // Recent acquirers of the client's brand, by the raw acquisition code (from the code to itself), never by its label.
-          sub = (await computeCrosstab(tenantId, runId, documentId, { ...request(profileVars), filters: [{ variable: parts.variable, op: "between", min: code, max: code }] })).result;
+          sub = (await computeInSegment(tenantId, runId, documentId, { ...request(profileVars), filters: [{ variable: parts.variable, op: "between", min: code, max: code }] }, applied)).result;
           acquirers.effectiveBase = weightVar ? (sub.total?.nEff ?? null) : null;
         }
       }
@@ -170,6 +175,7 @@ export async function loadBrandAudience(tenantId: string, runId: string, documen
     ...out,
     effectiveBase: weightVar && category ? (category.total?.nEff ?? null) : null,
     categoryN: category?.total?.n ?? null,
+    segment: segmentReading(applied, category, weightVar !== null),
     acquirers,
     age,
     media: mediaOut,

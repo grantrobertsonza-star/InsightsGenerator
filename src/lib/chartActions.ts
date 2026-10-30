@@ -13,8 +13,11 @@ import { defaultWeight } from "./starterTables";
 import { baseOf } from "./descriptiveFindings";
 import { exactPct, exactTotalPct } from "./crosstabExact";
 import { requireTenantId } from "./requestContext";
+import { toolSegment, withSegment } from "./trackerSegment";
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
+/** A series' answered base as the engine counted it (ChartSeries.base), when the row carries one. */
+const baseOfRow = (b: { n: number; w: number; nEff: number } | null | undefined): { base?: { n: number; w: number; nEff: number } } => (b ? { base: { n: b.n, w: b.w, nEff: b.nEff } } : {});
 
 export type ChartSeries = {
   name: string;
@@ -30,6 +33,10 @@ export type ChartSeries = {
   /** The banner column's answer code when the series is one category of a group variable (a company, D3b): the
    * series' identity; `name` is its label, for presentation only. Absent on an ungrouped series. */
   code?: string;
+  /** The question's answered base in this series as the engine counted it (R5 CSM segment): unweighted n, weighted
+   * total and Kish effective base (the same as n when unweighted). `n` above is the effective base (or n), kept for
+   * existing callers. Absent on series built elsewhere (wave tracking) and on histogram series. */
+  base?: { n: number; w: number; nEff: number };
 };
 
 export type ChartResult = {
@@ -49,6 +56,9 @@ export type ChartResult = {
    * from a guess about the variable. Absent on results built elsewhere (wave tracking).
    */
   method?: ChartMethod;
+  /** R5 CSM segment: the engine's description of the segment the distribution was computed in ("Gender is Woman"),
+   * one per segment question; absent when no segment was given (every respondent). */
+  filters?: { variable: string; text: string }[];
 };
 
 /** See ChartResult.method. */
@@ -75,6 +85,10 @@ export async function runDistributionAction(
   // "compute": read the distribution without saving the table it is read from (a dashboard that recalculates each
   // time it opens, D3); "save" keeps the evidence table, as the chart tool always has.
   table: "save" | "compute" = "save",
+  // R5 CSM segment: the respondents to compute on, as a segment (profile questions by name, answers by raw code;
+  // trackerSegment.ts). Checked here (toolSegment) and turned into engine filters by its one owner (withSegment).
+  // Null or absent: every respondent, as before.
+  segmentRaw: unknown = null,
 ): Promise<{ ok: true; result: ChartResult } | Fail> {
   const TENANT_ID = await requireTenantId();
   if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
@@ -92,6 +106,8 @@ export async function runDistributionAction(
     if (!v) return { ok: false, error: "That variable was not found in this file." };
     const g = groupVar ? dict.variables.find((x) => x.name === groupVar) : null;
     if (groupVar && !g) return { ok: false, error: "That grouping variable was not found in this file." };
+    const seg = toolSegment(segmentRaw, dict.variables.map((x) => x.name));
+    if (!seg.ok) return seg;
 
     // ANA-NPS-003 (second counter-review): this chart previously applied no survey design at all,
     // not even the name-pattern heuristic Cross tabs and the NPS tool already use - a distribution
@@ -111,18 +127,23 @@ export async function runDistributionAction(
     const setup = setupStatus.setup;
     const resolvedDesign = resolveSurveyDesign(dict, effectiveDesignChoice(setup.design, undefined));
 
-    const request: CrosstabRequest = {
-      columnVars: g ? [g.name] : [],
-      rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
-      weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
-      source: "ask",
-      design: resolvedDesign.design ?? undefined,
-    };
+    const request: CrosstabRequest = withSegment(
+      {
+        columnVars: g ? [g.name] : [],
+        rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
+        weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
+        source: "ask",
+        design: resolvedDesign.design ?? undefined,
+      },
+      seg.segment,
+    );
     const { result } =
       table === "compute"
         ? await computeCrosstab(TENANT_ID, runId, documentId, request)
         : await loadCrosstab(TENANT_ID, runId, (await buildCrosstab(TENANT_ID, runId, documentId, request, { status: "evidence" })).tableId);
     if (!result || result.questions.length === 0) return { ok: false, error: "This question could not be tabulated." };
+    // Under a segment the result says which respondents it is about, in the engine's words; absent otherwise.
+    const segmentNote = seg.segment ? { filters: (result.filters ?? []).map((f) => ({ variable: f.variable, text: f.text })) } : {};
 
     const q = result.questions[0];
     const dataRows = q.rows.filter((r) => !r.isBase && !r.isEffBase && !r.isNet && !r.isScore && !r.isMean);
@@ -144,6 +165,7 @@ export async function runDistributionAction(
             grouped: false,
             groupLabel: null,
             method: "bins",
+            ...segmentNote,
             series: [
               {
                 name: "All respondents",
@@ -175,7 +197,8 @@ export async function runDistributionAction(
           grouped: false,
           groupLabel: null,
           method: "values",
-          series: [{ name: "All respondents", n: Math.round(n0), bars: answers.map((r) => ({ label: r.label, pct: round1(r.total.pct as number), share: exactTotalPct(r), rawCode: r.rawCode })) }],
+          ...segmentNote,
+          series: [{ name: "All respondents", n: Math.round(n0), bars: answers.map((r) => ({ label: r.label, pct: round1(r.total.pct as number), share: exactTotalPct(r), rawCode: r.rawCode })), ...baseOfRow(answers[0].total.base) }],
         },
       };
     }
@@ -199,6 +222,7 @@ export async function runDistributionAction(
         n: Math.round(n),
         bars: answers.map((r) => ({ label: r.label, pct: r.pct[i] !== null && r.pct[i] !== undefined ? round1(r.pct[i] as number) : 0, share: exactPct(r, i), rawCode: r.rawCode })),
         ...(c.rawCode !== undefined ? { code: c.rawCode } : {}),
+        ...baseOfRow(answeredBase),
       };
     });
 
@@ -211,6 +235,7 @@ export async function runDistributionAction(
         weighted: !!result.weightVar,
         grouped: true,
         method: "values",
+        ...segmentNote,
         groupLabel: g.label || g.name,
         series,
       },

@@ -7,9 +7,12 @@ the researcher presses Build starter tables, and nothing becomes a finding until
 **Banners.** A candidate is categorical (`isCategorical`), with 2 to 10 answers and at least 90%
 answering. Recognised banners match, on the label or the name read as words (`nameAsWords`:
 "CustomerTier" is "Customer Tier"), one per kind, in this order: gender, age, province or region,
-urban or rural, population group, education, employment, then customer and sample groupings
+urban or rural, population group, education, employment, income, household life stage (these two
+added 30 October 2026, R5 segment), then customer and sample groupings
 (segment, cohort, tier, customer type, member type, channel, branch, store, site). Grant,
-2026-10-22: csm_Wave1_Baseline.xlsx, split only by Segment, got none.
+2026-10-22: csm_Wave1_Baseline.xlsx, split only by Segment, got none. The list is the one recognition
+of demographic and profile questions (`demographicKindOf`): the tracker dashboard's Segment picker
+offers the same kinds (`trackerSegment.segmentQuestionsOf`).
 
 **Text categories.** A text column with no value labels whose answers repeat within a short list
 ("Segment1", "Yes"/"No") counts as categorical, by the shared rule `isStringCategory`

@@ -13,6 +13,7 @@ import { recordHumanReview } from "./findingProvenance";
 import { defaultWeight } from "./starterTables";
 import { baseOf, computeNps, leadingNumber } from "./descriptiveFindings";
 import { requireTenantId } from "./requestContext";
+import { toolSegment, withSegment } from "./trackerSegment";
 
 export type NpsSegment = {
   name: string;
@@ -62,6 +63,25 @@ export type NpsSegment = {
   intervalMethod?: string | null;
 };
 
+/**
+ * Codex BH-F02: a group (a banner column of the group variable) the NPS tool could not score, kept with its counts and
+ * the reason instead of disappearing. The counts are the engine's for that column, never derived from shares.
+ */
+export type NpsUnavailableSegment = {
+  name: string;
+  /** The group variable's answer code for this group (its identity); `name` is its label. */
+  code?: string;
+  /** Unweighted number of respondents in the group (the banner column's count). */
+  groupN: number;
+  /** Unweighted number of valid answers to the question in the group. */
+  rawN: number;
+  /** Sum of weights of those valid answers. */
+  weightedBase: number;
+  /** no_valid_answers: nobody in the group answered (or the answers carry no weight); suppressed: the engine
+   * suppressed one or more scale points for a small base, so no score is shown. */
+  reason: "no_valid_answers" | "suppressed";
+};
+
 export type NpsResult = {
   variable: string;
   label: string;
@@ -98,6 +118,9 @@ export type NpsResult = {
   groupLabel: string | null;
   /** One entry per category of the group variable, same promoters/detractors math as the overall score. */
   segments: NpsSegment[] | null;
+  /** The categories of the group variable that have no score, with their counts and the reason (Codex BH-F02);
+   * null without a group variable. Absent on results saved before 30 October 2026. */
+  unavailableSegments?: NpsUnavailableSegment[] | null;
   /** ANA-NPS-003: how many cases were missing the design variable(s) this table was built with -
    * null when no design was requested at all. casesMissingDesign equal to the table's own base
    * means the engine found no usable clustering information and silently fell back to the plain
@@ -113,6 +136,9 @@ export type NpsResult = {
    * explicit metadata rather than only living in code comments - see api/parse-stats-file.py's
    * "intervalMethod" note. */
   intervalMethod: string | null;
+  /** R5 CSM segment: the engine's description of the segment the score was computed in, one per segment question;
+   * absent when no segment was given (every respondent). */
+  filters?: { variable: string; text: string }[];
 };
 
 type Fail = { ok: false; error: string };
@@ -143,6 +169,10 @@ export async function runNpsAction(
   // "compute": read the score without saving the table it is read from (a dashboard that recalculates each time it
   // opens, D3); "save" keeps the evidence table, as the NPS tool always has.
   table: "save" | "compute" = "save",
+  // R5 CSM segment: the respondents to score, as a segment (profile questions by name, answers by raw code;
+  // trackerSegment.ts), checked here (toolSegment) and turned into engine filters by its one owner (withSegment), so the
+  // promoters, detractors, bases and interval are the segment's. Null or absent: every respondent, as before.
+  segmentRaw: unknown = null,
 ): Promise<{ ok: true; result: NpsResult } | Fail> {
   const TENANT_ID = await requireTenantId();
   if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
@@ -180,19 +210,24 @@ export async function runNpsAction(
     if (!v) return { ok: false, error: "That variable was not found in this file." };
     const g = groupVar ? dict.variables.find((x) => x.name === groupVar) : null;
     if (groupVar && !g) return { ok: false, error: "That grouping variable was not found in this file." };
+    const seg = toolSegment(segmentRaw, dict.variables.map((x) => x.name));
+    if (!seg.ok) return seg;
 
-    const request: CrosstabRequest = {
-      columnVars: g ? [g.name] : [],
-      rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
-      weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
-      source: "ask",
-      // ANA-NPS-003: an ordinary NPS request previously exposed no design argument at all and
-      // always ran its own blind auto-detect, ignoring any explicit choice a caller supplied -
-      // resolveSurveyDesign (./surveyDesign) now gives this an explicit input path (the
-      // `design` parameter above), with the shared heuristic only as a fallback when no
-      // explicit choice was made, and only when it found an unambiguous PSU candidate.
-      design: resolvedDesign.design ?? undefined,
-    };
+    const request: CrosstabRequest = withSegment(
+      {
+        columnVars: g ? [g.name] : [],
+        rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
+        weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
+        source: "ask",
+        // ANA-NPS-003: an ordinary NPS request previously exposed no design argument at all and
+        // always ran its own blind auto-detect, ignoring any explicit choice a caller supplied -
+        // resolveSurveyDesign (./surveyDesign) now gives this an explicit input path (the
+        // `design` parameter above), with the shared heuristic only as a fallback when no
+        // explicit choice was made, and only when it found an unambiguous PSU candidate.
+        design: resolvedDesign.design ?? undefined,
+      },
+      seg.segment,
+    );
     const { result } =
       table === "compute"
         ? await computeCrosstab(TENANT_ID, runId, documentId, request)
@@ -252,7 +287,20 @@ export async function runNpsAction(
       .sort((a, b) => a.value - b.value);
 
     let segments: NpsSegment[] | null = null;
+    let unavailableSegments: NpsUnavailableSegment[] | null = null;
     if (g) {
+      unavailableSegments = [];
+      const unavailable = (c: (typeof result.columns)[number], i: number, reason: NpsUnavailableSegment["reason"]) => {
+        unavailableSegments!.push({
+          name: c.name,
+          ...(c.rawCode !== undefined ? { code: c.rawCode } : {}),
+          groupN: c.n,
+          rawN: answers[0].base[i]?.n ?? 0,
+          weightedBase: answers[0].base[i]?.w ?? 0,
+          reason,
+        });
+        return null;
+      };
       const baseAt = (r: (typeof answers)[number], i: number): { n: number; w: number; nEff: number; eff: number } | null => {
         const b = r.base[i];
         if (!b) return null;
@@ -262,14 +310,15 @@ export async function runNpsAction(
       segments = result.columns
         .map((c, i) => {
           const segBase = baseAt(answers[0], i);
-          if (segBase === null) return null;
+          if (segBase === null) return unavailable(c, i, "no_valid_answers");
           const nI = segBase.eff;
           const segContrastSe = q.npsContrastSe?.columns?.[i] ?? undefined;
           const segNps = computeNps(answers, nI, (r) => exactPct(r, i), designApplied ? (r) => exactSe(r, i) : () => null, segContrastSe);
           // A suppressed point within this one segment makes only this segment's reading
           // unavailable (ANA-NPS-001); the segment is dropped rather than shown with a score
           // that silently treated the missing point as 0.
-          if (!segNps || segNps.suppressed) return null;
+          // (computeNps is null only for a question that is not a 0 to 10 scale, refused above for the whole table.)
+          if (!segNps || segNps.suppressed) return unavailable(c, i, "suppressed");
           const segScale = answers
             .map((r) => ({ value: leadingNumber(r.label), pct: r.pct[i] ?? 0 }))
             .filter((x): x is { value: number; pct: number } => x.value !== null && x.value >= 0 && x.value <= 10)
@@ -312,10 +361,12 @@ export async function runNpsAction(
         groupVariable: g?.name ?? null,
         groupLabel: g ? g.label || g.name : null,
         segments,
+        unavailableSegments,
         casesMissingDesign: result.notes?.designUsed?.casesMissingDesign ?? null,
         designAmbiguous:
           resolvedDesign.ambiguous.psu.length > 0 || resolvedDesign.ambiguous.strata.length > 0 ? resolvedDesign.ambiguous : null,
         intervalMethod: result.notes?.intervalMethod ?? null,
+        ...(seg.segment ? { filters: (result.filters ?? []).map((f) => ({ variable: f.variable, text: f.text })) } : {}),
         ...npsFields,
       },
     };
