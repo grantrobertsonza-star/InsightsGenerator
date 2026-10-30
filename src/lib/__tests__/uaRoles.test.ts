@@ -24,7 +24,7 @@ describe("U&A semantic recognition and routed metric planning", () => {
     expect(fields.find(f => f.variable === "q05_ever_use")?.meta.stateVariable).toBe("q05_ever_use_state");
   });
   it("recognises without a questionnaire upload and retains reasons; renamed variable prefixes do not decide roles", () => {
-    const rec = recogniseUa(fields); expect(rec.recognised).toBe(true); expect(rec.reasons.length).toBeGreaterThan(10);
+    const rec = recogniseUa(fields); expect(rec.recognised).toBe(true); expect(rec.analysisWeight).toBe("weight"); expect(rec.populationWeight).toBe("population_expansion_weight"); expect(rec.reasons.length).toBeGreaterThan(10);
     const renamed = fields.map(f => ({ ...f, variable: `physical_${fields.indexOf(f)}`, meta: { ...f.meta, stateVariable: f.meta.stateVariable ? `physical_${fields.findIndex(s => s.variable === f.meta.stateVariable)}` : null } }));
     expect(recogniseUa(renamed).recognised).toBe(true);
   });
@@ -44,8 +44,21 @@ describe("U&A semantic recognition and routed metric planning", () => {
   });
   it("asks about ambiguous core roles rather than picking the first variable", () => {
     const duplicate = { ...fields.find(f => f.variable === "q05_ever_use")!, variable: "another_export" };
-    const rec = recogniseUa([...fields, duplicate]); expect(rec.recognised).toBe(false);
+    const rec = recogniseUa([...fields, duplicate]); expect(rec.recognised).toBe(true); expect(rec.roles.everConsumption).toBeNull();
     expect(rec.questions.find(q => q.role === "everConsumption")?.candidates).toHaveLength(2);
+    expect(planUaMetrics(rec).metrics.some(m => m.label === "Ever consumption")).toBe(false);
+    const partial = recogniseUa([...fields.filter(f => f.variable !== "q07_purchase_p3m"), duplicate]);
+    expect(partial.recognised).toBe(false); expect(partial.needsMapping).toBe(true);
+  });
+  it("keeps a partial U&A study available when an optional coverage area was not asked", () => {
+    const original = planUaMetrics(recogniseUa(fields));
+    const omitted = new Set(original.metrics.filter(m => m.page === "occasions").map(m => m.variable));
+    omitted.add("q13_spend_zar"); omitted.add("q11_use_count");
+    const partial = fields.filter(f => !omitted.has(f.variable));
+    const rec = recogniseUa(partial); expect(rec.recognised).toBe(true);
+    const plan = planUaMetrics(rec); expect(plan.metrics.some(m => m.page === "occasions")).toBe(false);
+    expect(plan.metrics.some(m => m.label === "Ever consumption")).toBe(true);
+    expect(plan.unavailable.some(m => m.label === "Mean spend per answering P3M buyer")).toBe(true);
   });
   it("writes a reproducible plan and reports unresolved routes rather than using an all-case base", () => {
     const rec = recogniseUa(fields); const plan = planUaMetrics(rec);

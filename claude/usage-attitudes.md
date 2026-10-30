@@ -4,7 +4,7 @@ Rule version: ua-2026-10-30-1. This is a descriptive dashboard over independent 
 
 ## Recognition and source identity
 
-`uaRoles.ts` owns semantic role recognition. The signature requires confirmed category-ever consumption, consumption recency, personal P3M purchase, usage occasions and spend, plus attitudes and recent-episode coverage. BMW and company CSM structures alone do not satisfy it. Multiple candidates become a mapping question. Question IDs join declared workbook tables; physical variable prefixes are never interpreted as questionnaire numbers. The generic relational reader joins variables, rules, questions and code lists by their declared identifiers and refuses missing or duplicate joins. Confirmed codebook text supplies administrative weight descriptions as well as question text.
+`uaRoles.ts` owns semantic role recognition. The signature requires at least two confirmed category-ever consumption, consumption recency or personal P3M purchase roles, plus attitude or recent-episode coverage. Numeric occasions, spend and whole coverage areas may be absent. Ambiguous evidence that could establish the signature exposes a mapping tile; it is never hidden as if the study were unrelated. BMW and company CSM structures alone do not satisfy it. Multiple candidates become a mapping question. Question IDs join declared workbook tables; physical variable prefixes are never interpreted as questionnaire numbers. The generic relational reader joins variables, rules, questions and code lists by their declared identifiers and refuses missing or duplicate joins. Confirmed codebook text supplies administrative weight descriptions as well as question text.
 
 `uaRouting.ts` owns compilation of declared eligibility and assignment rules into raw-code conditions. Every referenced question must resolve uniquely. Answered-state codes come from the confirmed state field's labels. Unsupported routing refuses the affected measure. The questionnaire is optional when the codebook already states wording, options and routes. It cannot silently override a researcher-confirmed codebook mapping.
 
@@ -24,7 +24,7 @@ For every entry let A be assignment, E be routing eligibility intersected with A
 
 Every result carries assigned, eligible and valid raw count, weighted base and Kish effective base `(sum w)^2 / sum(w^2)`. The engine's own `base_stats`, ordinary Cross tab percentages and means remain authoritative. The bridge creates temporary measures only, passes the resolved survey design, and never saves these as ordinary tables or findings. `buildCrosstab` refuses a dashboard batch request.
 
-Small-base estimates and verbatim samples obey the existing engine minimum raw base. Their values and weighted numerators are unavailable, with the bases and reason retained. Missing weights, nonpositive or nonfinite weights, missing route variables, incomplete replies and failed storage reads refuse the calculation. An empty result is not substituted after failure.
+Small-base estimates and verbatim samples obey the existing engine minimum raw base. A displayed figure below the engine's separate reliability threshold is labelled Indicative only. Their values and weighted numerators are unavailable, with the bases and reason retained. This first version accepts numeric raw-coded questions and numeric amounts, plus the explicit verbatim method. Text-coded or logical-coded questions and numerically ambiguous code lists refuse with a mapping reason. Missing weights, nonpositive or nonfinite weights, missing route variables, incomplete replies and failed storage reads refuse the calculation. An empty result is not substituted after failure.
 
 ## Page definitions
 
@@ -49,3 +49,15 @@ Wave comparison uses the immediately previous included file in the shared wave o
 ## Deferred integration
 
 `withUaSegment` is the explicit raw-code segment hook. The UI states that segment integration is pending. `uaWaveDifference` is the descriptive difference hook for the later shared significance integration. No unrelated tracker owner or existing dashboard screen is changed.
+
+## Runtime packaging
+
+The internal Python modules live in `scripts/engine/`, with the existing HTTP handler in `api/parse-stats-file.py`. This avoids declaring helper files as additional API functions. The Python runtime includes project files by default; a deployment that adds exclusions must retain `scripts/engine/`. No deployment is performed by this branch. Reference: [Vercel Python runtime and bundled files](https://vercel.com/docs/functions/runtimes/python).
+
+## Wide import quality
+
+The production pack exposed repeated gate grouping in the existing `dataQuality.ts` routing detector. Gate partitions are now built once per source table. Candidates retain the same order, 15-key limit, 95 percent split criterion, missing tokens and preference for the most complete gate. An equally complete later gate never replaces the first. A complete fitting gate is final because no later gate can improve its missing count. Measured fixture parity and independent boundary checks accompany this shared-library change; it changes no stored rows or statistical estimates.
+
+## Worker transport
+
+Wide CSV conversions produce large JSON replies even when the source file is small. The local worker listener now scans each incoming chunk once and joins fragments only at a complete newline, preserving UTF-8, reply IDs, empty-line handling, restart and error responses. Protocol tag 7 replaces a version-6 listener retained by a dev-server hot reload. Payloads and statistical values are unchanged. The framing benchmark excludes Python calculation, database and browser time; it is not a total import-time claim.

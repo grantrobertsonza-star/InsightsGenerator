@@ -80,7 +80,7 @@ describe.skipIf(!TEST_DATABASE_URL)("UA1 real loaders, engine, database and all 
     const { result } = await computeCrosstab(tenant, run, docs[0], { columnVars: [], rowItems: [{ key: plan[0].variable, label: plan[0].label, vars: [plan[0].variable] }], weightVar: "weight", uaMetrics: plan });
     for (const [i, spec] of plan.entries()) {
       const a = result.uaMetrics![i], e = expected[spec.label]; expect(a.eligibleBase.n).toBe(e.eligible); expect(a.validBase.n).toBe(e.valid);
-      for (const [actual, ref] of [[a.value, e.value], [a.numerator, e.numerator], [a.validBase.w, e.base], [a.validBase.nEff, e.kish]]) expect(Math.abs(actual! - ref)).toBeLessThan(1e-7);
+      for (const [actual, ref] of [[a.value, e.value], [a.numerator, e.numerator], [a.validBase.w, e.base], [a.validBase.nEff, e.kish]] as const) expect(Math.abs(actual! - ref)).toBeLessThan(1e-7);
     }
     writeFileSync("work/ua/independent-pandas-controls.json", reference.stdout);
   });

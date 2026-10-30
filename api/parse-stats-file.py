@@ -3579,12 +3579,12 @@ def _cb_json_meta(entry, label):
     return out
 
 
-def _engine_sibling(name):
-    """Resolve our own engine modules beside this file, also under importlib test loaders."""
+def _engine_module(name):
+    """Resolve internal modules outside the HTTP endpoint directory, also under importlib tests."""
     import importlib.util
     import sys
     key = "insights_engine_" + name
-    filename = os.path.join(os.path.dirname(__file__), name + ".py")
+    filename = os.path.join(os.path.dirname(__file__), "..", "scripts", "engine", name + ".py")
     fingerprint = (os.stat(filename).st_mtime_ns, os.stat(filename).st_size)
     if key not in sys.modules or getattr(sys.modules[key], "_engine_fingerprint", None) != fingerprint:
         spec = importlib.util.spec_from_file_location(key, filename)
@@ -3604,7 +3604,7 @@ def codebook_items(file_bytes: bytes, source_filename: str, args=None) -> dict:
     if ext not in TABLE_EXTS:
         raise ValueError(f"A codebook is read as a table from CSV, text, Excel or JSON files, not {ext or '(none)'} files.")
     sheets = _sheet_grids(file_bytes, source_filename)
-    relational = _engine_sibling("codebook_relations").relational_codebook_items(sheets, _cb_question_type)
+    relational = _engine_module("codebook_relations").relational_codebook_items(sheets, _cb_question_type)
     if relational is not None:
         return relational
     items, used, skipped, seen = [], [], [], set()
@@ -5385,7 +5385,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict, _loaded=None) 
     import pandas as pd
 
     if args.get("uaMetrics") is not None:
-        return _engine_sibling("ua_metrics").dashboard_metrics(file_bytes, source_filename, args, _read, crosstab)
+        return _engine_module("ua_metrics").dashboard_metrics(file_bytes, source_filename, args, _read, crosstab)
 
     column_vars = [v for v in args["columnVars"]]
     raw_items = args["rowItems"]
@@ -5453,6 +5453,13 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict, _loaded=None) 
     labels = meta.column_names_to_labels or {}
     vlabels = meta.variable_value_labels or {}
     n_rows = len(df)
+
+    def total_base(n, weighted, effective):
+        # Ordinary tables keep their existing wire shape; the U&A bridge needs unrounded bases.
+        out = {"n": n, "w": round(weighted, 1), "nEff": round(effective, 1)}
+        if args.get("_uaExactBases"):
+            out["exact"] = {"n": n, "w": weighted, "nEff": effective}
+        return out
 
     if weight_var:
         w = df[weight_var].astype(float).to_numpy()
@@ -5757,7 +5764,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict, _loaded=None) 
             "total": {"count": round(tot_sel, 1), "pct": None if math.isnan(pt) else round(pt * 100, 1),
                       "countExact": tot_sel, "pctExact": None if math.isnan(pt) else pt * 100,
                       "nCell": int((valid_mask & sel_mask & w_ok).sum()),
-                      "base": {"n": tot_n, "w": round(tot_w, 1), "nEff": round(tot_eff, 1), "exact": {"n": tot_n, "w": tot_w, "nEff": tot_eff}}},
+                      "base": total_base(tot_n, tot_w, tot_eff)},
         }
 
     def add_row_pct(row, block_of_col):
@@ -6029,7 +6036,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict, _loaded=None) 
                          "rowPct": None, "nCell": None, "base": {"n": nb, "w": round(swb, 1), "nEff": round(neb, 1)}})
         return {"desc": desc, "eta": etas, "_est": ests, "count": [None] * K, "nCell": [None] * K, "pct": means, "pctExact": means_exact, "rowPct": [None] * K, "p": ps, "sig": sigs, "base": bases,
                 "net": nets,
-                "total": {"count": None, "nCell": None, "pct": round(gm, 2), "pctExact": gm, "base": {"n": tn, "w": round(tw, 1), "nEff": round(te, 1), "exact": {"n": tn, "w": tw, "nEff": te}}}}
+                "total": {"count": None, "nCell": None, "pct": round(gm, 2), "pctExact": gm, "base": total_base(tn, tw, te)}}
 
     def base_src(valid_mask):
         """Bases only (no tests), for the base rows of a question."""

@@ -4,6 +4,13 @@ import numpy as np
 import pandas as pd
 
 
+def numeric_values(df, variable):
+    column = df[variable]
+    if column.notna().any() and (not pd.api.types.is_numeric_dtype(column.dtype) or pd.api.types.is_bool_dtype(column.dtype)):
+        raise ValueError(f"The U&A method needs numeric raw codes or amounts for {variable}; text or logical codes need an explicit mapping.")
+    return pd.to_numeric(column, errors="coerce").to_numpy(float)
+
+
 def condition_mask(df, expr):
     if expr is None:
         return np.ones(len(df), dtype=bool)
@@ -25,7 +32,7 @@ def condition_mask(df, expr):
     var = expr.get("variable")
     if var not in df:
         raise ValueError(f"U&A condition variable {var} is not in this file.")
-    values = pd.to_numeric(df[var], errors="coerce").to_numpy(float)
+    values = numeric_values(df, var)
     if op == "codes":
         codes = expr.get("codes")
         if not isinstance(codes, list) or not codes:
@@ -45,10 +52,14 @@ def prepare_measure(df, spec):
     eligible = condition_mask(df, spec.get("eligible"))
     assigned = condition_mask(df, spec.get("assigned"))
     eligible &= assigned
-    values = (np.where(df[var].notna() & df[var].astype(str).str.strip().ne(""), 1.0, np.nan) if spec.get("kind") == "verbatim" else pd.to_numeric(df[var], errors="coerce").to_numpy(float))
+    values = (np.where(df[var].notna() & df[var].astype(str).str.strip().ne(""), 1.0, np.nan) if spec.get("kind") == "verbatim" else numeric_values(df, var))
     valid = eligible & condition_mask(df, spec.get("answered")) & np.isfinite(values)
     if spec.get("validCodes"):
-        valid &= np.isin(values, [float(c) for c in spec["validCodes"]])
+        declared = [float(c) for c in spec["validCodes"]]
+        if len(set(declared)) != len(set(spec["validCodes"])):
+            raise ValueError("The declared raw codes have ambiguous numeric identities. Map them explicitly before using U&A.")
+        if (valid & ~np.isin(values, declared)).any():
+            raise ValueError(f"An answered code in {var} is absent from the confirmed codebook. Correct it before calculating.")
     logical_zero = condition_mask(df, spec["logicalZero"]) if spec.get("logicalZero") else np.zeros(len(df), dtype=bool)
     if (logical_zero & valid & (values != 0)).any():
         raise ValueError("Confirmed non-use conflicts with a recorded nonzero answer. Correct the inputs first.")
@@ -57,8 +68,10 @@ def prepare_measure(df, spec):
         members = spec["valueVariables"]
         if not isinstance(members, list) or not members or any(v not in df for v in members):
             raise ValueError("The repertoire needs declared available member variables.")
-        member_values = df[members].to_numpy(float)
+        member_values = np.column_stack([numeric_values(df, member) for member in members])
         valid &= np.isfinite(member_values).all(axis=1)
+        if (valid[:, None] & ~np.isin(member_values, [0.0, 1.0])).any():
+            raise ValueError("A repertoire member has an answered code outside its confirmed 0/1 membership scale.")
         values = member_values.sum(axis=1)
     values = values.copy()
     values[logical_zero] = 0
@@ -92,7 +105,7 @@ def dashboard_metrics(file_bytes, filename, args, read, tabulate):
         if weight and weight not in df:
             raise ValueError(f"Weight {weight} is not in this file.")
         if weight:
-            w = pd.to_numeric(df[weight], errors="coerce").to_numpy(float)
+            w = numeric_values(df, weight)
             if not (np.isfinite(w) & (w > 0)).all():
                 raise ValueError("The U&A weight has missing, non-finite or nonpositive values. Correct it first.")
         temporary = "__ua_measure__"
@@ -102,7 +115,7 @@ def dashboard_metrics(file_bytes, filename, args, read, tabulate):
         work_meta = copy.deepcopy(meta)
         work_meta.column_names_to_labels = {**(meta.column_names_to_labels or {}), temporary: spec.get("label") or spec["id"]}
         work_meta.variable_value_labels = {**(meta.variable_value_labels or {}), temporary: {0: "Not selected", 1: "Selected"} if spec["kind"] in ("percent", "verbatim") else {}}
-        request = {"columnVars": [], "rowItems": [{"key": temporary, "label": spec.get("label") or spec["id"], "vars": [temporary]}], "weightVar": weight, "excludeDk": False, "correction": "none", "typeOverrides": {temporary: "categorical" if spec["kind"] in ("percent", "verbatim") else "continuous"}}
+        request = {"columnVars": [], "rowItems": [{"key": temporary, "label": spec.get("label") or spec["id"], "vars": [temporary]}], "weightVar": weight, "excludeDk": False, "correction": "none", "_uaExactBases": True, "typeOverrides": {temporary: "categorical" if spec["kind"] in ("percent", "verbatim") else "continuous"}}
         if args.get("design"):
             request["design"] = args["design"]
         # A temporary column represents eligibility and response state only. Ordinary Cross tab
@@ -141,7 +154,12 @@ def dashboard_metrics(file_bytes, filename, args, read, tabulate):
             positions = np.flatnonzero(np.isfinite(values))
             quotes = [{"row": int(i) + 1, "text": str(df.iloc[i][spec["variable"]])[:2000], "truncated": len(str(df.iloc[i][spec["variable"]])) > 2000} for i in positions[:6]]
             value = exact["n"] if exact else None
-        measures.append({"id": spec["id"], "value": value, "numerator": numerator, "assignedBase": bases[0], "eligibleBase": bases[1], "validBase": exact or {"n": 0, "w": 0.0, "nEff": 0.0}, "quotes": quotes, "suppressed": total is not None and value is None, "reason": None if value is not None else "No valid answers or the engine small-base rule suppresses this estimate.", "designApplied": bool(result.get("notes", {}).get("designApplied"))})
+        reliable = result.get("notes", {}).get("minReliable")
+        if reliable is None:
+            raise ValueError("The engine did not declare its indicative-base threshold.")
+        reason = ("No valid answers or the engine small-base rule suppresses this estimate." if value is None else
+                  f"Indicative only: the valid raw base is below {reliable}." if exact and exact["n"] < reliable else None)
+        measures.append({"id": spec["id"], "value": value, "numerator": numerator, "assignedBase": bases[0], "eligibleBase": bases[1], "validBase": exact or {"n": 0, "w": 0.0, "nEff": 0.0}, "quotes": quotes, "suppressed": total is not None and value is None, "reason": reason, "designApplied": bool(result.get("notes", {}).get("designApplied"))})
     first["notes"]["uaCrosstabCalls"] = engine_calls
     first["uaMetrics"] = measures
     return first

@@ -39,7 +39,7 @@ export type UaMetric = {
   quotes?: { row: number; text: string; truncated?: boolean }[]; suppressed: boolean; reason: string | null; designApplied: boolean;
 };
 export type UaRecognition = {
-  recognised: boolean; fields: UaField[]; reasons: string[];
+  recognised: boolean; needsMapping: boolean; fields: UaField[]; reasons: string[];
   questions: { role: string; reason: string; candidates: string[] }[];
   brands: { code: string; label: string }[];
   roles: Record<string, string | null>; analysisWeight: string | null; populationWeight: string | null;

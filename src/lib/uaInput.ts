@@ -11,5 +11,5 @@ export async function loadUaFields(tenantId: string, runId: string, documentId: 
     const item = descriptions.get(v.name);
     return { variable: v.name, label: item?.text || v.label, questionId: item?.questionMeta?.questionId ?? null, options: Object.entries(v.valueLabels ?? {}).map(([code, label]) => ({ code, label })), meta: item?.questionMeta?.researchMeta ?? {} };
   });
-  return { fields, defaultWeight: input.weightVar };
+  return { fields };
 }

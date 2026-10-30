@@ -9,7 +9,7 @@ export function planUaMetrics(rec: UaRecognition, lightUserMaximum: number | nul
     try {
       const route = compileUaRoute(f, fields);
       const answered = answeredCondition(f, fields);
-      const spec: UaMetricSpec = { id: `${page}:${f.variable}:${kind}:${selected?.join("_") ?? "numeric"}:${metrics.length}`, label, page, variable: f.variable, kind, unit: kind === "percent" ? "percent" : f.meta.unit ?? "value", ...route, answered, ...(selected ? { selectedCodes: selected } : {}), reason: `${f.questionId}: ${f.meta.questionWording || f.label}. Eligibility: ${f.meta.eligibleBase}. Response state must be answered.`, period: f.meta.period ?? "Not stated", sourceQuestionIds: f.questionId ? [f.questionId] : [], ...extra };
+      const spec: UaMetricSpec = { id: `${page}:${f.variable}:${kind}:${selected?.join("_") ?? "numeric"}:${metrics.length}`, label, page, variable: f.variable, kind, unit: kind === "percent" ? "percent" : f.meta.unit ?? "value", ...route, answered, ...(f.options.length ? { validCodes: f.options.map(o => o.code) } : {}), ...(selected ? { selectedCodes: selected } : {}), reason: `${f.questionId}: ${f.meta.questionWording || f.label}. Eligibility: ${f.meta.eligibleBase}. Response state must be answered.`, period: f.meta.period ?? "Not stated", sourceQuestionIds: f.questionId ? [f.questionId] : [], ...extra };
       if (kind === "percent" && !spec.selectedCodes?.length) throw new Error("The selected raw answer code is missing or ambiguous.");
       metrics.push(spec);
     } catch (e) { unavailable.push({ label, page, reason: e instanceof Error ? e.message : String(e) }); }
@@ -39,7 +39,9 @@ export function planUaMetrics(rec: UaRecognition, lightUserMaximum: number | nul
   }
   for (const [mode, condition, pattern] of [["Consumption", recent, /^personally consumed carbonated soft drinks: past three calendar months/], ["Buyer", buyers, /^personally purchased from brand/]] as [string, UaCondition | undefined, RegExp][]) {
     const members = fields.filter(f => pattern.test(clean(f.label)) && f.meta.stateVariable && !/response-state/i.test(f.meta.fieldRole ?? "") && rec.brands.some(b => clean(f.label).endsWith(clean(b.label))));
-    if (condition && members.length) add(members[0], `${mode} named-brand repertoire per recent ${mode === "Buyer" ? "buyer" : "user"}`, "repertoire", undefined, "mean", { eligible: condition, assigned: undefined, answered: all(...members.map(f => answeredCondition(f, fields))), valueVariables: members.map(f => f.variable), unit: "named brands", note: "Includes Other named brand once; excludes unbranded and unknown brand identities." });
+    const binary = members.every(f => answerCodes(f, /^(selected|yes)$/).join() === "1" && f.options.every(o => ["0", "1"].includes(o.code)));
+    if (members.length && !binary) unavailable.push({ label: `${mode} repertoire`, page: "repertoire", reason: "Repertoire needs confirmed 0/1 membership codes; this codebook uses another coding and requires a reviewed mapping." });
+    if (condition && members.length && binary) add(members[0], `${mode} named-brand repertoire per recent ${mode === "Buyer" ? "buyer" : "user"}`, "repertoire", undefined, "mean", { eligible: condition, assigned: undefined, answered: all(...members.map(f => answeredCondition(f, fields))), valueVariables: members.map(f => f.variable), unit: "named brands", note: "Includes Other named brand once; excludes unbranded and unknown brand identities." });
   }
   const brandOf = (f: UaField) => rec.brands.find(b => clean(f.label).includes(clean(b.label)));
   for (const f of fields) {

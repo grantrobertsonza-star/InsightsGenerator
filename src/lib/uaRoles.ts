@@ -23,8 +23,8 @@ const RULES: Record<string, (f: UaField) => boolean> = {
   previousPurchase: f => /has a purchase occasion before most recent purchase/.test(meaning(f)),
 };
 
-/** The U&A signature requires category consumption AND personal purchase, routes, states and breadth.
- * A brand funnel or a company satisfaction scale alone cannot satisfy this contract. */
+/** The U&A signature needs independent category usage/purchase questions with declared states and breadth.
+ * Numeric spend and frequency are optional: an absent area must not hide the rest of a U&A study. */
 export function recogniseUa(fields: UaField[], corrections: Record<string, string | null> = {}): UaRecognition {
   const questions: UaRecognition["questions"] = []; const roles: UaRecognition["roles"] = {}; const reasons: string[] = [];
   for (const [role, rule] of Object.entries(RULES)) {
@@ -41,11 +41,13 @@ export function recogniseUa(fields: UaField[], corrections: Record<string, strin
   }
   const first = fields.find(f => f.variable === roles.firstChoice);
   const brands = first?.options.filter(o => !/none|no first|no brand|no preference|would not choose|not know|unbranded/i.test(o.label)) ?? [];
-  const analysis = fields.filter(f => /analysis weight/i.test(f.label) && !/expansion|population/i.test(f.label));
+  const analysis = fields.filter(f => /analysis weight/i.test(f.label) && !/expansion/i.test(f.label));
   const population = fields.filter(f => /expansion weight/i.test(f.label) && /hypothetical|fictional|invented/i.test(f.label));
-  const core = ["everConsumption", "consumptionRecency", "purchaseP3m", "occasionsP3m", "spendP3m"];
-  const breadth = fields.some(f => /agree or disagree/i.test(f.meta.questionWording ?? "")) && fields.some(f => /most recent.*occasion|most recent.*episode/i.test(f.label));
-  return { recognised: core.every(k => roles[k]) && breadth, fields, reasons, questions, brands, roles, analysisWeight: analysis.length === 1 ? analysis[0].variable : null, populationWeight: population.length === 1 ? population[0].variable : null };
+  const core = ["everConsumption", "consumptionRecency", "purchaseP3m"];
+  const breadth = fields.some(f => /agree or disagree/i.test(f.meta.questionWording ?? "")) || fields.some(f => /most recent.*occasion|most recent.*episode/i.test(f.label));
+  const certain = core.filter(k => roles[k]).length;
+  const possible = core.filter(k => roles[k] || questions.some(q => q.role === k && q.candidates.length)).length;
+  return { recognised: certain >= 2 && breadth, needsMapping: certain < 2 && possible >= 2 && breadth, fields, reasons, questions, brands, roles, analysisWeight: analysis.length === 1 ? analysis[0].variable : null, populationWeight: population.length === 1 ? population[0].variable : null };
 }
 
 export const UA_ROLES = Object.keys(RULES);
