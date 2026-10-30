@@ -833,6 +833,10 @@ export async function loadBrandExtension(tenantId: string, runId: string, docume
   const labelOf = new Map(dict.dictionary.variables.map((v) => [v.name, v.label]));
   // Computed, not saved (computeCrosstab): opening the page adds no table to the file. Every answer code is kept
   // (excludeDk false): which codes count is decided by each question's own answer list above, never globally.
+  // A filter nobody meets (two Other names never given together, an audience with no one in a brand's base) is an
+  // empty table: every count zero, which the readers turn into "Not available" where it is a denominator. Only the
+  // engine's own "No cases satisfy the filter" is read so; any other failure stops the page with its reason.
+  const EMPTY = { version: 2, weightVar, weightLabel: null, questions: [], total: { n: 0, w: 0, nEff: 0 } } as unknown as CrosstabResult;
   const run: Runner = async (rows, filters, extraItems = []) =>
     (
       await computeCrosstab(tenantId, runId, documentId, {
@@ -842,6 +846,9 @@ export async function loadBrandExtension(tenantId: string, runId: string, docume
         design,
         excludeDk: false,
         filters: [...audienceFilters, ...filters],
+      }).catch((e: unknown) => {
+        if (e instanceof Error && /No cases satisfy the filter/.test(e.message)) return { result: EMPTY };
+        throw e;
       })
     ).result;
   const categories = async (variable: string) => (await loadCategories(tenantId, runId, documentId, variable)).categories;

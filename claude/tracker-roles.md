@@ -74,6 +74,10 @@ codebook question fields, and many carry no answer labels at all.
    stay (continue, stay, remain); likely to switch (not price switching); drivers: the largest battery of
    three or more ratings in one question sharing one poor-to-excellent list (importance batteries excluded).
    Two candidates for a role are asked about.
+6a. **Brand dashboard extension** (r6brandext): needs fit, differentiation, price justification, the same-episode
+   ideal and actual brand and its reasons are recognised by their own owner, `brandExtensionRoles.ts`, called once
+   from `recogniseTracker`; the variables it claims leave the measures, association items and "outside" lists above.
+   "Cannot recall" and "No particular ..." answers are never brands (rule 1). See `claude/brand-extension.md`.
 7. **Type.** Brand when there is a brand list and at least two funnel or usage stages; CSM when there is overall
    satisfaction and a 0 to 10 recommend question; both, or unknown.
 
