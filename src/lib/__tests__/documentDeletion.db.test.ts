@@ -13,16 +13,23 @@ vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 describe("deleteDocumentConfirmation (pure)", () => {
   it("names findings, review decisions, notes and the insights whose support goes", () => {
     const text = deleteDocumentConfirmation({ findings: 3, reviewed: 2, notes: 1, insights: 2 });
-    expect(text).toBe("Delete this document? This also deletes 3 findings, with 2 review decisions you made and 1 researcher note. 2 insights rest on them and will show their support as no longer valid. This can't be undone.");
+    expect(text).toBe("Remove this file from the project? Its 3 findings, with 2 review decisions you made and 1 researcher note, are archived and leave the project's results. 2 insights rest on them and will show their support as no longer valid. It stays in the bin for 30 days, where you can restore it with its findings, review decisions and notes, or erase it now.");
   });
   it("singular wording, and nothing said that is not there", () => {
-    expect(deleteDocumentConfirmation({ findings: 1, reviewed: 0, notes: 0, insights: 1 })).toBe("Delete this document? This also deletes 1 finding. 1 insight rests on them and will show its support as no longer valid. This can't be undone.");
-    expect(deleteDocumentConfirmation({ findings: 0, reviewed: 0, notes: 0, insights: 0 })).toBe("Delete this document? No findings come from it. This can't be undone.");
+    expect(deleteDocumentConfirmation({ findings: 1, reviewed: 0, notes: 0, insights: 1 })).toBe("Remove this file from the project? Its 1 finding is archived and leaves the project's results. 1 insight rests on them and will show its support as no longer valid. It stays in the bin for 30 days, where you can restore it with its findings, review decisions and notes, or erase it now.");
+    expect(deleteDocumentConfirmation({ findings: 0, reviewed: 0, notes: 0, insights: 0 })).toBe("Remove this file from the project? No findings come from it. It stays in the bin for 30 days, where you can restore it with its findings, review decisions and notes, or erase it now.");
+  });
+  it("names objective suggestions removed and accepted objectives kept, and the bin period given", () => {
+    const text = deleteDocumentConfirmation({ findings: 0, reviewed: 0, notes: 0, insights: 0, suggestions: 2, objectives: 1 }, 7);
+    expect(text).toMatch(/2 unreviewed objective or decision suggestions drawn only from it are removed\./);
+    expect(text).toMatch(/1 accepted objective or decision drawn from it is kept and marked as having lost a source\./);
+    expect(text).toMatch(/in the bin for 7 days/);
   });
   it("unknown counts read as general wording, not zero", () => {
     const text = deleteDocumentConfirmation(null);
-    expect(text).toMatch(/review decisions and researcher notes/);
+    expect(text).toMatch(/review decisions and notes/);
     expect(text).toMatch(/no longer valid/);
+    expect(text).toMatch(/restore it/);
     expect(text).not.toMatch(/\b0\b|No findings/);
   });
 });
@@ -64,7 +71,7 @@ describe.skipIf(!TEST_DATABASE_URL)("document deletion impact (real database)", 
     // 1 pre-insight and 1 synthesized insight rest on them.
     expect(impactFor(result, doc)).toEqual({ findings: 3, reviewed: 2, notes: 1, insights: 2 });
     expect(impactFor(result, empty)).toEqual({ findings: 0, reviewed: 0, notes: 0, insights: 0 });
-    expect(deleteDocumentConfirmation(impactFor(result, doc))).toMatch(/3 findings, with 2 review decisions you made and 1 researcher note\. 2 insights rest on them/);
+    expect(deleteDocumentConfirmation(impactFor(result, doc))).toMatch(/3 findings, with 2 review decisions you made and 1 researcher note, are archived and leave the project's results\. 2 insights rest on them/);
   });
 
   it("a failed read is unavailable, and the confirmation falls back to general wording", async () => {

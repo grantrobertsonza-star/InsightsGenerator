@@ -18,6 +18,7 @@
 //   4. Load failure: with the app role's read on objective_evidence revoked, opening Review
 //      Objectives shows the load error instead of an empty or partial list; restored, it loads.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -97,7 +98,7 @@ test("a failed round, the 60-round guard, a dropped connection and a failed load
     const stored = async () => Number((await db.query("select count(*) from objective_evidence_results where run_id=$1", [run.id])).rows[0].count);
     const openReview = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });
-      await page.getByRole("button", { name: "Review Objectives", exact: true }).click();
+      await openSection(page, "Review Objectives");
     };
     const more = page.getByRole("button", { name: "Continue reading", exact: true });
     const idle = async () => {

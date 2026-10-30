@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { askResearchAssistant } from "./researchAssistant";
+import { askResearchAssistant, loadAssistantConversation, RequestInProgressError, type AssistantMessage } from "./researchAssistant";
+import { askGeneralAssistant, checkedHistory } from "./generalAssistant";
+import { checkedPageContext } from "./assistantLoop";
 import { storeUploadedDocument } from "./documentUpload";
 import { extractFindingsFromDocument } from "./extractFindings";
 import { detectDuplicateFindings } from "./dedupe";
@@ -14,6 +16,14 @@ import { refreshSynthesizedInsightQuality } from "./synthesizedInsightQualitySco
 import { refreshRecommendations } from "./recommendationAgent";
 import { withTenant } from "./db";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
+
+/** A database without migration 0108 (assistant_messages.request_id) says so, as the other migration checks do. */
+function needsMigration0108(message: string): string {
+  return /request_id/.test(message) && /(column|does not exist|constraint|ON CONFLICT)/i.test(message)
+    ? "This needs migration 0108 applied first (npx.cmd supabase migration up)."
+    : message;
+}
 
 /**
  * The chat-box server action behind the Research assistant card: sends one
@@ -25,22 +35,63 @@ import { requireTenantId } from "./requestContext";
  */
 export async function sendAssistantMessage(
   runId: string,
-  message: string
-): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+  message: string,
+  page?: unknown,
+  requestId?: unknown,
+): Promise<{ ok: true; reply: string } | { ok: false; error: string; stillRunning?: boolean }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
-    const { reply } = await askResearchAssistant(TENANT_ID, runId, message);
+    if (requestId !== undefined && requestId !== null && typeof requestId !== "string") throw new Error("The request id is not valid.");
+    const { reply } = await askResearchAssistant(TENANT_ID, runId, message, checkedPageContext(page), requestId ?? null);
     revalidatePath(`/runs/${runId}`);
     return { ok: true, reply };
   } catch (error) {
-    const messageText = error instanceof Error ? error.message : String(error);
+    // Another send of this request is still answering it: nothing was run or stored by this one.
+    if (error instanceof RequestInProgressError) return { ok: false, error: error.message, stillRunning: true };
+    const messageText = needsMigration0108(error instanceof Error ? error.message : String(error));
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'research_assistant_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'research_assistant_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message: messageText })]
       );
     }).catch(() => {});
     return { ok: false, error: messageText };
+  }
+}
+
+/**
+ * The floating drawer's copy of a project's conversation, read when it opens. A failed read is an
+ * error the drawer shows; it is never shown as an empty conversation.
+ */
+export async function loadAssistantMessages(
+  runId: string,
+): Promise<{ ok: true; messages: AssistantMessage[] } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
+  if (!/^[0-9a-f-]{36}$/i.test(runId)) return { ok: false, error: "Not a project." };
+  try {
+    return { ok: true, messages: await loadAssistantConversation(TENANT_ID, runId, true) };
+  } catch (error) {
+    return { ok: false, error: needsMigration0108(error instanceof Error ? error.message : String(error)) };
+  }
+}
+
+/**
+ * The drawer outside a project (dashboard, Programs, Knowledge base, Manual): how-the-app and method
+ * questions, not stored. The earlier turns come from the drawer and are checked (generalAssistant.ts).
+ */
+export async function sendGeneralAssistantMessage(
+  message: string,
+  history: unknown,
+  page?: unknown,
+): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    const { reply } = await askGeneralAssistant(TENANT_ID, String(message ?? ""), checkedHistory(history), checkedPageContext(page));
+    return { ok: true, reply };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -60,7 +111,7 @@ async function refreshDecisionCandidatesQuietly(runId: string) {
   } catch (error) {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'decision_framer_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'decision_framer_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })]
       );
     });
@@ -83,6 +134,7 @@ export async function uploadAssistantDocument(
   formData: FormData
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   const file = formData.get("file") as File | null;
   if (!file || file.size === 0) {
     return { ok: false, error: "No file selected." };
@@ -99,7 +151,7 @@ export async function uploadAssistantDocument(
       const message = error instanceof Error ? error.message : String(error);
       await withTenant(TENANT_ID, async (client) => {
         await client.query(
-          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_errors', $3)`,
+          `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_run_errors', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
           [TENANT_ID, runId, JSON.stringify({ errors: [`${file.name}: ${message}`] })]
         );
       }).catch(() => {});

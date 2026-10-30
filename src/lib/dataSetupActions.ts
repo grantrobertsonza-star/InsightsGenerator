@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { loadDataSetup, loadDataSetupWithStatus, saveDataSetup, type ExpectedPreviousSetup } from "./dataSetup";
 import { extractAndStoreDocumentTables } from "./documentTables";
-import { normaliseDataSetup, type DataSetup } from "./dataSetupShared";
+import { DEFAULT_DATA_SETUP, normaliseDataSetup, parseHeaderRowsSkipped, type DataSetup } from "./dataSetupShared";
 import { requireTenantId } from "./requestContext";
+import { assertRunAccessible, RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 /**
  * ANA-NPS-003 (second counter-review): the one client-callable way to read a document's
@@ -12,8 +13,9 @@ import { requireTenantId } from "./requestContext";
  * own workspace to initialise its design picker from whatever was last saved (by itself, or by
  * another tool/session) rather than always starting from the bare heuristic.
  */
-export async function loadDataSetupAction(_runId: string, documentId: string): Promise<DataSetup> {
+export async function loadDataSetupAction(runId: string, documentId: string): Promise<DataSetup> {
   const TENANT_ID = await requireTenantId();
+  await assertRunAccessible(TENANT_ID, runId);
   return loadDataSetup(TENANT_ID, documentId);
 }
 
@@ -25,10 +27,11 @@ export async function loadDataSetupAction(_runId: string, documentId: string): P
  * had no saved design/unit/layout choice at all.
  */
 export async function loadDataSetupStatusAction(
-  _runId: string,
+  runId: string,
   documentId: string,
 ): Promise<{ setup: DataSetup; ok: true } | { setup: DataSetup; ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { setup: DEFAULT_DATA_SETUP, ok: false, error: RUN_NOT_AVAILABLE };
   return loadDataSetupWithStatus(TENANT_ID, documentId);
 }
 
@@ -45,9 +48,16 @@ export async function saveDataSetupAction(
   expected?: ExpectedPreviousSetup,
 ): Promise<{ ok: true } | { ok: false; error: string; conflict?: boolean; current?: DataSetup | null }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
+  // The header row choice is checked here, before anything is written: normaliseDataSetup reads an invalid stored
+  // value as detected automatically, which must never be how an invalid request is saved. Whether the file has a
+  // header row at all is checked on the write (saveDataSetup), in the same transaction.
+  const header = parseHeaderRowsSkipped((setup as Partial<DataSetup> | null)?.headerRowsSkipped);
+  if (!header.ok) return { ok: false, error: header.error };
   // No revalidatePath, same as the transcript set-up: the row keeps its own state.
   try {
     const r = await saveDataSetup(TENANT_ID, runId, documentId, normaliseDataSetup(setup), expected);
+    if (!r.saved && r.refused) return { ok: false, error: r.refused };
     if (!r.saved) {
       return {
         ok: false,
@@ -78,6 +88,7 @@ export async function readDataFileAction(
   documentId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await extractAndStoreDocumentTables(TENANT_ID, runId, documentId);
     revalidatePath(`/runs/${runId}`);

@@ -8,11 +8,12 @@ import {
 } from "docx";
 import { withTenant } from "@/lib/db";
 import {
+  codingExportBlocker,
   getCodingAnalysis,
   type CodeAnalysis,
   type CodingAnalysisView,
 } from "@/lib/codingAnalysis";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
 
 /**
  * A working document for writing up: every transcript's themes with their
@@ -29,10 +30,12 @@ export async function GET(
   if (context instanceof Response) return context;
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(TENANT_ID, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
   const info = await withTenant(TENANT_ID, async (client) => {
     const run = await client.query<{ project_name: string | null }>(
-      "select project_name from runs where id = $1",
-      [runId],
+      "select project_name from runs where id = $1 and tenant_id = $2",
+      [runId, TENANT_ID],
     );
     if (run.rows.length === 0) return null;
     const docs = await client.query<{ id: string; source_filename: string }>(
@@ -45,6 +48,8 @@ export async function GET(
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
   const analysis = await getCodingAnalysis(TENANT_ID, runId);
+  const blocked = codingExportBlocker(analysis);
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 503 });
   if (analysis.size === 0)
     return NextResponse.json(
       { error: "No coding yet. Code themes first." },

@@ -1,0 +1,517 @@
+// IR-01 and IR-02 (Codex independent review, 2026-10-20): a posted scatter correlation follows its
+// source, and is posted once. Real disposable PostgreSQL and the actual actions; the stored file's
+// column reader (runStatsTool) and the dictionary/document/label lookups in crosstabs.ts are the
+// mocked boundary, as in Codex's probe.
+//   - the source changes (r +1 to -1): reposting updates the same finding to -1, keeps its id and a
+//     theme the researcher changed by hand, and the status check says the old one was not current
+//   - a label-only change keeps the finding's identity and figures
+//   - removed then posted again: the same finding comes back with the current figures
+//   - a failed read leaves the finding as it was and reports the error; a retry then succeeds
+//   - two posts at the same moment, and two revivals at the same moment, leave one finding
+//   - weighted and unweighted correlations of the same pair are two findings
+// RR-01 and RR-02 (Codex re-review, 2026-10-21):
+//   - wording the researcher edited is kept through unchanged reposts, label-only changes,
+//     removal and revival, and a refused read; changed figures keep it and ask for a review
+//   - a failed content-hash lookup is unknown, never current, and a post on it writes nothing;
+//     a missing hash column (0098 not applied) still works and is never compared across
+// RRV-01 (Codex, 2026-10-21): the wording review is resolved on the Analytics card:
+//   - keep the wording for these figures (not raised again for the same figures, raised again for
+//     new ones), or use the current sentence (the researcher's wording and provenance kept on record)
+//   - a decision on a suggestion that has moved on, or for another project or organisation, writes
+//     nothing; repeating a decision already made succeeds without writing
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { Client } from "pg";
+import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
+
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
+
+// The controlled source: what the stored file "contains" right now.
+const source = {
+  xLabel: "Ease of contact",
+  yLabel: "Overall trust",
+  y: [1, 2, 3, 4, 5, 6] as (number | null)[],
+  x: [1, 2, 3, 4, 5, 6] as (number | null)[],
+  weights: [1, 2, 1, 2, 1, 2] as (number | null)[],
+  fail: false,
+};
+
+vi.mock("../crosstabs", () => ({
+  loadVariableDictionaryWithStatus: vi.fn(async () => ({
+    ok: true,
+    dictionary: { variables: [{ name: "EASE" }, { name: "TRUST" }, { name: "WT" }] },
+  })),
+  loadDocumentFile: vi.fn(async () => ({ storage_path: "synthetic/file.sav", source_filename: "file.sav", selected_sheet: null })),
+  overlayFor: vi.fn(async () => ({ variableLabels: { EASE: source.xLabel, TRUST: source.yLabel }, valueLabels: {}, questions: {} })),
+}));
+
+vi.mock("../parseStatsFile", () => ({
+  runStatsTool: vi.fn(async (_action: string, _path: string, _name: string, args: { weightVar: string | null }) => {
+    if (source.fail) throw new Error("The statistics worker could not read the file.");
+    const axis = (name: string, label: string, values: (number | null)[]) => ({
+      name,
+      label,
+      min: Math.min(...(values.filter((v) => v !== null) as number[])),
+      max: Math.max(...(values.filter((v) => v !== null) as number[])),
+      distinct: new Set(values).size,
+    });
+    return {
+      outcome: axis("TRUST", source.yLabel, source.y),
+      predictors: [axis("EASE", source.xLabel, source.x)],
+      y: source.y,
+      x: source.x.map((v) => [v]),
+      weights: args.weightVar ? source.weights : null,
+      n: source.y.length,
+      skipped: [],
+    };
+  }),
+}));
+
+describe.skipIf(!TEST_DATABASE_URL)("scatter findings follow their source and are posted once", () => {
+  let db: DisposableDb;
+  const tenant = randomUUID();
+  let run: string, data: string;
+  beforeAll(async () => {
+    db = await createDisposableDb();
+    process.env.DATABASE_URL = db.url;
+    process.env.DEFAULT_TENANT_ID = tenant;
+    await db.pool.query("insert into tenants(id,name) values($1,'Synthetic scatter')", [tenant]);
+    run = (await db.pool.query("insert into runs(tenant_id) values($1) returning id", [tenant])).rows[0].id;
+    data = (
+      await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,ingestion_type) values($1,$2,'table','file.sav','synthetic/file.sav','raw') returning id", [tenant, run])
+    ).rows[0].id;
+  }, 120000);
+  afterAll(async () => {
+    const { pool } = await import("../db");
+    await pool.end();
+    await db.drop();
+  });
+
+  const rows = async (weight: string | null = null) =>
+    (
+      await db.pool.query(
+        `select id, status, theme, finding_text, stated_stats from findings
+         where run_id = $1 and stated_stats->>'source' = 'scatter_tool' and coalesce(stated_stats->>'weightVar','') = coalesce($2,'')
+         order by created_at, id`,
+        [run, weight],
+      )
+    ).rows;
+  const reset = async () => {
+    await db.pool.query("delete from findings where run_id = $1", [run]);
+    Object.assign(source, { xLabel: "Ease of contact", yLabel: "Overall trust", x: [1, 2, 3, 4, 5, 6], y: [1, 2, 3, 4, 5, 6], fail: false });
+  };
+
+  it("updates a changed source in place and keeps a hand-set theme", async () => {
+    await reset();
+    const { addScatterFindingAction, scatterFindingStatusAction } = await import("../scatterActions");
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: true, updated: false });
+    const [first] = await rows();
+    expect(first.stated_stats.r).toBe(1);
+    expect(typeof first.stated_stats.basis).toBe("string");
+    // The researcher renames the theme by hand (recorded as an edit, migration 0094).
+    await db.pool.query("update findings set theme = 'Contact and trust', human_edited_fields = array['theme'] where id = $1", [first.id]);
+
+    // Unchanged: posting again changes nothing.
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: false });
+
+    // The source changes: the same variables now run the other way.
+    source.y = [6, 5, 4, 3, 2, 1];
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: true });
+    const after = await rows();
+    expect(after).toHaveLength(1);
+    expect(after[0].id).toBe(first.id);
+    expect(after[0].stated_stats.r).toBe(-1);
+    expect(after[0].finding_text).toMatch(/r = -1/);
+    expect(after[0].theme).toBe("Contact and trust");
+    expect((await scatterFindingStatusAction(run, data, "EASE", "TRUST", null))).toEqual({ ok: true, committed: true, current: true, wordingReview: null });
+  });
+
+  it("says a posted correlation is not current when what it was read from changed, and unknown before it was recorded", async () => {
+    await reset();
+    const { addScatterFindingAction, scatterFindingStatusAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    // The saved layout of the file changes after posting.
+    await db.pool.query(`update documents set data_setup = '{"layout":"columns_are_cases"}'::jsonb where id = $1`, [data]);
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: false, wordingReview: null });
+    await db.pool.query("update documents set data_setup = null where id = $1", [data]);
+    // A finding posted before the basis was recorded: unknown, never current.
+    await db.pool.query("update findings set stated_stats = stated_stats - 'basis' where run_id = $1", [run]);
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: null, wordingReview: null });
+  });
+
+  it("keeps identity and figures when only a label changes", async () => {
+    await reset();
+    const { addScatterFindingAction, scatterFindingStatusAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [before] = await rows();
+    source.xLabel = "How easy it was to reach us";
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: false, wordingReview: null });
+    const res = await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    expect(res).toMatchObject({ ok: true, added: false });
+    const after = await rows();
+    expect(after).toHaveLength(1);
+    expect(after[0].id).toBe(before.id);
+    expect(after[0].stated_stats.variable1).toBe("EASE");
+    expect(after[0].stated_stats.r).toBe(before.stated_stats.r);
+    expect(after[0].stated_stats.n).toBe(before.stated_stats.n);
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: true, wordingReview: null });
+  });
+
+  it("brings a removed finding back with the current figures", async () => {
+    await reset();
+    const { addScatterFindingAction, removeScatterFindingAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [first] = await rows();
+    expect(await removeScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, removed: 1 });
+    source.y = [6, 5, 4, 3, 2, 1];
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: true, updated: true });
+    const after = await rows();
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ id: first.id, status: "accepted" });
+    expect(after[0].stated_stats.r).toBe(-1);
+  });
+
+  it("leaves the finding unchanged when the read fails, and a retry succeeds", async () => {
+    await reset();
+    const { addScatterFindingAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const before = await rows();
+    source.y = [6, 5, 4, 3, 2, 1];
+    source.fail = true;
+    const failed = await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    expect(failed).toEqual({ ok: false, error: "The statistics worker could not read the file." });
+    expect(await rows()).toEqual(before);
+    source.fail = false;
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: true });
+    expect((await rows())[0].stated_stats.r).toBe(-1);
+  });
+
+  // Holds the file's row so both requests are past their file read and waiting together, then lets go.
+  const race = async <T,>(start: () => Promise<T>[]) => {
+    const blocker = new Client({ connectionString: db.url });
+    await blocker.connect();
+    await blocker.query("begin");
+    await blocker.query("select id from documents where id = $1 for update", [data]);
+    const pending = start();
+    await new Promise((r) => setTimeout(r, 400));
+    const waiting = await db.pool.query("select count(*)::int as n from pg_stat_activity where wait_event_type = 'Lock' and datname = current_database()");
+    await blocker.query("commit");
+    await blocker.end();
+    return { results: await Promise.all(pending), waiting: waiting.rows[0].n as number };
+  };
+
+  it("two posts at the same moment leave one finding", async () => {
+    await reset();
+    const { addScatterFindingAction } = await import("../scatterActions");
+    const { results, waiting } = await race(() => [
+      addScatterFindingAction(run, data, "EASE", "TRUST", null),
+      addScatterFindingAction(run, data, "EASE", "TRUST", null),
+    ]);
+    expect(waiting).toBe(2);
+    expect(results.map((r) => (r.ok ? r.added : null)).sort()).toEqual([false, true]);
+    expect(await rows()).toHaveLength(1);
+  });
+
+  it("two revivals at the same moment bring back one finding", async () => {
+    await reset();
+    const { addScatterFindingAction, removeScatterFindingAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    await removeScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const { results } = await race(() => [
+      addScatterFindingAction(run, data, "EASE", "TRUST", null),
+      addScatterFindingAction(run, data, "EASE", "TRUST", null),
+    ]);
+    expect(results.map((r) => (r.ok ? r.added : null)).sort()).toEqual([false, true]);
+    const after = await rows();
+    expect(after).toHaveLength(1);
+    expect(after[0].status).toBe("accepted");
+  });
+
+  it("keeps the weighted and unweighted correlations of a pair apart", async () => {
+    await reset();
+    const { addScatterFindingAction } = await import("../scatterActions");
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toMatchObject({ ok: true, added: true });
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", "WT")).toMatchObject({ ok: true, added: true });
+    expect(await rows(null)).toHaveLength(1);
+    const weighted = await rows("WT");
+    expect(weighted).toHaveLength(1);
+    expect(weighted[0].stated_stats).toMatchObject({ weighted: true, pValue: null });
+  });
+
+  it("refuses a data file of another project, writing nothing", async () => {
+    await reset();
+    const otherRun = (await db.pool.query("insert into runs(tenant_id) values($1) returning id", [tenant])).rows[0].id;
+    const { addScatterFindingAction } = await import("../scatterActions");
+    const res = await addScatterFindingAction(otherRun, data, "EASE", "TRUST", null);
+    expect(res).toEqual({ ok: false, error: "That data file is not in this project." });
+    expect((await db.pool.query("select count(*)::int as n from findings where run_id = $1", [otherRun])).rows[0].n).toBe(0);
+  });
+
+  // RR-01 (Codex, 2026-10-21): wording the researcher edited survives reposts and revivals.
+  const editWording = async (id: string, text: string) =>
+    db.pool.query("update findings set finding_text = $2, human_edited_fields = array['finding_text'] where id = $1", [id, text]);
+  const RESEARCHER = "Customers who find us easy to reach trust us more.";
+
+  it("keeps edited wording through an unchanged repost and a label-only change", async () => {
+    await reset();
+    const { addScatterFindingAction, scatterFindingStatusAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [first] = await rows();
+    await editWording(first.id, RESEARCHER);
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: false });
+    source.xLabel = "How easy it was to reach us";
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: false });
+    const [after] = await rows();
+    expect(after).toMatchObject({ id: first.id, finding_text: RESEARCHER });
+    expect(after.stated_stats.wording_review).toBeUndefined();
+    expect(after.stated_stats.basis).not.toBe(first.stated_stats.basis);
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: true, wordingReview: null });
+  });
+
+  it("keeps edited wording through a removal and revival", async () => {
+    await reset();
+    const { addScatterFindingAction, removeScatterFindingAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [first] = await rows();
+    await editWording(first.id, RESEARCHER);
+    await removeScatterFindingAction(run, data, "EASE", "TRUST", null);
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: true, updated: false });
+    const [after] = await rows();
+    expect(after).toMatchObject({ id: first.id, status: "accepted", finding_text: RESEARCHER });
+  });
+
+  it("keeps edited wording over changed figures and asks for it to be reviewed", async () => {
+    await reset();
+    const { addScatterFindingAction, removeScatterFindingAction, scatterFindingStatusAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [first] = await rows();
+    await editWording(first.id, RESEARCHER);
+    source.y = [6, 5, 4, 3, 2, 1];
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: true });
+    const [after] = await rows();
+    expect(after.finding_text).toBe(RESEARCHER);
+    expect(after.stated_stats.r).toBe(-1);
+    expect(after.stated_stats.wording_review).toMatchObject({ reason: "figures_changed" });
+    expect(after.stated_stats.wording_review.suggested_text).toMatch(/r = -1/);
+    const status = await scatterFindingStatusAction(run, data, "EASE", "TRUST", null);
+    expect(status).toMatchObject({ ok: true, committed: true, current: true, wordingReview: { reason: "figures_changed" } });
+    // Posting again, or removing and reviving, keeps both the wording and the request to review it.
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: false });
+    await removeScatterFindingAction(run, data, "EASE", "TRUST", null);
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: true, updated: false });
+    const [kept] = await rows();
+    expect(kept.finding_text).toBe(RESEARCHER);
+    expect(kept.stated_stats.wording_review).toEqual(after.stated_stats.wording_review);
+  });
+
+  it("keeps edited wording when a read is refused, and after the retry", async () => {
+    await reset();
+    const { addScatterFindingAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [first] = await rows();
+    await editWording(first.id, RESEARCHER);
+    const before = await rows();
+    source.y = [6, 5, 4, 3, 2, 1];
+    source.fail = true;
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toMatchObject({ ok: false });
+    expect(await rows()).toEqual(before);
+    source.fail = false;
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: true });
+    const [after] = await rows();
+    expect(after.finding_text).toBe(RESEARCHER);
+    expect(after.stated_stats.r).toBe(-1);
+  });
+
+  it("replaces wording the researcher did not edit, as before", async () => {
+    await reset();
+    const { addScatterFindingAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    source.y = [6, 5, 4, 3, 2, 1];
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [after] = await rows();
+    expect(after.finding_text).toMatch(/r = -1/);
+    expect(after.stated_stats.wording_review).toBeUndefined();
+  });
+
+  // RR-02 (Codex, 2026-10-21): a content-hash lookup that fails is never read as "no hash".
+  // The database refusal is injected at the pool boundary for that one query only; every other
+  // query, and all persistence, runs on the real disposable database.
+  const refuseHashLookup = async () => {
+    const { pool } = await import("../db");
+    const connect = pool.connect.bind(pool) as () => Promise<import("pg").PoolClient>;
+    return vi.spyOn(pool, "connect").mockImplementation((async () => {
+      const client = await connect();
+      const query = client.query;
+      const release = client.release;
+      client.query = ((sql: unknown, ...rest: unknown[]) => {
+        if (typeof sql === "string" && sql.includes("select content_sha256 from documents")) {
+          return Promise.reject(Object.assign(new Error("permission denied for table documents"), { code: "42501" }));
+        }
+        return (query as (...a: unknown[]) => unknown).call(client, sql, ...rest);
+      }) as typeof client.query;
+      client.release = ((err?: Error | boolean) => {
+        client.query = query;
+        client.release = release;
+        return release.call(client, err);
+      }) as typeof client.release;
+      return client;
+    }) as never);
+  };
+
+  it("reports a failed hash lookup as unknown, refuses to post on it, and recovers on retry", async () => {
+    await reset();
+    const { addScatterFindingAction, scatterFindingStatusAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const before = await rows();
+    const spy = await refuseHashLookup();
+    try {
+      expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: null, wordingReview: null });
+      source.y = [6, 5, 4, 3, 2, 1];
+      expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: false, error: "permission denied for table documents" });
+      expect(await rows()).toEqual(before);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: true, wordingReview: null });
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: true });
+    expect((await rows())[0].stated_stats.r).toBe(-1);
+  });
+
+  it("works without the hash column (0098 not applied), and never compares across it", async () => {
+    await reset();
+    const { addScatterFindingAction, scatterFindingStatusAction } = await import("../scatterActions");
+    // Posted with the column present: once it is gone, the stored basis cannot be compared.
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    await db.pool.query("alter table documents rename column content_sha256 to content_sha256_hidden");
+    try {
+      expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: null, wordingReview: null });
+      // Posting without the column still works, and is then current against itself.
+      await reset();
+      expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: true, updated: false });
+      expect((await rows())[0].stated_stats.basis_without_content_hash).toBe(true);
+      expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: true, wordingReview: null });
+    } finally {
+      await db.pool.query("alter table documents rename column content_sha256_hidden to content_sha256");
+    }
+    // The column is back: a basis computed without it is unknown, and reposting records it again.
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: null, wordingReview: null });
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: false });
+    expect((await rows())[0].stated_stats.basis_without_content_hash).toBeUndefined();
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: true, wordingReview: null });
+  });
+  // RRV-01: resolving the wording review.
+  const snapshot = async () => (await db.pool.query("select id, finding_text, theme, status, stated_stats, human_edited_fields from findings where run_id = $1", [run])).rows;
+  const flagged = async () => {
+    await reset();
+    const { addScatterFindingAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [first] = await rows();
+    await editWording(first.id, RESEARCHER);
+    source.y = [6, 5, 4, 3, 2, 1];
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [after] = await rows();
+    expect(after.stated_stats.wording_review?.reason).toBe("figures_changed");
+    return { id: first.id as string, suggested: after.stated_stats.wording_review.suggested_text as string };
+  };
+
+  it("RRV-01: keep my wording, then use the current wording, through reposts and a reload of the status", async () => {
+    const { addScatterFindingAction, scatterFindingStatusAction, resolveScatterWordingReviewAction } = await import("../scatterActions");
+    const { id, suggested } = await flagged();
+    const status = await scatterFindingStatusAction(run, data, "EASE", "TRUST", null);
+    expect(status).toMatchObject({ ok: true, committed: true, wordingReview: { reason: "figures_changed", suggested_text: suggested } });
+
+    // Keep: the wording stays the researcher's, the review clears, and the status says so.
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "keep", suggested)).toEqual({ ok: true, changed: true });
+    let [f] = await rows();
+    expect(f).toMatchObject({ id, finding_text: RESEARCHER, status: "accepted" });
+    expect(f.stated_stats.wording_review).toBeUndefined();
+    expect(f.stated_stats.r).toBe(-1);
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toMatchObject({ ok: true, wordingReview: null });
+    // The same figures posted again do not raise it again.
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: false });
+    expect((await rows())[0].stated_stats.wording_review).toBeUndefined();
+
+    // New figures raise it again.
+    source.y = [1, 3, 2, 4, 6, 5];
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toMatchObject({ ok: true, updated: true });
+    [f] = await rows();
+    const next = f.stated_stats.wording_review.suggested_text as string;
+    expect(f.finding_text).toBe(RESEARCHER);
+
+    // Use the current wording: the text becomes the tool's, the researcher's is kept on record.
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "use_current", next)).toEqual({ ok: true, changed: true });
+    [f] = await rows();
+    expect(f).toMatchObject({ id, finding_text: next, status: "accepted" });
+    expect(f.stated_stats.wording_review).toBeUndefined();
+    expect(f.stated_stats.wording_history).toEqual([
+      expect.objectContaining({ text: RESEARCHER, human_edited_fields: ["finding_text"], reason: "figures_changed", replaced_with: next }),
+    ]);
+    const prov = (await db.pool.query("select human_edited_fields from findings where id = $1", [id])).rows[0].human_edited_fields;
+    expect(prov ?? []).not.toContain("finding_text");
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toMatchObject({ ok: true, wordingReview: null });
+    // From now on the text is the tool's: new figures update it, and the history stays.
+    source.y = [6, 5, 4, 3, 2, 1];
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    [f] = await rows();
+    expect(f.finding_text).toBe(suggested);
+    expect(f.stated_stats.wording_review).toBeUndefined();
+    expect(f.stated_stats.wording_history).toHaveLength(1);
+  });
+
+  it("RRV-01: repeating a decision already made succeeds and writes nothing", async () => {
+    const { resolveScatterWordingReviewAction } = await import("../scatterActions");
+    const { suggested } = await flagged();
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "keep", suggested)).toEqual({ ok: true, changed: true });
+    const before = await snapshot();
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "keep", suggested)).toEqual({ ok: true, changed: false });
+    expect(await snapshot()).toEqual(before);
+    // The other choice on a review already resolved is stale, not silently applied.
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "use_current", suggested)).toMatchObject({ ok: false, stale: true });
+    expect(await snapshot()).toEqual(before);
+
+    const again = await flagged();
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "use_current", again.suggested)).toEqual({ ok: true, changed: true });
+    const used = await snapshot();
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "use_current", again.suggested)).toEqual({ ok: true, changed: false });
+    expect(await snapshot()).toEqual(used);
+  });
+
+  it("RRV-01: a decision on a suggestion that has moved on writes nothing, and the current one can then be made", async () => {
+    const { addScatterFindingAction, scatterFindingStatusAction, resolveScatterWordingReviewAction } = await import("../scatterActions");
+    const { suggested } = await flagged();
+    // The card shows this suggestion; the figures change again before the researcher decides.
+    source.y = [1, 3, 2, 4, 6, 5];
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const before = await snapshot();
+    for (const choice of ["keep", "use_current"] as const) {
+      expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, choice, suggested)).toMatchObject({ ok: false, stale: true, error: expect.stringMatching(/changed again/) });
+    }
+    expect(await snapshot()).toEqual(before);
+    const status = await scatterFindingStatusAction(run, data, "EASE", "TRUST", null);
+    const current = status.ok ? status.wordingReview!.suggested_text : "";
+    expect(current).not.toBe(suggested);
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "keep", current)).toEqual({ ok: true, changed: true });
+  });
+
+  it("RRV-01: refuses a decision for another project or organisation, writing nothing", async () => {
+    const { resolveScatterWordingReviewAction } = await import("../scatterActions");
+    const { suggested } = await flagged();
+    const before = await snapshot();
+    const otherRun = (await db.pool.query("insert into runs(tenant_id) values($1) returning id", [tenant])).rows[0].id;
+    expect(await resolveScatterWordingReviewAction(otherRun, data, "EASE", "TRUST", null, "use_current", suggested)).toMatchObject({ ok: false, error: expect.stringMatching(/not in this project/) });
+    const otherTenant = randomUUID();
+    await db.pool.query("insert into tenants(id,name) values($1,'Synthetic other organisation')", [otherTenant]);
+    process.env.DEFAULT_TENANT_ID = otherTenant;
+    try {
+      const res = await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "use_current", suggested);
+      expect(res.ok).toBe(false);
+    } finally {
+      process.env.DEFAULT_TENANT_ID = tenant;
+    }
+    expect(await snapshot()).toEqual(before);
+    expect((await db.pool.query("select count(*)::int as n from trace where event like 'scatter_wording_%' and run_id = $1", [otherRun])).rows[0].n).toBe(0);
+  });
+});

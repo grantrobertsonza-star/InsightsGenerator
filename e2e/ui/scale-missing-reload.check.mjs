@@ -12,11 +12,13 @@
 // reload and read again; the import's data audit must still report both user-missing declarations
 // after the reload. Real browser, engine and database on the disposable stack. No model calls.
 import { expect, test } from "@playwright/test";
+import { openCrosstabs, showTables } from "./helpers/crosstabs.mjs";
 import { readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
+import { openSourceTab } from "./helpers/sources.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -39,10 +41,8 @@ pyreadstat.write_sav(df, sys.argv[1], variable_value_labels=labels, missing_rang
 
 async function reopenSaved(page, run, row) {
   await page.goto(run.url, { waitUntil: "networkidle" });
-  const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-  await page.getByRole("button", { name: /^Analytics/ }).first().click();
-  await page.getByRole("button", { name: /^Crosstabs/ }).click();
-  await expect(dialog).toBeVisible({ timeout: 60_000 });
+  const dialog = await openCrosstabs(page);
+  await showTables(dialog);
   const matching = dialog.locator(`table[data-testid="crosstab-result-table"][data-question-keys*='"${row}"']`);
   await expect
     .poll(
@@ -94,8 +94,13 @@ test("zero categories, missing-value exclusions and scale means read the same fr
   // The import's data audit still reports both user-missing declarations after a reload.
   await page.goto(run.url, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: /^Import data/ }).first().click();
-  // The audit sits inside the import's collapsed "Data quality" section.
-  await page.getByText("Data quality", { exact: true }).first().click();
-  await page.getByText("Weights and missing codes", { exact: true }).first().click();
-  await expect(page.getByText(/2 variable\(s\) declare user-missing values/).first()).toBeVisible({ timeout: 60_000 });
+  // The missing-value check is a fold under the data file's Variables tab (Grant, 2026-10-22), read
+  // when opened; the weights have their own Weights tab.
+  await page.getByRole("button", { name: /^Select .*\.sav$/ }).first().click();
+  const variables = await openSourceTab(page, "Variables");
+  const missing = variables.getByTestId("data-audit-missing");
+  await missing.locator("summary").click();
+  await expect(missing.getByText(/2 variable\(s\) declare user-missing values/).first()).toBeVisible({ timeout: 60_000 });
+  const weights = await openSourceTab(page, "Weights");
+  await expect(weights.getByTestId("data-audit")).toBeVisible();
 });

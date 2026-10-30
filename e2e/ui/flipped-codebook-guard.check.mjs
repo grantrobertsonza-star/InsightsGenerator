@@ -5,8 +5,13 @@
 // release pending verification). Engine tests prove the refusal; this checks, in a real browser
 // against the disposable local stack, that:
 //   1. after choosing "one column per respondent", the refusal, with its re-export guidance, is
-//      shown once for the file in its Variables panel (not repeated per variable, and not framed
-//      as an SPSS/Stata/SAS read failure);
+//      shown once for the file on its Preview tab (not repeated per variable, and not framed as an
+//      SPSS/Stata/SAS read failure). Since the one reader (batch 26) the file itself cannot be read in
+//      that layout, so the stored preview is withheld with the reason and there is no Variables tab;
+//      before, the retired preview reader still showed rows that no calculation would use;
+//      The read attempted right after the layout change is reported at once; when the page refreshes,
+//      the Preview tab's notice (stored table withheld, reason from a fresh read, recovery) replaces
+//      that report, so one refusal shows at every moment (Codex V-B27-01);
 //   2. the refusal survives a reload;
 //   3. recovery works: the same data re-exported one row per respondent, uploaded as a new file,
 //      reads normally (default layout, no refusal for it). After the refused file is deleted, the
@@ -16,6 +21,8 @@
 // columnsAsCases.test.ts cover dictionary, categories, crosstab and driver refusal).
 // Synthetic data only. No model calls.
 import { expect, test } from "@playwright/test";
+import { addFiles } from "./helpers/addFiles.mjs";
+import { deleteSource, openSource } from "./helpers/sources.mjs";
 import { readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -58,9 +65,7 @@ async function openSection(page, name) {
 
 async function upload(page, file) {
   await openSection(page, /Import data/);
-  const form = page.locator("form", { has: page.locator('input[name="rawTableFiles"]') });
-  await form.locator('input[name="rawTableFiles"]').setInputFiles(file);
-  await form.getByRole("button", { name: "Upload", exact: true }).click();
+  await addFiles(page, file, "Raw data");
 }
 
 test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respondent re-export recovers", async ({ page }) => {
@@ -74,48 +79,58 @@ test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respond
 
   await upload(page, files.flipped);
   const layout = () => page.getByLabel(/How the file is laid out: flipped-guard\.xlsx/);
+  await openSource(page, "flipped-guard.xlsx", "Setup");
   await expect(layout()).toBeEnabled({ timeout: 60_000 });
-  await expect(page.getByText("Accepted", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("source-acceptance")).toHaveText("Setup: Accepted", { timeout: 60_000 });
   const saved = page.waitForResponse((r) => r.request().method() === "POST" && !!r.request().headers()["next-action"]);
   await layout().selectOption("columns_are_cases");
   expect((await saved).status()).toBe(200);
 
   const notice = () => page.getByRole("alert").filter({ hasText: REFUSAL });
-  const showVariables = async () => {
-    const group = page.locator("details", { has: page.locator(":scope > summary", { hasText: /^Variables$/ }) }).first();
-    await expect(group).toBeVisible({ timeout: 60_000 });
-    if ((await group.getAttribute("open")) === null) await group.locator(":scope > summary").click();
+  // A data file's Variables tab; the refused file's refusal is on its Preview tab.
+  const showVariables = async (name) => {
+    await openSource(page, name, "Variables");
+  };
+  const showRefusal = async () => {
+    await openSource(page, "flipped-guard.xlsx", "Preview");
   };
 
-  // 1. The file's Variables panel shows the refusal once, with its recovery guidance.
-  await showVariables();
+  // 1. The file's Preview tab shows the refusal once, with its recovery guidance. The read attempted
+  // after the layout change fails and is reported at once; the page then refreshes and the Preview tab's
+  // notice (the stored table withheld, with the reason from a fresh read) replaces that report, so there
+  // is one refusal at every moment (Codex V-B27-01). The check waits for that settled state, then counts.
+  await showRefusal();
   await expect(notice().first()).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId("import-preview-recovery")).toContainText(REFUSAL, { timeout: 90_000 });
   await expect(notice()).toHaveCount(1);
+  await expect(page.getByTestId("import-preview-recovery")).toContainText("No cached rows or corrections are shown");
   await expect(notice().first()).toContainText("Re-export as one row per respondent");
   await expect(notice().first()).not.toContainText("SPSS/Stata/SAS");
 
   // 2. It survives a reload.
   await page.goto(runUrl, { waitUntil: "networkidle" });
   await openSection(page, /Import data/);
-  await showVariables();
-  await expect(notice().first()).toBeVisible({ timeout: 90_000 });
+  await showRefusal();
+  await expect(page.getByTestId("import-preview-recovery")).toContainText(REFUSAL, { timeout: 90_000 });
   await expect(notice()).toHaveCount(1);
 
   // 3. Recovery: the rows-per-respondent re-export reads normally.
   await upload(page, files.recovered);
   const recoveredLayout = page.getByLabel(/How the file is laid out: rows-recovered\.xlsx/);
+  await openSource(page, "rows-recovered.xlsx", "Setup");
   await expect(recoveredLayout).toBeEnabled({ timeout: 60_000 });
   await expect(recoveredLayout).toHaveValue("rows_are_cases");
+  await showRefusal();
+  await expect(notice().first()).toBeVisible({ timeout: 90_000 });
   await expect(notice()).toHaveCount(1);
 
   // Delete the refused file; the recovered one carries the analysis.
   page.on("dialog", (d) => d.accept());
-  const flippedCard = page.locator("div", { has: page.getByText("flipped-guard.xlsx", { exact: true }) }).filter({ has: page.getByRole("button", { name: "Delete document" }) }).last();
-  await flippedCard.getByRole("button", { name: "Delete document" }).click();
+  await deleteSource(page, "flipped-guard.xlsx");
   await expect(page.getByText("flipped-guard.xlsx", { exact: true })).toHaveCount(0, { timeout: 60_000 });
   await page.goto(runUrl, { waitUntil: "networkidle" });
   await openSection(page, /Import data/);
-  await showVariables();
+  await showVariables("rows-recovered.xlsx");
   await expect(notice()).toHaveCount(0);
   for (const v of ["Opt_A", "Opt_B"]) await expect(page.getByLabel(`Question type: ${v}`, { exact: true })).toHaveValue("multi", { timeout: 60_000 });
 

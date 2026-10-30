@@ -39,9 +39,14 @@ describe.skipIf(!TEST_DATABASE_URL)("IMP-007 durable deletion cleanup", () => {
   });
   it("storage outage leaves a discoverable job; scoped retry removes only orphaned files and is idempotent", async () => {
     const doc = await document(); storage.fail = true;
-    const { deleteDocument, retryDocumentStorageCleanup } = await import("../documentActions");
+    const { deleteDocument, eraseDocumentAction, retryDocumentStorageCleanup } = await import("../documentActions");
     const { pendingDocumentStorageCleanupCount } = await import("../documentStorageCleanup");
+    // Batch 25: removing puts the file in the bin (its stored file is kept for restore); erasing it is
+    // what deletes the row and queues the storage cleanup this test follows.
     await deleteDocument(run, doc.id);
+    expect((await db.pool.query("select id from documents where id=$1 and run_id=$2", [doc.id, run])).rowCount).toBe(0);
+    expect(storage.objects.has(doc.path)).toBe(true);
+    expect(await eraseDocumentAction(run, doc.id)).toMatchObject({ ok: true });
     expect((await db.pool.query("select id from documents where id=$1", [doc.id])).rowCount).toBe(0);
     expect(await pendingDocumentStorageCleanupCount(tenant, run)).toBe(1);
     expect(await retryDocumentStorageCleanup(run)).toMatchObject({ ok: false, error: expect.stringContaining("Synthetic storage outage") });

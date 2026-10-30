@@ -1,5 +1,6 @@
 "use client";
 
+import SourceRemovedTag from "./SourceRemovedTag";
 import { useState, useTransition } from "react";
 import { attempt } from "./actionFailure";
 import { Pane, ThreePane } from "./ThreePane";
@@ -15,9 +16,11 @@ import {
   deleteAllDecisionCandidates,
   retryDecisionRefresh,
   type DecisionChangeResult,
+  type DecisionConflict,
 } from "@/lib/decisionCandidateActions";
 import { TrashIcon } from "@/components/icons";
 import { EARLIER_DECISIONS_LABEL } from "@/lib/decisionContext";
+import { evidenceSummaryPoints } from "@/lib/decisionPresentation";
 import type { EarlierDecisionCounts } from "@/lib/decisionRefresh";
 
 type DecisionCandidate = {
@@ -27,6 +30,8 @@ type DecisionCandidate = {
   source: "researcher_authored" | "ai_suggested";
   status: "pending" | "accepted" | "rejected";
   edited: boolean;
+  /** When a file this decision was drawn from was removed to the bin (migration 0115). */
+  source_removed_at?: string | null;
 };
 
 const sourceLabel: Record<DecisionCandidate["source"], string> = {
@@ -45,22 +50,44 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
   const [isPending, startTransition] = useTransition();
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(candidate.candidate_text);
+  // Codex DEC500-F01: the wording the editor opened with, captured when Edit is pressed and never
+  // from later props, sent with the save so the server can refuse it when the decision changed or
+  // was deleted meanwhile. After a conflict it becomes the current stored wording, so "Replace with
+  // mine" saves deliberately over what is there now.
+  const [opened, setOpened] = useState<string | null>(null);
+  // A refused save: its message and the decision's current wording (null when it was deleted).
+  const [conflict, setConflict] = useState<{ currentText: string | null } | null>(null);
   // Each action reports its failure here instead of throwing out of the transition, which
   // replaced the page and lost an open edit; a failed save keeps the editor and draft.
   const [error, setError] = useState<string | null>(null);
-  const run = (action: () => Promise<DecisionChangeResult | void>, after?: () => void) =>
+  const run = (action: () => Promise<DecisionChangeResult | DecisionConflict | void>, after?: () => void) =>
     startTransition(async () => {
       setError(null);
-      let result: DecisionChangeResult | void = undefined;
+      setConflict(null);
+      let result: DecisionChangeResult | DecisionConflict | void = undefined;
       const failure = await attempt(async () => {
         result = await action();
       });
+      const refused = result as DecisionConflict | void;
       if (failure) setError(failure);
-      else {
-        onChanged(result);
+      else if (refused && refused.ok === false) {
+        // Nothing was saved: the editor, the draft and what is stored now stay on screen.
+        setError(refused.error);
+        setConflict({ currentText: refused.currentText });
+      } else {
+        onChanged(result as DecisionChangeResult | void);
         after?.();
       }
     });
+  const startEditing = () => {
+    setDraft(candidate.candidate_text);
+    setOpened(candidate.candidate_text);
+    setConflict(null);
+    setError(null);
+    setIsEditing(true);
+  };
+  const save = (expected: string | null) =>
+    run(() => acceptDecisionCandidate(runId, candidate.id, draft.trim(), expected ?? undefined), () => setIsEditing(false));
 
   const isAccepted = candidate.status === "accepted";
   const isRejected = candidate.status === "rejected";
@@ -94,6 +121,7 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
               Edited before accepting
             </span>
           )}
+          <SourceRemovedTag removedAt={candidate.source_removed_at} />
           {isAccepted && (
             <span className="inline-block rounded bg-success px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
               Accepted decision
@@ -130,9 +158,7 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
           <>
             <button
               disabled={isPending || !draft.trim()}
-              onClick={() =>
-                run(() => acceptDecisionCandidate(runId, candidate.id, draft.trim()), () => setIsEditing(false))
-              }
+              onClick={() => save(opened)}
               className="rounded-lg border border-success bg-success px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
             >
               Save and accept
@@ -141,6 +167,7 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
               onClick={() => {
                 setDraft(candidate.candidate_text);
                 setError(null);
+                setConflict(null);
                 setIsEditing(false);
               }}
               className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:text-foreground"
@@ -169,7 +196,7 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
             )}
             <button
               disabled={isPending}
-              onClick={() => setIsEditing(true)}
+              onClick={startEditing}
               className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:border-slate-400 hover:text-foreground"
             >
               {isAccepted ? "Edit" : "Edit and accept"}
@@ -196,9 +223,44 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
         )}
       </div>
       {error && (
-        <p role="alert" className="mt-2 text-xs text-red-700">
+        <p role="alert" className="mt-2 text-xs text-red-700" data-testid={conflict ? "decision-edit-conflict" : undefined}>
           {error}
         </p>
+      )}
+      {isEditing && conflict && (
+        <div className="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900">
+          {conflict.currentText !== null ? (
+            <>
+              <p data-testid="decision-current-wording">Stored now: {conflict.currentText}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <button
+                  disabled={isPending}
+                  onClick={() => {
+                    setDraft(conflict.currentText!);
+                    setOpened(conflict.currentText);
+                    setConflict(null);
+                    setError(null);
+                  }}
+                  className="rounded-lg border border-border bg-white px-2.5 py-1 font-medium text-foreground"
+                >
+                  Use current wording
+                </button>
+                <button
+                  disabled={isPending || !draft.trim()}
+                  onClick={() => {
+                    setOpened(conflict.currentText);
+                    save(conflict.currentText);
+                  }}
+                  className="rounded-lg border border-border bg-white px-2.5 py-1 font-medium text-foreground"
+                >
+                  Replace with mine
+                </button>
+              </div>
+            </>
+          ) : (
+            <p data-testid="decision-current-wording">Reload the page to see the current decisions; your wording is kept here until you cancel.</p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -261,9 +323,14 @@ export default function DecisionBriefReview({
   // (see page.tsx), so this button is rarely someone's first way of getting
   // suggestions. Its label reflects what it actually does: the first time,
   // before any AI suggestion exists, it's asking for one; after that, it
-  // replaces whatever's still pending with a fresh batch (accepted and
-  // rejected candidates are never touched), so "regenerate" is the honest
-  // word once there's something to regenerate.
+  // replaces the AI suggestions nobody has edited with a fresh batch, so
+  // "regenerate" is the honest word once there's something to regenerate.
+  // What survives is decided in decisionFramer.ts (the authoritative rule,
+  // Codex M-DEC500-01): an AI suggestion is replaced unless it was rejected or
+  // edited, so an unedited suggestion is replaced even when it is accepted,
+  // because suggestions land accepted and status alone cannot show that a
+  // researcher looked at one. The researcher's own decisions, edited
+  // suggestions and rejected ones are kept.
   const hasAnyAiSuggested = candidates.some((c) => c.source === "ai_suggested");
   const regenerateLabel = hasAnyAiSuggested ? "Regenerate suggestions" : "Get suggestions";
   const regenerateBusyLabel = hasAnyAiSuggested ? "Regenerating..." : "Generating...";
@@ -285,57 +352,16 @@ export default function DecisionBriefReview({
 
   return (
     <ThreePane
+      storageKey="decisions-v3"
+      leftMaxShare={0.5}
       left={
-        <Pane side="left" title="Suggest and add">
-        <p className="text-xs text-muted">
-          Every decision suggested here is already accepted, so the project moves on without waiting on a
-          review step; everything downstream (findings, verdicts, recommendations) is judged against
-          whichever decision(s) are currently accepted, and a project can genuinely be organized around
-          more than one. Reject anything that doesn&apos;t belong (it never affects another accepted one),
-          edit one in place, or write your own below.
-        </p>
-        {hasFindings && (
-          <button
-            disabled={isPending}
-            onClick={handleRegenerate}
-            className="self-start whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60"
-          >
-            {isPending ? regenerateBusyLabel : regenerateLabel}
-          </button>
-        )}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const text = addText.trim();
-          if (!text) return;
-          runListAction(() => addOwnDecisionCandidate(runId, text), () => setAddText(""));
-        }}
-        className="rounded-lg border border-dashed border-border p-4"
-      >
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">
-          Add your own decision
-        </label>
-        <textarea
-          rows={2}
-          value={addText}
-          onChange={(e) => setAddText(e.target.value)}
-          placeholder="e.g. Whether to launch the loyalty tier in Q2 or hold for the rebrand"
-          className={textareaClass}
-        />
-        <button
-          type="submit"
-          disabled={isPending || !addText.trim()}
-          className="mt-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:opacity-50"
-        >
-          Add decision
-        </button>
-      </form>
-
+        <Pane side="plain" title="What the evidence shows">
+          <EvidenceSummary text={evidenceSynthesis} />
         </Pane>
       }
       middle={
         <Pane
-          side="middle"
+          side="plain"
           title="Decisions"
           badge={
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-muted">
@@ -343,6 +369,54 @@ export default function DecisionBriefReview({
             </span>
           }
         >
+      {/* Suggest and add, at the top of the list (Grant, 2026-10-20): two panes, as on Research quality. */}
+      <div className="flex flex-col gap-3 border-b border-border pb-4" data-testid="decisions-suggest-add">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <p className="min-w-0 flex-1 text-xs text-muted">
+            Every decision suggested here is already accepted, so the project moves on without waiting on a
+            review step; everything downstream (findings, verdicts, recommendations) is judged against
+            whichever decision(s) are currently accepted, and a project can genuinely be organized around
+            more than one. Reject anything that doesn&apos;t belong (it never affects another accepted one),
+            edit one in place, or write your own below.
+          </p>
+          {hasFindings && (
+            <button
+              disabled={isPending}
+              onClick={handleRegenerate}
+              className="self-start whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60"
+            >
+              {isPending ? regenerateBusyLabel : regenerateLabel}
+            </button>
+          )}
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = addText.trim();
+            if (!text) return;
+            runListAction(() => addOwnDecisionCandidate(runId, text), () => setAddText(""));
+          }}
+          className="rounded-lg border border-dashed border-border p-3"
+        >
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">
+            Add your own decision
+          </label>
+          <textarea
+            rows={2}
+            value={addText}
+            onChange={(e) => setAddText(e.target.value)}
+            placeholder="e.g. Whether to launch the loyalty tier in Q2 or hold for the rebrand"
+            className={textareaClass}
+          />
+          <button
+            type="submit"
+            disabled={isPending || !addText.trim()}
+            className="mt-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:opacity-50"
+          >
+            Add decision
+          </button>
+        </form>
+      </div>
       {actionError && (
         <p role="alert" className="rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
           Not saved: {actionError}
@@ -367,14 +441,14 @@ export default function DecisionBriefReview({
       {!hasFindings && candidates.length === 0 && (
         <div className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted">
           Nothing yet. Process at least one document above and we&apos;ll suggest decisions this project&apos;s
-          evidence could inform automatically, or add your own below in the meantime.
+          evidence could inform automatically, or add your own above in the meantime.
         </div>
       )}
 
       {hasFindings && candidates.length === 0 && (
         <div className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted">
           We tried to generate suggestions automatically and it didn&apos;t come back with anything, most
-          likely a temporary issue. Click &quot;Get suggestions&quot; above to try again, or add your own below.
+          likely a temporary issue. Click &quot;Get suggestions&quot; above to try again, or add your own above.
         </div>
       )}
 
@@ -422,24 +496,6 @@ export default function DecisionBriefReview({
         </div>
       )}
 
-        </Pane>
-      }
-      right={
-        <Pane side="right" title="Evidence and rejected">
-      {evidenceSynthesis && (
-        <div className="rounded-lg border border-primary/20 bg-primary-light/40 px-4 py-3">
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">
-            What the evidence shows
-          </div>
-          <p className="text-sm text-foreground">{evidenceSynthesis}</p>
-        </div>
-      )}
-
-          {!evidenceSynthesis && rejected.length === 0 && (
-            <p className="text-sm text-muted">
-              The evidence summary and any rejected decisions show here.
-            </p>
-          )}
       {rejected.length > 0 && (
         <div className="rounded-lg border border-dashed border-border p-3">
           <button
@@ -449,7 +505,7 @@ export default function DecisionBriefReview({
           >
             <span>
               Rejected ({rejected.length})
-              {!rejectedOpen && " — kept in case nothing new turns up"}
+              {!rejectedOpen && ", kept in case nothing new turns up"}
             </span>
             <span className="text-xs">{rejectedOpen ? "Hide" : "Show"}</span>
           </button>
@@ -475,6 +531,33 @@ export default function DecisionBriefReview({
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The model's summary of what the evidence points to (decisionFramer.ts, first pass), shown on the
+ * left because the suggested decisions are drawn from it (Grant, 2026-10-20). Shown as its
+ * sentences, the first as the lead, so it can be read rather than scanned as one block; the
+ * wording is the model's, unchanged. It is rewritten only when suggestions are generated again.
+ */
+function EvidenceSummary({ text }: { text: string | null }) {
+  const points = text ? evidenceSummaryPoints(text) : [];
+  if (points.length === 0) {
+    return <p className="text-sm text-muted">A summary of what the evidence shows appears here when decisions are suggested. The suggestions are drawn from it.</p>;
+  }
+  const [lead, ...rest] = points;
+  return (
+    <div className="flex flex-col gap-3" data-testid="evidence-summary">
+      <p className="text-xs text-muted">Written by the AI when it suggested the decisions, which are drawn from it. Check the figures against the insights.</p>
+      <p className="text-sm font-medium leading-relaxed text-foreground">{lead}</p>
+      {rest.length > 0 && (
+        <ul className="flex list-disc flex-col gap-2 pl-5 text-sm leading-relaxed text-foreground marker:text-primary">
+          {rest.map((point, i) => (
+            <li key={i}>{point}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /**
  * Says when existing insights or AI recommendations may not reflect the current accepted

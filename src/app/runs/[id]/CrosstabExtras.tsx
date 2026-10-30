@@ -8,14 +8,39 @@ const MAX_SERIES = SERIES.length;
 
 type Props = { result: CrosstabResult; hiddenCols: Set<number> };
 
+type Question = CrosstabResult["questions"][number];
+
+function chartable(x: Question): boolean {
+  return (x.kind === "single" || x.kind === "multi") && x.rows.some((r) => !r.isBase && !r.isNet);
+}
+
 /**
- * A quick clustered bar chart of the first single or multiple response question:
+ * Quick charts for every single or multiple response question in the table, in table order (batch 47:
+ * a starter set holds many questions, and charting only the first left the rest without one). Questions
+ * that are not single or multiple response (numbers, grids) are named rather than silently skipped.
+ */
+export function QuickCharts({ result, hiddenCols }: Props) {
+  const charted = result.questions.filter(chartable);
+  const skipped = result.questions.filter((x) => !chartable(x));
+  if (charted.length === 0) return <p className="text-xs text-muted">No single or multiple response question to chart.</p>;
+  return (
+    <div className="space-y-3" data-testid="crosstab-quick-charts">
+      {charted.map((q) => (
+        <QuickChart key={q.key} q={q} result={result} hiddenCols={hiddenCols} />
+      ))}
+      {skipped.length > 0 && (
+        <p className="text-[11px] text-muted">Not charted (not a single or multiple response question): {skipped.map((x) => x.label).join("; ")}.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A quick clustered bar chart of one single or multiple response question:
  * one cluster per answer, one bar per banner column (column %). Bars are thin with
  * a rounded data end; the legend names every series; hovering a bar gives its figure.
  */
-export function QuickChart({ result, hiddenCols }: Props) {
-  const q = result.questions.find((x) => (x.kind === "single" || x.kind === "multi") && x.rows.some((r) => !r.isBase && !r.isNet));
-  if (!q) return <p className="text-xs text-muted">No single or multiple response question to chart.</p>;
+function QuickChart({ q, result, hiddenCols }: Props & { q: Question }) {
   const answers = q.rows.filter((r) => !r.isBase && !r.isNet).slice(0, 10);
   const firstBlock = result.columns.findIndex((c, j) => !hiddenCols.has(j));
   const cols = result.columns
@@ -38,7 +63,7 @@ export function QuickChart({ result, hiddenCols }: Props) {
   const y = (v: number) => padT + plotH - (v / top) * plotH;
   const ticks = [0, top / 2, top];
   return (
-    <figure className="rounded-lg border border-border bg-white p-3" aria-label={`${q.label} by ${cols[0].c.blockLabel}`}>
+    <figure className="rounded-lg border border-border bg-white p-3" data-question-key={q.key} aria-label={`${q.label} by ${cols[0].c.blockLabel}`}>
       <figcaption className="mb-1 text-[11px] font-semibold text-foreground">
         {q.label}: % within column{result.overall ? "" : `, by ${cols[0].c.blockLabel}`}
       </figcaption>

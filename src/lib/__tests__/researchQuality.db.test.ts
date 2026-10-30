@@ -5,24 +5,49 @@
 // next/server after() (run inline so the test can await it). The cases are the deterministic
 // parts of the brief's finite suite (section 10): RQ01, RQ04, RQ10 to RQ14, the missing-migration
 // guard and purge. The semantic "M" cases need the real model and are in the Windows kit.
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it as vitestIt, vi } from "vitest";
+import { AsyncLocalStorage } from "node:async_hooks";
 import JSZip from "jszip";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
+import { criteriaForKind } from "../researchQualityRules";
 
 const A = "00000000-0000-4000-8000-0000000000a7";
 const B = "00000000-0000-4000-8000-0000000000b7";
 const ROLE = "ie_test_rq_app";
-let current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
+type Signed = { tenantId: string; userId: string; email: string };
+const signedInA = (): Signed => ({ tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" });
 const objects = new Map<string, Buffer>();
-const pendingAfter: Promise<unknown>[] = [];
-const model = { calls: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail" };
+const freshModel = () => ({ calls: [] as string[], cached: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail", extract: "normal" as "normal" | "invent" | "badEnum" | "mixed", extractOnly: null as null | string, compare: null as null | "both" | "briefOnly" | "proposalOnly" | "briefOnlyAbsent" });
+type ModelState = ReturnType<typeof freshModel>;
+/**
+ * Codex V-B19-01 (2026-10-24): the signed-in tenant, the model stand-in's switches and the queue of
+ * after() work were module-wide, so a case that ran past its timeout could still set tenant B (or a
+ * model switch) under the next case. Each case now runs in its own async context with its own copy
+ * (`it` below); a late continuation of an earlier case keeps writing to that case's copy only. Code
+ * outside any case (beforeAll fixtures) uses the shared copy.
+ */
+type CaseState = { current: Signed; model: ModelState; pendingAfter: Promise<unknown>[] };
+const sharedState: CaseState = { current: signedInA(), model: freshModel(), pendingAfter: [] };
+const caseState = new AsyncLocalStorage<CaseState>();
+const state = () => caseState.getStore() ?? sharedState;
+const signedIn = () => state().current;
+const signInAs = (who: Signed) => { state().current = who; };
+const model = new Proxy({} as ModelState, {
+  get: (_t, k) => Reflect.get(state().model, k),
+  set: (_t, k, v) => Reflect.set(state().model, k, v),
+});
+const it = Object.assign(
+  (name: string, fn: () => Promise<void> | void, timeout?: number) =>
+    vitestIt(name, () => caseState.run({ current: signedInA(), model: freshModel(), pendingAfter: [] }, fn), timeout),
+  { skip: vitestIt.skip },
+);
 
 vi.mock("../requestContext", async () => ({
   ...(await vi.importActual<object>("../requestContext")),
-  requireRequestContext: async () => ({ ...current, organisationName: "Org", role: "owner", memberships: [] }),
-  requireTenantId: async () => current.tenantId,
+  requireRequestContext: async () => ({ ...signedIn(), organisationName: "Org", role: "owner", memberships: [] }),
+  requireTenantId: async () => signedIn().tenantId,
 }));
-vi.mock("next/server", async () => ({ ...(await vi.importActual<object>("next/server")), after: (fn: () => Promise<unknown>) => void pendingAfter.push(fn()) }));
+vi.mock("next/server", async () => ({ ...(await vi.importActual<object>("next/server")), after: (fn: () => Promise<unknown>) => void state().pendingAfter.push(fn()) }));
 vi.mock("../supabaseAdmin", () => ({
   supabaseAdmin: {
     storage: {
@@ -32,6 +57,8 @@ vi.mock("../supabaseAdmin", () => ({
     },
   },
 }));
+/** The JSON of a request: one line, or a cached shared part and the rest, merged (promptCache.ts). */
+const jsonParts = (content: string) => Object.assign({}, ...content.split("\n").filter((l) => l.startsWith("{")).map((l) => JSON.parse(l)));
 vi.mock("../apiUsage", async () => ({ ...(await vi.importActual<object>("../apiUsage")), logApiUsage: async () => {} }));
 // Deterministic model stand-in: extraction quotes each sentence of the passage it was sent;
 // assessment answers one observation per criterion, citing facts whose topic fits.
@@ -39,9 +66,13 @@ vi.mock("../anthropic", () => ({
   CLAUDE_MODEL: "stand-in-model",
   anthropic: {
     messages: {
-      create: async (req: { tool_choice: { name: string }; messages: { content: string }[] }) => {
+      create: async (req: { tool_choice: { name: string }; messages: { content: string | { type: string; text: string; cache_control?: unknown }[] }[] }) => {
         const tool = req.tool_choice.name;
-        const content = req.messages[0].content;
+        const raw = req.messages[0].content;
+        // A cached shared part and the rest arrive as two text blocks (promptCache.ts); recorded so
+        // the test can see which calls marked a cache breakpoint.
+        if (Array.isArray(raw)) model.cached.push(tool);
+        const content = typeof raw === "string" ? raw : raw.map((b) => b.text).join("\n");
         model.calls.push(tool);
         const usage = { input_tokens: 1000, output_tokens: 500 };
         if (tool === "record_documented_facts") {
@@ -54,15 +85,28 @@ vi.mock("../anthropic", () => ({
             statement: s.slice(0, 80),
             exact_quote: s,
           }));
-          if (model.cutOff === "extract") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", input: { facts: facts.slice(0, 1) } }] };
+          // Codex RQ-F01: quotes the document does not contain, or values outside the enums, for every
+          // proposed fact ("invent", "badEnum") or alongside the real ones ("mixed"); optionally only for
+          // the document whose name contains `extractOnly`.
+          const affected = model.extract !== "normal" && (!model.extractOnly || content.includes(`Document: `) && content.split("\n")[0].includes(model.extractOnly));
+          if (affected && model.extract === "invent") {
+            const invented = facts.map((f, i) => ({ ...f, exact_quote: `This sentence ${i + 1} was never written in the document.` }));
+            return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { nothing_found: false, facts: invented } }] };
+          }
+          if (affected && model.extract === "badEnum") return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { nothing_found: false, facts: facts.map((f) => ({ ...f, topic: "not_a_topic" })) } }] };
+          if (affected && model.extract === "mixed") {
+            const extra = [1, 2].map((i) => ({ topic: "claim", phase: "planned", selection: "unstated", statement: "invented", exact_quote: `An invented passage number ${i} about the sampling frame.` }));
+            return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { nothing_found: false, facts: [...facts, ...extra] } }] };
+          }
+          if (model.cutOff === "extract") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", name: req.tool_choice.name, input: { facts: facts.slice(0, 1) } }] };
           // The live model's slip seen on 2026-10-18: the list arrives as a JSON string and the flag is left out.
-          if (model.stringifyLists) return { usage, content: [{ type: "tool_use", input: { facts: JSON.stringify(facts) } }] };
-          return { usage, content: [{ type: "tool_use", input: { nothing_found: facts.length === 0, facts } }] };
+          if (model.stringifyLists) return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { facts: JSON.stringify(facts) } }] };
+          return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { nothing_found: facts.length === 0, facts } }] };
         }
         if (tool === "record_checklist_statuses") {
           // Checklist stand-in: an element is present when a fact of its matching topic exists, and
           // absent otherwise. "overclaim" says present everywhere without citing anything.
-          const cp = JSON.parse(content) as { elements: { element_id: string }[]; facts: { id: string; topic: string }[] };
+          const cp = jsonParts(content) as { elements: { element_id: string }[]; facts: { id: string; topic: string }[] };
           if (model.checklist === "fail") throw new Error("synthetic checklist outage");
           const topicFor = (id: string) => (/DECISION/.test(id) ? "decision" : /POPULATION/.test(id) ? "population" : /SAMPLING|FRAME/.test(id) ? "recruitment" : null);
           const elements = cp.elements.map((e) => {
@@ -71,13 +115,28 @@ vi.mock("../anthropic", () => ({
             const f = t ? cp.facts.filter((x) => x.topic === t).map((x) => x.id) : [];
             return { element_id: e.element_id, status: f.length ? "present" : "absent", fact_ids: f.slice(0, 2), reason: f.length ? "stated" : "not stated" };
           });
-          return { usage, content: [{ type: "tool_use", input: { elements } }] };
+          return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { elements } }] };
         }
-        const payload = JSON.parse(content) as { criteria: { id: string }[]; facts: { id: string; topic: string }[]; context: { decisions: { ref: number }[] } };
+        const payload = jsonParts(content) as { criteria: { id: string }[]; facts: { id: string; topic: string }[]; context: { decisions: { ref: number }[] } };
         const group = payload.criteria[0].id;
         if (model.hold && payload.criteria.some((c) => c.id === model.hold!.task)) await model.hold.release;
         if (model.failTask && payload.criteria.some((c) => c.id === model.failTask)) throw new Error("synthetic model outage");
+        const cmpFacts = (payload as unknown as { facts: { id: string; source: string }[] }).facts;
+        const firstFrom = (part: string) => cmpFacts.find((f) => f.source.includes(part))?.id;
         const observations = payload.criteria.map((c) => {
+          // Codex RQ-F02: what a comparison criterion cites, on demand. Documents are told apart by
+          // "brief" and "prop" in their file names.
+          if (model.compare && c.id.startsWith("RQ-CMP-")) {
+            const ids = (model.compare === "both" ? [firstFrom("prop"), firstFrom("brief")] : model.compare === "proposalOnly" ? [firstFrom("prop")] : [firstFrom("brief")]).filter((x): x is string => !!x);
+            const absent = model.compare === "briefOnlyAbsent";
+            return {
+              criterion_id: c.id, fact_ids: ids, decision_refs: [], score: absent ? 0 : 3, score_reason: "stand-in comparison",
+              documentation: absent ? "not_documented" : "documented", methodology: "cannot_assess", decision_fitness: [],
+              reasoning: `stand-in comparison for ${c.id}`, implication: "i", uncertainty: [],
+              improvement: { current_action: `Clarify ${c.id}`, future_action: null, timing: "before_decision", rationale: "stand-in" },
+              clarification_questions: [],
+            };
+          }
           const want = c.id.includes("POPULATION") ? ["population"] : c.id.includes("DECISION") ? ["decision"] : c.id.includes("SAMPLE") ? ["recruitment"] : c.id.includes("ALIGN") ? ["population", "recruitment"] : [];
           const cited = payload.facts.filter((f) => want.includes(f.topic)).slice(0, 2).map((f) => f.id);
           return {
@@ -97,12 +156,22 @@ vi.mock("../anthropic", () => ({
           };
         });
         void group;
-        if (model.cutOff === "assess") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", input: {} }] };
-        return { usage, content: [{ type: "tool_use", input: model.stringifyLists ? { observations: JSON.stringify(observations) } : { observations } }] };
+        if (model.cutOff === "assess") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", name: req.tool_choice.name, input: {} }] };
+        return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: model.stringifyLists ? { observations: JSON.stringify(observations) } : { observations } }] };
       },
     },
   },
 }));
+
+/**
+ * The two cases that make the most database round trips (a project document deleted with its review
+ * history kept; an interrupted run continued) get their own budget (Codex RP0-V02). Measured: the
+ * deletion case takes about 1.6 s here alone, and 7.2 s in Codex's run with four CPU workers and a SQL
+ * worker beside it, over the 5 s default, while every assertion held (54/54 with a 15 s budget). A
+ * loaded host slows them without changing what they check, so the budget is sized to the measured
+ * loaded time with headroom; a hang still fails, at 20 s.
+ */
+const LOADED_HOST_BUDGET_MS = 20_000;
 
 describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, real database, non-owner role)", () => {
   let db: DisposableDb;
@@ -120,7 +189,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
   let m: M;
   const q = (sql: string, p: unknown[] = []) => db.pool.query(sql, p);
   const settle = async () => {
-    while (pendingAfter.length) await pendingAfter.shift();
+    while (state().pendingAfter.length) await state().pendingAfter.shift();
   };
   const addDoc = async (tenant: string, run: string, name: string, bytes: Buffer, kind = "evidence") => {
     const path = `${tenant}/${run}/${Date.now()}-${Math.random().toString(16).slice(2)}-${name}`;
@@ -186,15 +255,6 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     await c.query(`drop role if exists ${ROLE}`).catch(() => {});
     await c.end();
   });
-  beforeEach(() => {
-    current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
-    model.failTask = null;
-    model.malformed = null;
-    model.hold = null;
-    model.stringifyLists = false;
-    model.cutOff = null;
-    model.checklist = "normal";
-  });
 
   it("guard: without migration 0105 every action refuses with a setup message before any write or model call", async () => {
     await q(`alter table research_quality_researcher_entries rename to rq_entries_hidden`);
@@ -213,6 +273,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
 
   it("RQ01: opening the module makes no model call; a brief alone gives a scoped review where later documents are 'not yet available'", async () => {
     model.calls = [];
+    model.cached = [];
     const empty = await viewOf(null);
     expect(empty.review).toBeNull();
     expect(empty.documents.map((d) => d.filename).sort()).toEqual(["brief.txt", "proposal.txt", "scan.txt"]);
@@ -221,6 +282,11 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     const v = await viewOf(id);
     expect(v.review!.state).toBe("complete");
     expect(model.calls.filter((c) => c === "record_documented_facts")).toHaveLength(1);
+    // Prompt caching (promptCache.ts): every assessment and checklist call sends its shared input as
+    // a cached first block; extraction sends one passage and has none to share.
+    expect(model.cached.length).toBeGreaterThan(0);
+    expect(model.cached.filter((t) => t === "record_documented_facts")).toEqual([]);
+    expect(model.cached.length).toBe(model.calls.filter((c) => c !== "record_documented_facts").length);
     const sample = v.review!.manifest.criteria.find((c) => c.criterionId === "RQ-SAMPLE-RECRUIT")!;
     expect(sample.status).toBe("excluded");
     expect(sample.reason).toMatch(/no plan or methodology document yet/);
@@ -382,7 +448,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     const v = await viewOf(null);
     const o = v.review!.observations[1];
     const src = v.documents.find((d) => d.source)!.source!;
-    current = { tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" };
+    signInAs({ tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" });
     model.calls = [];
     expect(await m.actions.loadResearchQualityViewAction(runA, null)).toMatchObject({ ok: false });
     expect(await m.actions.loadResearchQualityViewAction(runA, v.review!.id)).toMatchObject({ ok: false });
@@ -395,7 +461,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     expect(model.calls).toEqual([]);
     expect((await q(`select count(*)::int n from research_quality_researcher_entries where tenant_id = $1`, [B])).rows[0].n).toBe(0);
     expect((await q(`select count(*)::int n from research_quality_source_versions where source_id = $1 and purged_at is not null`, [src.sourceId])).rows[0].n).toBe(0);
-    current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
+    signInAs(signedInA());
     expect((await m.actions.loadResearchQualityViewAction(runA, null)).ok).toBe(true);
   });
 
@@ -595,7 +661,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const input = (requestKey: string) => ({
         requestKey, parentReviewId: null, mode: base.mode, studyType: base.study_type, purpose: base.purpose, manifest: base.manifest,
         criteriaRelease: base.criteria_release, criteriaHash: base.criteria_hash, referencesRelease: base.references_release, referencesHash: base.references_hash,
-        promptVersion: base.prompt_version, model: base.model, estimatedCostUsd: 0, actor: { userId: current.userId, email: current.email }, tasks: [],
+        promptVersion: base.prompt_version, model: base.model, estimatedCostUsd: 0, actor: { userId: signedIn().userId, email: signedIn().email }, tasks: [],
       });
       const together = async (calls: (() => Promise<{ reviewId: string; created: boolean }>)[]) => {
         const holder = await db.pool.connect();
@@ -851,7 +917,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       await m.actions.retryResearchQualityReviewAction(runA, id);
       await settle();
       expect(model.calls).toEqual([]);
-    });
+    }, LOADED_HOST_BUDGET_MS);
 
     it("an unexpected failure outside a single step does not leave the review marked running", async () => {
       const id = await start([{ documentId: await freshDoc("crash"), roles: ["brief"] }]);
@@ -867,7 +933,450 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     });
   });
 
-  // The scored checklist (RQK-1), Grant 2026-10-18: each document scored against the elements its
+  // Review kinds, Grant 2026-10-19: one brief, one proposal, or a proposal against its brief, each a
+  // one-off review of how well the document is written. Actual actions, runner, view and DOCX.
+  describe("review kinds", () => {
+    const kindStart = async (kind: string, documentIds: string[]) => {
+      const r = await m.actions.startResearchQualityReviewAction(runA, { requestKey: `k${Math.random().toString(36).slice(2, 12)}`, kind, sources: documentIds.map((documentId) => ({ documentId })) });
+      if (!r.ok) throw new Error(r.error);
+      await settle();
+      return r.reviewId;
+    };
+    const longBrief = () =>
+      // About 60,000 characters: over the older 40,000-character per-document limit.
+      addDoc(A, runA, "kind-brief.txt", Buffer.from("Kind brief.\nThe decision is whether to launch a loyalty scheme next year.\n" + "We will survey existing customers about loyalty and their reasons for leaving.\n".repeat(760) + "Budget: up to R400,000.\n"));
+    const proposal = () => addDoc(A, runA, "kind-proposal.txt", Buffer.from("Kind proposal.\nWe will survey the general public using an opt-in online panel.\nRecruitment will use a commercial panel provider.\n"));
+
+    it("a brief review runs only the ten brief criteria, reads the whole document, has no checklist and asks for nothing else", async () => {
+      const id = await kindStart("brief", [await longBrief()]);
+      const v = (await viewOf(id)).review!;
+      expect(v.kind).toBe("brief");
+      expect(v.manifest.criteria.map((c) => c.criterionId)).toEqual(criteriaForKind("brief"));
+      expect(v.manifest.criteria.every((c) => c.status === "selected")).toBe(true);
+      const s = v.manifest.sources[0];
+      expect(s.roles).toEqual(["brief"]);
+      expect(s.charCount).toBeGreaterThan(40_000);
+      expect(s.assessedRanges.reduce((n, x) => n + (x.end - x.start), 0)).toBe(s.charCount);
+      expect(v.checklists).toEqual([]);
+      expect(v.checklistNote).toBeNull();
+      expect(v.manifest.decisions).toEqual([]);
+      expect(v.dashboards.map((d) => d.dashboardId)).toEqual(["brief"]);
+      expect(new Set(v.observations.map((o) => o.criterionId))).toEqual(new Set(criteriaForKind("brief")));
+      // The Word export is the dashboard and the criteria, nothing about decisions.
+      const { buffer, filename } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      const text = (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ");
+      expect(filename).toMatch(/-brief-review-\d+\.docx$/);
+      expect(text).toContain("Brief review: RQ project");
+      expect(text).toContain(`Research brief: ${v.dashboards[0].pct}%`);
+      expect(text).not.toMatch(/Decision implications|Scored checklist|Appendix/);
+    });
+
+    it("a proposal review rates the proposal on its own; a comparison is a separate review with its own criteria", async () => {
+      const prop = await proposal();
+      const brief = await longBrief();
+      const p = (await viewOf(await kindStart("proposal", [prop]))).review!;
+      expect(p.dashboards.map((d) => d.dashboardId)).toEqual(["proposal"]);
+      expect(p.manifest.sources.map((s) => s.roles)).toEqual([["proposal"]]);
+      const c = (await viewOf(await kindStart("proposal_vs_brief", [prop, brief]))).review!;
+      expect(c.kind).toBe("proposal_vs_brief");
+      expect(c.manifest.sources.map((s) => s.roles)).toEqual([["proposal"], ["brief"]]);
+      expect(c.manifest.criteria.map((x) => x.criterionId)).toEqual(criteriaForKind("proposal_vs_brief"));
+      expect(c.dashboards.map((d) => d.dashboardId)).toEqual(["comparison"]);
+      expect(c.dashboards[0].dimensions).toHaveLength(7);
+      // Listed with their kind and documents, for the document list on screen.
+      const listed = (await viewOf(null)).reviews.find((x) => x.id === c.id)!;
+      expect(listed).toMatchObject({ kind: "proposal_vs_brief", sources: [{ documentId: prop, roles: ["proposal"] }, { documentId: brief, roles: ["brief"] }] });
+    });
+
+    it("RQC-6: a proposal review rates sampling twice and checks each stated margin of error by code; the export shows it", async () => {
+      const text =
+        "Precision proposal.\nWe will interview a sample of 500 respondents, giving a margin of error of ±2% at 95% confidence.\n" +
+        "Results for the total of 1,000 interviews carry a margin of error of ±3.1%.\nSubgroups of 200 men and 300 women have a margin of error of ±6%.\n";
+      const id = await kindStart("proposal", [await addDoc(A, runA, "precision-proposal.txt", Buffer.from(text))]);
+      const v = (await viewOf(id)).review!;
+      const selected = v.manifest.criteria.map((c) => c.criterionId);
+      expect(selected).toEqual(expect.arrayContaining(["RQ-PROP-SAMPLE-SIZE", "RQ-PROP-SAMPLE-METHOD"]));
+      expect(selected).not.toContain("RQ-PROP-SAMPLE");
+      const method = v.dashboards[0].dimensions.find((x) => x.dimensionId === "method")!;
+      expect(method.criteria.map((c) => c.criterionId)).toEqual(["RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE-SIZE", "RQ-PROP-SAMPLE-METHOD", "RQ-PROP-ANALYSIS", "RQ-PROP-LITERATURE"]);
+      // Frozen with the review, from the text it assessed: one understated, one consistent, one not checked.
+      expect(v.manifest.precisionChecks).toHaveLength(1);
+      const checks = v.manifest.precisionChecks![0].checks;
+      expect(checks.map((c) => (c.kind === "checked" ? [c.n, c.statedMargin, c.verdict] : ["not_checked", c.reason]))).toEqual([
+        [500, 2, "understated"],
+        [1000, 3.1, "consistent"],
+        ["not_checked", "More than one sample size in the sentence (a total and subgroups, for example)."],
+      ]);
+      const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      const doc = (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ");
+      expect(doc).toContain("Margin of error, calculated (not the model&apos;s rating");
+      expect(doc).toContain("n=500 at 95% gives about ±4.4 points, not ±2. ±2 would need about n=2,401.");
+    });
+
+    it("a brief review makes no margin-of-error check", async () => {
+      const v = (await viewOf(await kindStart("brief", [await addDoc(A, runA, "moe-brief.txt", Buffer.from("Brief.\nA sample of 500 respondents gives a margin of error of ±2%.\n"))]))).review!;
+      expect(v.manifest.precisionChecks).toBeUndefined();
+    });
+
+    it("refuses a wrong number of documents, the same document twice and an unknown kind, creating nothing", async () => {
+      const before = (await q(`select count(*)::int n from research_quality_reviews where run_id = $1`, [runA])).rows[0].n;
+      const prop = await proposal();
+      const go = (raw: Record<string, unknown>) => m.actions.startResearchQualityReviewAction(runA, { requestKey: `k${Math.random().toString(36).slice(2, 12)}`, ...raw });
+      expect(await go({ kind: "brief", sources: [{ documentId: prop }, { documentId: prop }] })).toMatchObject({ ok: false, error: "Choose one document for a brief review." });
+      expect(await go({ kind: "proposal_vs_brief", sources: [{ documentId: prop }] })).toMatchObject({ ok: false, error: "Choose one proposal and one brief." });
+      expect(await go({ kind: "proposal_vs_brief", sources: [{ documentId: prop }, { documentId: prop }] })).toMatchObject({ ok: false, error: /two different documents/ });
+      expect(await go({ kind: "questionnaire", sources: [{ documentId: prop }] })).toMatchObject({ ok: false });
+      expect((await q(`select count(*)::int n from research_quality_reviews where run_id = $1`, [runA])).rows[0].n).toBe(before);
+    });
+  });
+
+  // The brief dashboard (RQC-3), Grant 2026-10-19: ten dimensions rated by the model, combined by code.
+  describe("brief dashboard", () => {
+    const briefDoc = (label: string) => addDoc(A, runA, `${label}.txt`, Buffer.from("Dashboard brief.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\n"));
+
+    it("rates the ten brief dimensions and computes the weighted overall from them; the export shows the same", async () => {
+      const id = await start([{ documentId: await briefDoc("db-brief"), roles: ["brief"] }]);
+      const v = await viewOf(id);
+      expect(v.review!.state).toBe("complete");
+      expect(v.review!.criteriaRelease).toBe("RQC-6");
+      expect(v.review!.dashboardNote).toBeNull();
+      const [d] = v.review!.dashboards;
+      expect(d.dashboardId).toBe("brief");
+      expect(d.dimensions).toHaveLength(10);
+      expect(d.dimensions.every((x) => x.state === "rated")).toBe(true);
+      // Independent recount from the stored ratings: weight x score over weight x 5.
+      const rating = (cid: string) => v.review!.observations.filter((o) => o.criterionId === cid && o.status !== "dismissed").map((o) => o.payload.rating.score!).sort((a, b) => a - b)[0];
+      const weight = (cid: string) => (["RQ-BRIEF-PROBLEM", "RQ-BRIEF-DECISION", "RQ-BRIEF-OBJECTIVES"].includes(cid) ? 2 : 1);
+      const ids = d.dimensions.map((x) => x.dimensionId);
+      const points = ids.reduce((n, cid) => n + weight(cid) * rating(cid), 0);
+      expect(d.pct).toBe(Math.round((points / (13 * 5)) * 100));
+      // The stand-in rates the decision 3 (a decision fact is cited) and the rest 0: 6 / 65 = 9%.
+      expect(d.dimensions.find((x) => x.dimensionId === "RQ-BRIEF-DECISION")!.score).toBe(3);
+      expect(d).toMatchObject({ pct: 9, band: "weak" });
+      // The retired brief criteria are never selected for a new review.
+      expect(v.review!.manifest.criteria.map((c) => c.criterionId)).not.toContain("RQ-BRIEF-DEADLINE");
+      const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      const text = (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ");
+      expect(text).toContain("Research brief: 9% (Weak)");
+      expect(text).toContain("Decisions to inform (counts x2): 3/5, Workable");
+    });
+
+    it("a dismissed rating leaves its dimension unrated rather than zero", async () => {
+      const id = await start([{ documentId: await briefDoc("db-dismiss"), roles: ["brief"] }]);
+      const before = (await viewOf(id)).review!;
+      const o = before.observations.find((x) => x.criterionId === "RQ-BRIEF-PROBLEM")!;
+      expect((await m.actions.recordResearchQualityEntryAction(runA, { kind: "dismiss", observationId: o.observationId, observationVersionId: o.versionId, body: null, expectedRevision: o.revision, idempotencyKey: `db-dismiss-${o.observationId}` })).ok).toBe(true);
+      const [d] = (await viewOf(id)).review!.dashboards;
+      expect(d.dimensions.find((x) => x.dimensionId === "RQ-BRIEF-PROBLEM")).toMatchObject({ state: "not_rated", score: null });
+      // Problem (weight 2) leaves the base: 6 / (11 x 5) = 10.9% -> 11.
+      expect(d).toMatchObject({ pct: 11, ratedWeight: 11, totalWeight: 13 });
+    });
+
+    it("a proposal gets the six weighted categories, each the average of its rated criteria", async () => {
+      const id = await start([{ documentId: await addDoc(A, runA, "db-proposal.txt", Buffer.from("Dashboard proposal.\nWe will survey the general public using an opt-in online panel.\nRecruitment will use a commercial panel provider.\n")), roles: ["proposal"] }]);
+      const v = await viewOf(id);
+      const d = v.review!.dashboards.find((x) => x.dashboardId === "proposal")!;
+      expect(d.dimensions.map((x) => [x.dimensionId, x.weight])).toEqual([["method", 36], ["price", 18], ["team", 14], ["management", 14], ["compliance", 9], ["innovation", 9]]);
+      // Independent recount from the stored ratings.
+      const rating = (cid: string) => v.review!.observations.filter((o) => o.criterionId === cid && o.status !== "dismissed").map((o) => o.payload.rating.score!).sort((a, b) => a - b)[0];
+      let points = 0;
+      for (const x of d.dimensions) {
+        const scores = x.criteria.map((c) => rating(c.criterionId)).filter((n) => typeof n === "number");
+        expect(x.score).toBeCloseTo(scores.reduce<number>((a, b) => a + b, 0) / scores.length, 10);
+        points += x.weight * x.score!;
+      }
+      expect(d.pct).toBe(Math.round((points / (100 * 5)) * 100));
+      // The stand-in rates each sampling criterion 3 (a recruitment fact is cited) and the rest 0. Under
+      // RQC-6 sampling is two items, size and method: method (0+0+3+3+0+0)/6 = 1.0, so 36 x 1.0 = 36 of
+      // 500 -> 7.2% -> 7%. (Under RQC-5, with one Sample item, it was (0+0+3+0+0)/5 = 0.6 and 4%.)
+      expect(d.dimensions[0].score).toBeCloseTo(1, 10);
+      expect(d.pct).toBe(7);
+      expect(v.review!.dashboards.map((x) => x.dashboardId)).toEqual(["proposal"]); // no brief, no brief dashboard
+    });
+
+    it("a review made under an earlier criteria release shows no dashboard and says why", async () => {
+      const id = await start([{ documentId: await briefDoc("db-old"), roles: ["brief"] }]);
+      await q(`update research_quality_reviews set criteria_release = 'RQC-2' where id = $1`, [id]);
+      const v = await viewOf(id);
+      expect(v.review!.dashboards).toEqual([]);
+      expect(v.review!.dashboardNote).toMatch(/criteria release RQC-2, before the dashboard/);
+    });
+  });
+
+  // Codex RQ-F01 (2026-10-24): an extraction whose proposed quotes were all rejected was published
+  // as a successful, empty reading, so a brief that states its decision, population and deliverables
+  // was reviewed as complete, 0%, every criterion Absent, on screen and in Word, and Retry did
+  // nothing. A rejected reading is now a failed step; a partly rejected one leaves absences unrated.
+  describe("RQ-F01 rejected extraction is never complete negative evidence", () => {
+    const realBrief = (label: string) =>
+      addDoc(A, runA, `${label}.txt`, Buffer.from("Client brief.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\nDeliverables are a short report and a deck.\n"));
+    const briefReview = async (documentId: string) => {
+      const r = await m.actions.startResearchQualityReviewAction(runA, { requestKey: `k${Math.random().toString(36).slice(2, 12)}`, kind: "brief", sources: [{ documentId }] });
+      if (!r.ok) throw new Error(r.error);
+      await settle();
+      return r.reviewId;
+    };
+    const docText = async (id: string) => {
+      const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      return (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    };
+
+    it("all quotes rejected: the step fails visibly, nothing is rated Absent, Word agrees, and Retry reads the document again", async () => {
+      model.extract = "invent";
+      const id = await briefReview(await realBrief("rq-f01-all"));
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("failed");
+      expect(v.coverage.coverageComplete).toBe(false);
+      expect(v.observations.filter((o) => o.payload.rating.score === 0)).toEqual([]);
+      expect(v.dashboards.every((d) => d.pct === null)).toBe(true);
+      const step = v.coverage.tasks!.find((t) => t.stage === "extract")!;
+      expect(step).toMatchObject({ status: "failed" });
+      expect(step.error).toMatch(/none of the \d+ passages the model quoted from rq-f01-all\.txt .* could be found in the document/);
+      expect(step.error).toMatch(/not read as having no content/);
+      const word = await docText(id);
+      expect(word).toMatch(/could be found in the document/);
+      expect(word).not.toMatch(/Research brief: 0%/);
+      expect(word).not.toMatch(/Absent 0\b.*Absent 0\b/); // the scale legend may name Absent once; no rating does
+      // Recovery in place: the model is healthy again, Retry failed steps re-reads it.
+      model.extract = "normal";
+      expect(await m.actions.retryResearchQualityReviewAction(runA, id)).toMatchObject({ ok: true });
+      await settle();
+      const after = (await viewOf(id)).review!;
+      expect(after.state).toBe("complete");
+      expect(after.facts.length).toBeGreaterThanOrEqual(3);
+      expect(after.unverifiedEvidence).toEqual([]);
+      expect(after.dashboards[0].dimensions.find((x) => x.dimensionId === "RQ-BRIEF-DECISION")!.score).toBe(3);
+    });
+
+    it("every proposed fact with an invalid topic is the same failed step", async () => {
+      model.extract = "badEnum";
+      const id = await briefReview(await realBrief("rq-f01-enum"));
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("failed");
+      expect(v.coverage.tasks!.find((t) => t.stage === "extract")!.error).toMatch(/none of the \d+ passages/);
+      expect(v.observations).toEqual([]);
+    });
+
+    it("some quotes rejected: verified facts are used, absences are not rated, the screen and Word say why", async () => {
+      model.extract = "mixed";
+      const id = await briefReview(await realBrief("rq-f01-mixed"));
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("complete");
+      expect(v.coverage.coverageComplete).toBe(false);
+      expect(v.unverifiedEvidence).toEqual([{ filename: "rq-f01-mixed.txt", rejected: 2, kept: expect.any(Number) }]);
+      expect(v.unverifiedEvidence[0].kept).toBeGreaterThanOrEqual(3);
+      // Documented criteria are still rated from verified quotes; no absence is scored Absent.
+      const [d] = v.dashboards;
+      expect(d.dimensions.find((x) => x.dimensionId === "RQ-BRIEF-DECISION")!.score).toBe(3);
+      const absences = v.observations.filter((o) => o.payload.basis === "absence_in_assessed_scope");
+      expect(absences.length).toBeGreaterThan(0);
+      for (const o of absences) {
+        expect(o.payload.assessment.documentation).toBe("not_assessed");
+        expect(o.payload.rating.score).toBeNull();
+        expect(o.payload.validationNotes.join(" ")).toMatch(/could not be found in them and were left out/);
+      }
+      expect(d.dimensions.some((x) => x.score === 0)).toBe(false);
+      for (const c of v.checklists) for (const sec of c.sections) for (const e of sec.elements) expect(e.status).not.toBe("absent");
+      const word = await docText(id);
+      expect(word).toContain("rq-f01-mixed.txt: 2 quoted passages the model proposed could not be found in the document and were left out.");
+    });
+
+    it("some quotes rejected in a full review: the checklist confirms no absence in that document", async () => {
+      model.extract = "mixed";
+      const prop = await addDoc(A, runA, "rq-f01-mixed-prop.txt", Buffer.from("Proposal.\nWe will survey the general public using an opt-in online panel.\nRecruitment will use a commercial panel provider.\n"));
+      const v = (await viewOf(await start([{ documentId: prop, roles: ["proposal"] }]))).review!;
+      expect(v.checklists.length).toBeGreaterThan(0);
+      const elements = v.checklists.flatMap((c) => c.sections.flatMap((x) => x.elements));
+      expect(elements.some((e) => e.status === "present")).toBe(true);
+      expect(elements.filter((e) => e.status === "absent")).toEqual([]);
+      expect(elements.some((e) => e.notAssessedBecause === "not all of the document was read, so absence cannot be confirmed")).toBe(true);
+    });
+
+    it("control: a document where the model legitimately finds nothing is still a complete review with Absent ratings", async () => {
+      const id = await briefReview(await addDoc(A, runA, "rq-f01-empty.txt", Buffer.from("Brief.\nTBC.\nSoon.\nOk.\n")));
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("complete");
+      expect(v.coverage.coverageComplete).toBe(true);
+      expect(v.unverifiedEvidence).toEqual([]);
+      expect(v.observations.some((o) => o.payload.rating.score === 0 && o.payload.absenceScope === "complete")).toBe(true);
+    });
+
+    it("two documents, one rejected: the other is still assessed, and the failed one is named with its recovery", async () => {
+      model.extract = "invent";
+      model.extractOnly = "rq-f01-prop";
+      const brief = await realBrief("rq-f01-ctrl-brief");
+      const prop = await addDoc(A, runA, "rq-f01-prop.txt", Buffer.from("Proposal.\nWe will survey the general public using an opt-in online panel.\nRecruitment will use a commercial panel provider.\n"));
+      const id = await start([{ documentId: brief, roles: ["brief"] }, { documentId: prop, roles: ["proposal"] }]);
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("partial");
+      expect(v.facts.every((f) => v.manifest.sources.find((s) => s.sourceVersionId === f.sourceVersionId)!.filename === "rq-f01-ctrl-brief.txt")).toBe(true);
+      expect(v.facts.length).toBeGreaterThanOrEqual(3);
+      const failed = v.coverage.tasks!.filter((t) => t.status === "failed");
+      expect(failed.map((t) => t.error)).toEqual([expect.stringMatching(/quoted from rq-f01-prop\.txt/)]);
+      // The brief's own absences are qualified as partial (not every document was read).
+      for (const o of v.observations.filter((x) => x.payload.basis === "absence_in_assessed_scope")) expect(o.payload.absenceScope).toBe("partial");
+      // The reading cannot be retried in this review (assessments already cite the brief's facts),
+      // so the screen offers no retry for it; a retry call reruns nothing and changes nothing.
+      const { retryableInPlace } = await import("../researchQualityPresentation");
+      expect(retryableInPlace(failed[0], v.coverage.tasks!)).toBe(false);
+      model.extract = "normal";
+      expect(await m.actions.retryResearchQualityReviewAction(runA, id)).toMatchObject({ ok: true });
+      await settle();
+      const again = (await viewOf(id)).review!;
+      expect(again.state).toBe("partial");
+      expect(again.facts.map((f) => f.factId)).toEqual(v.facts.map((f) => f.factId));
+      // A new review of the same documents, with the model healthy, reads both.
+      const fresh = (await viewOf(await start([{ documentId: brief, roles: ["brief"] }, { documentId: prop, roles: ["proposal"] }]))).review!;
+      expect(fresh.state).toBe("complete");
+      expect(new Set(fresh.facts.map((f) => fresh.manifest.sources.find((s) => s.sourceVersionId === f.sourceVersionId)!.filename))).toEqual(new Set(["rq-f01-ctrl-brief.txt", "rq-f01-prop.txt"]));
+      // Another organisation cannot retry it.
+      signInAs({ tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" });
+      expect(await m.actions.retryResearchQualityReviewAction(runA, id)).toMatchObject({ ok: false });
+    }, 60000);
+
+    it("a review saved before the repair, with an all-rejected extraction published as succeeded, is qualified on screen and in Word", async () => {
+      const id = await briefReview(await realBrief("rq-f01-old"));
+      // Reproduce the stored state the old code wrote: the extraction succeeded with no facts and every quote dropped.
+      await q(
+        `update research_quality_tasks set result = jsonb_set(result, '{facts}', '[]'::jsonb), validation = '{"droppedUnverifiableQuotes": 4}'::jsonb
+          where review_id = $1 and stage = 'extract'`,
+        [id],
+      );
+      const v = (await viewOf(id)).review!;
+      expect(v.unverifiedEvidence).toEqual([{ filename: "rq-f01-old.txt", rejected: 4, kept: 0 }]);
+      const word = await docText(id);
+      expect(word).toContain("rq-f01-old.txt: none of the 4 quoted passages the model proposed could be found in the document, so nothing was taken from it.");
+    });
+
+    // Codex V-B19-01: a case that runs past its timeout keeps going after the next case has started. Here
+    // the first case leaves a continuation behind (as a timed-out case does) that, once released, signs in
+    // as tenant B and breaks the model; the second case releases it, waits for it to finish, and still
+    // acts as tenant A with a healthy model.
+    let releaseLate: () => void = () => {};
+    let lateDone: Promise<void> = Promise.resolve();
+    it("isolation, part 1: a continuation outlives its case", async () => {
+      const gate = new Promise<void>((r) => (releaseLate = r));
+      lateDone = (async () => {
+        await gate;
+        signInAs({ tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" });
+        model.failTask = "RQ-B-DECISION";
+        model.extract = "invent";
+      })();
+    });
+    it("isolation, part 2: the earlier case's late tenant and model changes do not reach this case", async () => {
+      releaseLate();
+      await lateDone;
+      expect(signedIn().tenantId).toBe(A);
+      expect(model.failTask).toBeNull();
+      expect(model.extract).toBe("normal");
+      const id = await briefReview(await realBrief("v-b19-01-isolation"));
+      expect((await viewOf(id)).review!.state).toBe("complete");
+    });
+  });
+
+  // Codex RQ-F02 (2026-10-24): an unread proposal was rated 3/5 Workable on a comparison citing only
+  // the brief's words. A comparison now needs quotes from both documents (or is a stated gap).
+  describe("RQ-F02 comparisons rest on both documents", () => {
+    const compare = async (prop: string, brief: string) => {
+      const r = await m.actions.startResearchQualityReviewAction(runA, { requestKey: `k${Math.random().toString(36).slice(2, 12)}`, kind: "proposal_vs_brief", sources: [{ documentId: prop }, { documentId: brief }] });
+      if (!r.ok) throw new Error(r.error);
+      await settle();
+      return r.reviewId;
+    };
+    const propDoc = (label: string) => addDoc(A, runA, `${label}-prop.txt`, Buffer.from("Proposal.\nWe will survey existing customers about the loyalty scheme decision.\nRecruitment will use the client's customer list.\n"));
+    const briefDoc = (label: string) => addDoc(A, runA, `${label}-brief.txt`, Buffer.from("Project brief.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\n"));
+    const cmp = (v: NonNullable<Awaited<ReturnType<typeof viewOf>>["review"]>) => v.observations.filter((o) => o.criterionId.startsWith("RQ-CMP-"));
+    const word = async (id: string) => {
+      const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      return (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    };
+
+    it("an unread proposal: no comparison is rated, though the model cites a true brief quote; the screen and Word agree", async () => {
+      model.extract = "invent";
+      model.extractOnly = "f02-unread-prop";
+      model.compare = "briefOnly";
+      const id = await compare(await propDoc("f02-unread"), await briefDoc("f02-unread"));
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("partial");
+      expect(cmp(v).length).toBeGreaterThan(0);
+      for (const o of cmp(v)) {
+        expect(o.payload.rating.score).toBeNull();
+        expect(o.payload.assessment.documentation).toBe("not_assessed");
+        expect(o.payload.validationNotes.join(" ")).toMatch(/The proposal could not be read, so this comparison is not rated/);
+      }
+      expect(v.dashboards[0].pct).toBeNull();
+      expect(v.oneSidedComparisons).toEqual([]);
+      const text = await word(id);
+      expect(text).not.toMatch(/Problem restated: 3\/5/);
+      expect(text).toContain("Not completed: Reading the document");
+    });
+
+    it("an unread brief: no comparison is rated", async () => {
+      model.extract = "invent";
+      model.extractOnly = "f02-nobrief-brief";
+      model.compare = "proposalOnly";
+      const v = (await viewOf(await compare(await propDoc("f02-nobrief"), await briefDoc("f02-nobrief")))).review!;
+      for (const o of cmp(v)) {
+        expect(o.payload.rating.score).toBeNull();
+        expect(o.payload.validationNotes.join(" ")).toMatch(/The brief could not be read/);
+      }
+    });
+
+    it("both read, quotes from one document only: not rated, saying which; a stated gap in a fully read proposal is Absent", async () => {
+      model.compare = "briefOnly";
+      const one = (await viewOf(await compare(await propDoc("f02-one"), await briefDoc("f02-one")))).review!;
+      expect(one.state).toBe("complete");
+      for (const o of cmp(one)) {
+        expect(o.payload.rating.score).toBeNull();
+        expect(o.payload.validationNotes.join(" ")).toMatch(/needs quotes from both the proposal and the brief; this one cited only the brief/);
+      }
+      model.compare = "proposalOnly";
+      for (const o of cmp((await viewOf(await compare(await propDoc("f02-p"), await briefDoc("f02-p")))).review!)) {
+        expect(o.payload.rating.score).toBeNull();
+        expect(o.payload.validationNotes.join(" ")).toMatch(/cited only the proposal/);
+      }
+      model.compare = "briefOnlyAbsent";
+      const gap = (await viewOf(await compare(await propDoc("f02-gap"), await briefDoc("f02-gap")))).review!;
+      for (const o of cmp(gap)) {
+        expect(o.payload.rating.score).toBe(0);
+        expect(o.payload.validationNotes.join(" ")).toMatch(/the proposal, read in full, does not: scored Absent/);
+      }
+      expect(gap.oneSidedComparisons).toEqual([]);
+    });
+
+    it("control: quotes from both documents are rated as before, also after a reload", async () => {
+      model.compare = "both";
+      const id = await compare(await propDoc("f02-both"), await briefDoc("f02-both"));
+      const v = (await viewOf(id)).review!;
+      for (const o of cmp(v)) {
+        expect(o.payload.rating.score).toBe(3);
+        expect(new Set(o.payload.statements.map((st) => v.manifest.sources.find((s) => s.sourceVersionId === st.sourceVersionId)!.roles[0]))).toEqual(new Set(["proposal", "brief"]));
+      }
+      expect(v.dashboards[0].pct).toBe(60);
+      expect((await viewOf(id)).review!.dashboards[0].pct).toBe(60);
+      expect(v.oneSidedComparisons).toEqual([]);
+    });
+
+    it("a comparison saved before the rule, rated from the brief alone, is qualified on screen and in Word; its rating is kept", async () => {
+      model.compare = "both";
+      const id = await compare(await propDoc("f02-old"), await briefDoc("f02-old"));
+      const v = (await viewOf(id)).review!;
+      const problem = v.observations.find((o) => o.criterionId === "RQ-CMP-PROBLEM")!;
+      const briefVersion = v.manifest.sources.find((s) => s.roles.includes("brief"))!.sourceVersionId;
+      // Reproduce what the old code stored: a 3/5 rating whose only quote is the brief's.
+      await q(
+        `update research_quality_observation_versions set payload = jsonb_set(payload, '{statements}', (select coalesce(jsonb_agg(st), '[]'::jsonb) from jsonb_array_elements(payload->'statements') st where st->>'sourceVersionId' = $2)) where id = $1`,
+        [problem.versionId, briefVersion],
+      );
+      const after = (await viewOf(id)).review!;
+      expect(after.oneSidedComparisons).toEqual([{ criterionId: "RQ-CMP-PROBLEM", citedOnly: "brief" }]);
+      expect(after.observations.find((o) => o.criterionId === "RQ-CMP-PROBLEM")!.payload.rating.score).toBe(3);
+      const text = await word(id);
+      expect(text).toMatch(/One comparison rating \(Problem restated\) cites the words of only one document/);
+    });
+  });
+
+  // The scored checklist (RQK-1, now RQK-2), Grant 2026-10-18: each document scored against the elements its
   // type should contain, model finds and code scores. Actual actions, runner, view and DOCX.
   describe("scored checklist", () => {
     const doc = (label: string, text: string) => addDoc(A, runA, `${label}.txt`, Buffer.from(text));
@@ -878,41 +1387,37 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const id = await start([{ documentId: await doc("ck-brief", briefText), roles: ["brief"] }, { documentId: await doc("ck-proposal", proposalText), roles: ["proposal"] }]);
       const v = await viewOf(id);
       expect(v.review!.state).toBe("complete");
-      expect(v.review!.checklists.map((c) => [c.checklistId, c.state])).toEqual([["brief", "scored"], ["proposal", "scored"]]);
-      for (const c of v.review!.checklists) {
-        const statuses = c.sections.flatMap((s) => s.elements.map((e) => e.status));
-        expect(statuses.every((x) => x !== null)).toBe(true);
-        // Independent recount from what the screen shows.
-        const assessed = statuses.filter((x) => x !== "not_assessed");
-        const points = assessed.reduce((n, x) => n + (x === "present" ? 2 : x === "partial" ? 1 : 0), 0);
-        expect(c.score!.assessed).toBe(assessed.length);
-        expect(c.score!.pct).toBe(Math.round((points / (assessed.length * 2)) * 100));
-        // Presence is always backed by a quote from the document.
-        for (const s of c.sections) for (const e of s.elements) if (e.status === "present" || e.status === "partial") expect(e.quotes.length, e.elementId).toBeGreaterThan(0);
-      }
-      const b = v.review!.checklists[0];
-      const el = (id: string) => b.sections.flatMap((s) => s.elements).find((e) => e.elementId === id)!;
-      expect(el("BR-DECISION")).toMatchObject({ status: "present" });
-      expect(el("BR-DECISION").quotes[0].quote).toMatch(/The decision is whether/);
-      expect(el("BR-BUDGET").status).toBe("absent");
-      expect(b.gaps.find((g) => g.elementId === "BR-BUDGET")).toMatchObject({ essential: true, status: "absent" });
-      expect(b.gaps.findIndex((g) => !g.essential)).toBeGreaterThan(b.gaps.findLastIndex((g) => g.essential)); // essential first
+      // RQK-2: the brief is rated on the RQC-3 dimensions (its dashboard), not a checklist.
+      expect(v.review!.checklists.map((c) => [c.checklistId, c.state])).toEqual([["proposal", "scored"]]);
+      const c = v.review!.checklists[0];
+      const statuses = c.sections.flatMap((s) => s.elements.map((e) => e.status));
+      expect(statuses.every((x) => x !== null)).toBe(true);
+      // Independent recount from what the screen shows.
+      const assessed = statuses.filter((x) => x !== "not_assessed");
+      const points = assessed.reduce((n, x) => n + (x === "present" ? 2 : x === "partial" ? 1 : 0), 0);
+      expect(c.score!.assessed).toBe(assessed.length);
+      expect(c.score!.pct).toBe(Math.round((points / (assessed.length * 2)) * 100));
+      // Presence is always backed by a quote from the document.
+      for (const s of c.sections) for (const e of s.elements) if (e.status === "present" || e.status === "partial") expect(e.quotes.length, e.elementId).toBeGreaterThan(0);
       // The proposal's sampling element was found in the proposal's own text, not the brief's.
-      const pe = v.review!.checklists[1].sections.flatMap((s) => s.elements).find((e) => e.elementId === "PR-SAMPLING")!;
+      const pe = c.sections.flatMap((s) => s.elements).find((e) => e.elementId === "PR-SAMPLING")!;
       expect(pe.status).toBe("present");
       expect(pe.quotes.every((q) => !q.fromBrief)).toBe(true);
+      expect(pe.quotes[0].quote).toMatch(/opt-in online panel|commercial panel/);
+      expect(c.gaps.length).toBeGreaterThan(0);
+      expect(c.gaps.findIndex((g) => !g.essential)).toBeGreaterThan(c.gaps.findLastIndex((g) => g.essential)); // essential first
       // The Word export carries the same grid and the gap recommendations.
       const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
       const text = (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ");
       expect(text).toMatch(/Scored checklist/);
-      expect(text).toContain(`ck-brief.txt: Research brief, ${b.score!.pct}%`);
+      expect(text).toContain(`ck-proposal.txt: Research proposal, ${c.score!.pct}%`);
       expect(text).toMatch(/Missing or partial elements/);
-      expect(text).toMatch(/Budget indication \(absent, essential\)/);
+      expect(text).toContain(`${c.gaps[0].label} (absent, essential)`);
     });
 
     it("presence claimed without quotes is not scored, so it cannot inflate the score", async () => {
       model.checklist = "overclaim";
-      const id = await start([{ documentId: await doc("ck-overclaim", briefText), roles: ["brief"] }]);
+      const id = await start([{ documentId: await doc("ck-overclaim", proposalText), roles: ["proposal"] }]);
       const c = (await viewOf(id)).review!.checklists[0];
       expect(c.state).toBe("scored");
       expect(c.score).toMatchObject({ assessed: 0, pct: null, band: null });
@@ -922,7 +1427,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
 
     it("a failed checklist step shows no score (not zero), leaves the review partial, and retry scores it", async () => {
       model.checklist = "fail";
-      const id = await start([{ documentId: await doc("ck-fail", briefText), roles: ["brief"] }]);
+      const id = await start([{ documentId: await doc("ck-fail", proposalText), roles: ["proposal"] }]);
       let v = await viewOf(id);
       expect(v.review!.state).toBe("partial");
       expect(v.review!.checklists[0]).toMatchObject({ state: "failed", score: null, gaps: [] });
@@ -940,7 +1445,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       // NOT VALID: earlier tests' checklist rows stay; only new rows are held to the old rule.
       await q(`alter table research_quality_tasks add constraint research_quality_tasks_stage_check check (stage in ('extract', 'assess')) not valid`);
       try {
-        const id = await start([{ documentId: await doc("ck-nomigration", briefText), roles: ["brief"] }]);
+        const id = await start([{ documentId: await doc("ck-nomigration", proposalText), roles: ["proposal"] }]);
         const v = await viewOf(id);
         expect(v.review!.state).toBe("complete");
         expect(v.review!.checklists).toEqual([]);
@@ -967,5 +1472,6 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       for (const f of v.review!.sourceFreshness) expect(f.status).not.toBe("current");
     }
     expect((await q(`select count(*)::int n from research_quality_reviews where run_id = $1`, [runA])).rows[0].n).toBe(reviews.length);
-  });
+  }, LOADED_HOST_BUDGET_MS);
+
 });

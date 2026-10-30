@@ -35,6 +35,9 @@ function q(id: string, kind: "objective" | "decision", order: number, link: stri
     source: "auto",
     excluded: false,
     question_revision: 1,
+    approval: "proposed",
+    approved_revision: null,
+    approved_at: null,
     stance: null,
     basis: null,
     error: null,
@@ -54,6 +57,8 @@ const handlers = {
   onSave: noop,
   onToggle: noop,
   onRetry: noop,
+  onApprove: noop,
+  busy: false,
 };
 
 async function setup() {

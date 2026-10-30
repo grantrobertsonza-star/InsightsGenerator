@@ -16,6 +16,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeFindingsDb, type FakeFindingsDb, type Row } from "./helpers/fakeFindingsDb";
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
@@ -58,7 +60,7 @@ vi.mock("../supabaseAdmin", () => ({
   },
 }));
 
-const RUN = "run-1";
+const RUN = "00000000-0000-4000-8000-0000000000cc";
 const DOC = "doc-1";
 const DOCUMENT_ROW = { id: DOC, run_id: RUN, storage_path: "doc.txt", source_filename: "report.txt" };
 

@@ -1,3 +1,4 @@
+import type React from "react";
 import type { QualityStatus } from "@/lib/dataQuality";
 import type { TranscriptImportQuality } from "@/lib/qualImportQuality";
 import type { AggregatedQuality } from "@/lib/aggregatedQuality";
@@ -26,9 +27,39 @@ function Stat({ value, label }: { value: string | number; label: string }) {
   );
 }
 
+/**
+ * The check, result and status table rolled up by default (Grant, 2026-10-22), so the stats above
+ * stay in view. The summary line still carries the outcome: how many checks there are, how many
+ * passed, how many need a look, and the worst status, so a Check or Problem is never hidden behind
+ * the fold. Used by the raw data, aggregated table and transcript quality tabs.
+ */
+export function ChecksFold({ statuses, children }: { statuses: QualityStatus[]; children: React.ReactNode }) {
+  const count = (s: QualityStatus) => statuses.filter((x) => x === s).length;
+  const worst: QualityStatus = count("fail") > 0 ? "fail" : count("warn") > 0 ? "warn" : "pass";
+  const parts = [
+    `${count("pass")} passed`,
+    ...(count("warn") > 0 ? [`${count("warn")} to check`] : []),
+    ...(count("fail") > 0 ? [`${count("fail")} with a problem`] : []),
+  ];
+  return (
+    <details className="group rounded-lg border border-border" data-testid="quality-checks-fold">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs">
+        <span className="text-muted group-open:rotate-90" aria-hidden="true">▸</span>
+        <span className="font-semibold text-foreground">Checks ({statuses.length})</span>
+        <span className="text-muted">{parts.join(", ")}</span>
+        <span className="ml-auto">
+          <StatusPill status={worst} />
+        </span>
+      </summary>
+      <div className="border-t border-border">{children}</div>
+    </details>
+  );
+}
+
 function CheckTable({ checks }: { checks: { id: string; label: string; status: QualityStatus; detail: string }[] }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <ChecksFold statuses={checks.map((c) => c.status)}>
+    <div className="overflow-x-auto">
       <table className="w-full min-w-[520px] text-left text-xs">
         <thead>
           <tr className="border-b border-border bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -50,6 +81,7 @@ function CheckTable({ checks }: { checks: { id: string; label: string; status: Q
         </tbody>
       </table>
     </div>
+    </ChecksFold>
   );
 }
 

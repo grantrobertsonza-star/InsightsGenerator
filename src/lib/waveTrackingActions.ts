@@ -3,44 +3,34 @@
 import { revalidatePath } from "next/cache";
 
 import { withTenant, withTenantRead } from "./db";
+import { RUN_NOT_AVAILABLE, assertRunOwned, runAccessible } from "./runOwnership";
 import { recordHumanReview } from "./findingProvenance";
 import { loadVariableDictionary } from "./crosstabs";
-import { normaliseDataSetup } from "./dataSetupShared";
+import { waveOrderText, type OrderedWave } from "./waves";
+import { loadProjectWaves } from "./waveFiles";
 import { runDistributionAction, type ChartResult } from "./chartActions";
 import { runNpsAction, type NpsResult, type NpsSegment } from "./npsActions";
 import { runDriverAnalysisFor, type DriverReport } from "./drivers";
+import { recordForRow } from "./driverPresentation";
 import { requireTenantId } from "./requestContext";
 
 type Fail = { ok: false; error: string };
 
-export type WaveFile = { documentId: string; filename: string; wave: string; uploadedAt: string };
+export type WaveFile = OrderedWave;
 
 /**
- * Raw case-level data files in this run labelled with a wave (set on the file itself, under Import data),
- * oldest upload first. A one-off project with no file labelled this way returns an empty list, so nothing
- * about Wave tracking shows up unless the researcher has actually marked at least one file as a wave.
+ * The waves in this run's analysis (`projectWaves`): raw case-level data files labelled with a wave
+ * (set on the file itself, under Import data), those the researcher took out left out, in fieldwork
+ * order when every wave has a date and in upload order otherwise, with the basis said in words. A
+ * one-off project with no file labelled this way returns an empty list, so nothing about Wave tracking
+ * shows up unless the researcher has actually marked at least one file as a wave.
  */
-export async function listWaveFilesAction(runId: string): Promise<{ ok: true; files: WaveFile[] } | Fail> {
+export async function listWaveFilesAction(runId: string): Promise<{ ok: true; files: WaveFile[]; excluded: WaveFile[]; order: string } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
-    const files = await withTenantRead(TENANT_ID, async (client) => {
-      const r = await client.query<{ id: string; source_filename: string; data_setup: unknown; uploaded_at: string }>(
-        `select id, source_filename, data_setup, uploaded_at from documents
-         where run_id = $1 and kind = 'table' and ingestion_type = 'raw' and data_setup is not null
-         order by uploaded_at asc`,
-        [runId],
-      );
-      return r.rows
-        .map((row) => ({ row, setup: normaliseDataSetup(row.data_setup) }))
-        .filter((x): x is { row: typeof x.row; setup: typeof x.setup & { wave: string } } => !!x.setup.wave)
-        .map(({ row, setup }) => ({
-          documentId: row.id,
-          filename: row.source_filename,
-          wave: setup.wave,
-          uploadedAt: row.uploaded_at,
-        }));
-    });
-    return { ok: true, files };
+    const files = await loadProjectWaves(TENANT_ID, runId);
+    return { ok: true, files: files.included, excluded: files.excluded, order: waveOrderText(files.basis) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -56,6 +46,7 @@ export async function sharedWaveVariablesAction(
   documentIds: string[],
 ): Promise<{ ok: true; variables: { name: string; label: string }[]; weights: { name: string; label: string }[] } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if (documentIds.length === 0) return { ok: true, variables: [], weights: [] };
     const dicts = await Promise.all(documentIds.map((id) => loadVariableDictionary(TENANT_ID, runId, id)));
@@ -83,7 +74,8 @@ export async function runWaveChartAction(
   weightVar: string | null,
 ): Promise<{ ok: true; result: ChartResult } | Fail> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if (files.length < 2) return { ok: false, error: "Label at least two files as waves to compare them." };
     const perWave: { f: WaveFile; result: ChartResult }[] = [];
@@ -146,7 +138,8 @@ export async function runWaveNpsAction(
   weightVar: string | null,
 ): Promise<{ ok: true; result: NpsResult } | Fail> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
-  await requireTenantId();
+  const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if (files.length < 2) return { ok: false, error: "Label at least two files as waves to compare them." };
     const perWave: { f: WaveFile; result: NpsResult }[] = [];
@@ -215,6 +208,7 @@ export async function addWaveNpsFindingAction(runId: string, result: NpsResult):
     const segments = result.segments;
     if (!segments || segments.length === 0) return { ok: false, error: "No wave segments to post." };
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const existing = await client.query<{ n: number }>(
         "select count(*)::int as n from findings where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_nps_tool' and stated_stats->>'variable' = $2 and status <> 'rejected'",
         [runId, result.variable],
@@ -270,6 +264,7 @@ export async function removeWaveNpsFindingAction(runId: string, variable: string
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_nps_tool' and stated_stats->>'variable' = $2 and status <> 'rejected' returning id",
         [runId, variable],
@@ -286,6 +281,7 @@ export async function removeWaveNpsFindingAction(runId: string, variable: string
 
 export async function waveNpsFindingStatusAction(runId: string, variable: string): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(
@@ -317,6 +313,7 @@ export async function addWaveChartFindingAction(runId: string, result: ChartResu
   const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const existing = await client.query<{ n: number }>(
         "select count(*)::int as n from findings where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_chart_tool' and stated_stats->>'variable' = $2 and status <> 'rejected'",
         [runId, result.variable],
@@ -372,6 +369,7 @@ export async function removeWaveChartFindingAction(runId: string, variable: stri
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_chart_tool' and stated_stats->>'variable' = $2 and status <> 'rejected' returning id",
         [runId, variable],
@@ -388,6 +386,7 @@ export async function removeWaveChartFindingAction(runId: string, variable: stri
 
 export async function waveChartFindingStatusAction(runId: string, variable: string): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(
@@ -439,6 +438,7 @@ export async function runWaveDriverAction(
   request: WaveDriverRequest,
 ): Promise<{ ok: true; table: WaveDriverTable; perWave: { wave: string; report: DriverReport }[] } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if (files.length < 2) return { ok: false, error: "Label at least two files as waves to compare them." };
     const perWave: { f: WaveFile; report: Awaited<ReturnType<typeof runDriverAnalysisFor>> }[] = [];
@@ -456,11 +456,13 @@ export async function runWaveDriverAction(
     // The first wave's own ranking sets the predictor order every wave's row lines up against, so the
     // table reads top to bottom as "most to least important when this started" rather than reshuffling
     // per wave.
-    const names = perWave[0].report.result.rows.map((r) => r.name);
-    const rows: WaveDriverTableRow[] = names.map((name) => ({
-      name,
+    // Rows line up across waves by the predictor's code (Codex AN500-F01), not its display name, which
+    // can differ between waves or carry a generated suffix.
+    const firstRows = perWave[0].report.result.rows;
+    const rows: WaveDriverTableRow[] = firstRows.map((first) => ({
+      name: first.name,
       shares: perWave.map(({ report }) => {
-        const row = report.result.rows.find((r) => r.name === name);
+        const row = recordForRow(first, report.result.rows, firstRows);
         return row ? Math.round(row.share * 1000) / 10 : null;
       }),
     }));
@@ -496,6 +498,7 @@ export async function addWaveDriverFindingAction(runId: string, table: WaveDrive
   const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const existing = await client.query<{ n: number }>(
         "select count(*)::int as n from findings where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_driver_tool' and stated_stats->>'variable' = $2 and status <> 'rejected'",
         [runId, table.outcome],
@@ -551,6 +554,7 @@ export async function removeWaveDriverFindingAction(runId: string, outcome: stri
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_driver_tool' and stated_stats->>'variable' = $2 and status <> 'rejected' returning id",
         [runId, outcome],
@@ -567,6 +571,7 @@ export async function removeWaveDriverFindingAction(runId: string, outcome: stri
 
 export async function waveDriverFindingStatusAction(runId: string, outcome: string): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

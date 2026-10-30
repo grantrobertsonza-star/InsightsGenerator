@@ -21,7 +21,7 @@ const proposal = findChecklist("proposal")!;
 const ids = (c: Checklist) => c.sections.flatMap((s) => s.elements.map((e) => e.elementId));
 const answer = (statuses: Record<string, [string, string[]]>) => ({ elements: Object.entries(statuses).map(([element_id, [status, fact_ids]]) => ({ element_id, status, fact_ids, reason: `${element_id} ${status}` })) });
 
-describe("RQK-1 catalogue", () => {
+describe("RQK catalogue", () => {
   it("has unique element ids, complete wording and only known roles", () => {
     const all = CHECKLISTS.checklists.flatMap(ids);
     expect(new Set(all).size).toBe(all.length);
@@ -39,9 +39,12 @@ describe("RQK-1 catalogue", () => {
   });
 
   it("picks checklists by confirmed role, once each; a discussion guide gets none", () => {
-    expect(checklistsForRoles(["brief"]).map((c) => c.checklistId)).toEqual(["brief"]);
+    // RQK-2 retires the brief checklist (the RQC-3 brief dimensions replace it): never run for a new
+    // review, still found for reviews scored under RQK-1.
+    expect(checklistsForRoles(["brief"]).map((c) => c.checklistId)).toEqual([]);
+    expect(findChecklist("brief")!.retired).toMatch(/RQC-3/);
     expect(checklistsForRoles(["report", "methodology"]).map((c) => c.checklistId)).toEqual(["methodology_report"]);
-    expect(checklistsForRoles(["brief", "proposal"]).map((c) => c.checklistId)).toEqual(["brief", "proposal"]);
+    expect(checklistsForRoles(["brief", "proposal"]).map((c) => c.checklistId)).toEqual(["proposal"]);
     expect(checklistsForRoles(["discussion_guide"])).toEqual([]);
   });
 });

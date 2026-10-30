@@ -10,6 +10,8 @@
 // replay answer; the override matches the validator's fixed user message, since the objectives
 // travel in its system prompt). This tests the qualification's path, not model interpretation.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
+import { insertSupportedInsight } from "./helpers/supportedInsight.mjs";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -35,17 +37,14 @@ test("a degraded coverage conclusion is qualified in Review Objectives, survives
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
     const run = await ui.createRun({ name: `coverage-degraded-${Date.now()}` });
-    const section = (name) => page.getByRole("button", { name, exact: true }).first().click();
+    const section = (name) => openSection(page, name);
 
     await section("Set Objectives");
     const form = page.locator("form", { has: page.locator('textarea[name="researchObjective"]') });
     await form.locator('textarea[name="researchObjective"]').fill(OBJECTIVE);
     await form.getByRole("button", { name: "Save", exact: true }).click();
     await expect.poll(async () => Number((await db.query("select count(*) from objective_candidates where run_id=$1", [run.id])).rows[0].count), { timeout: 60_000 }).toBe(1);
-    await db.query(
-      "insert into synthesized_insights(tenant_id,run_id,headline,observation,tension,implication,review_status) values($1,$2,'Synthetic accepted insight','Observed','Uncertain','Review','accepted')",
-      [target.tenantId, run.id],
-    );
+    await insertSupportedInsight(db, target.tenantId, run.id, "Synthetic accepted insight");
     writeFileSync(fixtureFile, JSON.stringify({ tools: { record_validations: [{ match: "Validate the insights against the objectives and decisions now", input: { validations: [{ item_index: 0, status: "resolved", conclusion: CONCLUSION, insight_indices: [0] }] } }] } }));
 
     // The coverage panel (the bordered card holding the heading, the check button and the list).
@@ -75,6 +74,22 @@ test("a degraded coverage conclusion is qualified in Review Objectives, survives
     await expect(coverage().getByText("Evidence check degraded", { exact: true })).toBeVisible();
     await expect(coverage().getByText(CONCLUSION, { exact: true })).toBeVisible();
     await expect(coverage().getByText("Answered", { exact: true })).toBeVisible();
+    // One-page Objectives (3001): selecting the objective moves its card under the detail in the
+    // middle pane, qualification included; the coverage pane says so instead of repeating it.
+    await page.getByTestId("stated-objectives").getByRole("button", { name: new RegExp(OBJECTIVE) }).click();
+    const middle = page.getByTestId("selected-objective-coverage");
+    await expect(middle.getByText("Evidence check degraded", { exact: true })).toBeVisible();
+    await expect(middle.getByText(CONCLUSION, { exact: true })).toBeVisible();
+    // The right pane's coverage card steps aside while an objective is selected (2026-10-26): the
+    // middle tile carries the conclusion and the button that updates coverage, so neither is shown twice.
+    await expect(page.getByRole("heading", { name: "Coverage of your objectives" })).toHaveCount(0);
+    await expect(page.getByText(CONCLUSION, { exact: true })).toHaveCount(1);
+    await expect(middle.getByRole("button", { name: "Update coverage" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Check (now|again)$/ })).toHaveCount(0);
+    if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-coverage-selected.png"), fullPage: true });
+    await page.getByRole("button", { name: "All objectives" }).click();
+    await expect(middle).toHaveCount(0);
+    await expect(coverage().getByText(CONCLUSION, { exact: true })).toBeVisible();
 
     // 3. A reassessment with retrieval working clears it, after reload too; the conclusion stays.
     await coverage().getByRole("button", { name: "Check again" }).click();

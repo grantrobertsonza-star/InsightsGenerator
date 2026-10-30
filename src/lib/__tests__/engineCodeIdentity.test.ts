@@ -13,10 +13,11 @@ import { PYTHON } from "./helpers/pythonEngine";
 //       when the flipped variable was cast to int64; they now keep their exact value (numeric
 //       when it fits exactly, else text), the same as a rows-as-cases read. An identifier's
 //       surrounding spaces were trimmed after the flip, merging " 001 " into "001"; kept now.
-// Not covered, and unchanged: pandas reads a NUMERIC-LOOKING text cell ("01") in a non-identifier
-// column as a number in either layout; only identifier-like columns are read as text.
+// Since the one reader (batch 26), a numeric-looking code ("01") in any column stays text in either
+// layout (oneReaderImport.test.ts); this file keeps its original identifier and exactness checks.
 // Skipped, with the reason printed, without python3 + pandas/openpyxl/pyreadstat.
 import { describe, expect, it } from "vitest";
+import { CURRENT_DICTIONARY_VERSION } from "../dictionaryVersion";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -156,16 +157,18 @@ print(json.dumps(out))
     expect(byCase("full").codes).toEqual([["9223372036854775808", 2], ["9223372036854775809", 2]]);
     expect(byCase("gap").codes).toEqual([["9223372036854775808", 1], ["9223372036854775809", 2]]);
     expect(byCase("mixed_sign").codes).toEqual([["-5", 1], ["7", 1], ["9223372036854775809", 2]]);
-    // The int64 boundaries themselves are exact and stay numeric.
+    // The int64 boundaries keep their exact digits too. Since the one reader (batch 26) a whole number
+    // beyond 2**53 is not exact in the stored preview's numbers (JSON doubles), so such a variable is
+    // text in preview and calculation alike rather than numeric in one and rounded in the other.
     expect(byCase("edge").codes).toEqual([["-9223372036854775808", 1], ["1", 1], ["9223372036854775807", 2]]);
-    expect(byCase("edge").numeric).toBe(true);
+    expect(byCase("edge").numeric).toBe(false);
     for (const k of ["full", "gap", "mixed_sign", "edge"]) {
       const flipped = byCase(k);
       const rows = out[`${k}/rows_are_cases`];
-      expect(flipped.version).toBe(10);
+      expect(flipped.version).toBe(CURRENT_DICTIONARY_VERSION);
       for (const [c] of flipped.codes) expect(c.startsWith("-") && k !== "mixed_sign" && k !== "edge", `${k}: ${c}`).toBe(false);
-      // Same values and type as the rows-as-cases read. (A blank cell is a separate, unchanged
-      // rows-as-cases difference: there it is listed as an empty code, here as missing.)
+      // Same values and type as the rows-as-cases read (a blank cell is missing in both layouts now;
+      // the filter only keeps this check independent of how an empty code is listed).
       expect(flipped.numeric, k).toBe(rows.numeric);
       expect(flipped.codes.filter(([c]) => c !== ""), k).toEqual(rows.codes.filter(([c]) => c !== ""));
     }

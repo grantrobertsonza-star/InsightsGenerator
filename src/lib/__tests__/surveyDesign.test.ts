@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { detectSurveyDesign, effectiveDesignChoice, resolveSurveyDesign } from "../surveyDesign";
 
-const dictWith = (names: string[]) => ({ variables: names.map((name) => ({ name })) }) as any;
+const dictWith = (names: string[]) => ({ variables: names.map((name) => ({ name })) }) as never;
 
 describe("resolveSurveyDesign", () => {
   it("resolves a PSU-only auto-detected design", () => {

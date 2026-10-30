@@ -44,12 +44,20 @@ export default function FilterBuilder({
   const [max, setMax] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Choosing another variable starts its filter afresh: the ticks, answers, range and error of the
+  // previous one do not carry over. Done while rendering (React's pattern for state that follows a
+  // value) rather than in the effect, which only loads the new variable's answers.
+  const [filterFor, setFilterFor] = useState(info);
+  if (info !== filterFor) {
+    setFilterFor(info);
     setTicked(new Set());
     setCats([]);
     setMin("");
     setMax("");
     setErr(null);
+  }
+
+  useEffect(() => {
     if (!info || rangeKind) return;
     let live = true;
     loadCategoriesAction(runId, documentId, info.name).then((r) => {

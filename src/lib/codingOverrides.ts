@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { withTenant } from "./db";
 import { MAX_CODES } from "./qualCoding";
+import { lockOwnedTranscript } from "./codingTranscriptOwnership";
 
 // Researcher changes to the themes on a turn. They are stored as overrides
 // keyed by theme name, so a later "Save as new version and re-apply" (which
@@ -8,6 +9,17 @@ import { MAX_CODES } from "./qualCoding";
 
 export const codeKey = (name: string) =>
   name.trim().toLowerCase().replace(/\s+/g, " ");
+
+/**
+ * The only operations on a turn's themes. Codex B21-F01: a server action's argument is not checked by
+ * its TypeScript type, and the change used to treat anything other than "add" as "remove", so an empty,
+ * null or differently cased value deleted an assignment and recorded a remove override. Every caller
+ * goes through this check, before anything is read or written.
+ */
+export function parseTurnCodeAction(value: unknown): "add" | "remove" | null {
+  return value === "add" || value === "remove" ? value : null;
+}
+const INVALID_ACTION = "That change to the turn's themes is not one this screen makes (add or remove). Nothing was changed; reload the page.";
 
 export type OverrideRow = {
   segmentId: string;
@@ -100,6 +112,7 @@ async function changeInTx(
   code: { id: string; name: string },
   action: "add" | "remove",
 ) {
+  if (!parseTurnCodeAction(action)) throw new Error(INVALID_ACTION);
   const seg = await client.query(
     `select 1 from coding_segments where id = $1 and document_id = $2 and role <> 'moderator'`,
     [segmentId, documentId],
@@ -175,11 +188,15 @@ export async function changeTurnCode(
   codeId: string,
   action: "add" | "remove",
 ): Promise<void> {
+  if (!parseTurnCodeAction(action)) throw new Error(INVALID_ACTION);
   await withTenant(tenantId, async (client) => {
     if (!(await overridesAvailable(client)))
       throw new Error(
         "Changing themes by hand needs database migration 0050. Run it and try again.",
       );
+    // COD500-F02: the transcript must be this run's before the codebook, code and turn are looked up
+    // under it; the override below records this run.
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "update");
     const code = await loadCodeInForce(client, documentId, codeId);
     if (!code)
       throw new Error(
@@ -221,6 +238,7 @@ export async function addResearcherCode(
       throw new Error(
         "Adding a theme by hand needs database migration 0050. Run it and try again.",
       );
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "update");
     const book = await client.query(
       `select 1 from coding_codebooks b
        where b.id = $1 and b.document_id = $2
@@ -324,6 +342,7 @@ export async function restoreCodebookVersion(
   codebookId: string,
 ): Promise<number> {
   return withTenant(tenantId, async (client) => {
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "update");
     const old = await client.query<{ id: string; version: number }>(
       `select id, version from coding_codebooks where id = $1 and document_id = $2`,
       [codebookId, documentId],

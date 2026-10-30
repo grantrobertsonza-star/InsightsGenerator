@@ -13,6 +13,7 @@
 // question are synthetic fixtures inserted directly, as in the original harness.
 // Data: 30 men (24 answer Yes) and 30 women (9 answer Yes), so the comparison is readable.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -60,7 +61,7 @@ test("a refused evidence write stays pending through reload; the retry computes 
     const results = async () => (await db.query("select stance, basis, table_id, error from objective_evidence_results where evidence_id=$1", [evidence])).rows;
     const openReview = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });
-      await page.getByRole("button", { name: "Review Objectives", exact: true }).click();
+      await openSection(page, "Review Objectives");
     };
     const more = page.getByRole("button", { name: "Continue reading", exact: true });
 

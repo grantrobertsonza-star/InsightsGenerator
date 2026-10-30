@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchItems } from "../instrumentMatch";
+import { AMBIGUOUS_CODE_CONFIDENCE, matchItems } from "../instrumentMatch";
 import { isEligible, parseRouting } from "../routingParse";
 
 describe("parseRouting", () => {
@@ -67,5 +67,40 @@ describe("matchItems", () => {
   });
   it("offers nothing when nothing fits", () => {
     expect(matchItems([{ id: "i4", code: "Z9", text: "Completely different subject matter entirely" }], vars)).toEqual([]);
+  });
+});
+
+// IS-F06 (Codex import stress review, 27 October 2026): an item q1 with columns q1 and Q1 was offered
+// both at confidence 1 and bulk-confirmed to both. The column written exactly as the code wins; when
+// none is, every candidate is offered below "Confirm same-code matches" for the researcher to choose.
+describe("several columns with the item's code once case and separators are set aside (IS-F06)", () => {
+  const vars = (...names: string[]) => names.map((name) => ({ name, label: "" }));
+  const offered = (code: string, names: string[]) =>
+    matchItems([{ id: "i", code, text: "" }], vars(...names))
+      .map((m) => [m.variable, m.confidence])
+      .sort();
+
+  it("the column written exactly as the code is the match, in either order", () => {
+    expect(offered("q1", ["q1", "Q1"])).toEqual([["q1", 1]]);
+    expect(offered("q1", ["Q1", "q1"])).toEqual([["q1", 1]]);
+    expect(offered("Q1", ["q1", "Q1"])).toEqual([["Q1", 1]]);
+    expect(offered("Q_1", ["Q.1", "Q_1"])).toEqual([["Q_1", 1]]);
+    expect(offered("Q1", ["Q1", "Ｑ１"])).toEqual([["Q1", 1]]);
+  });
+
+  it("when no column is written as the code, each is offered below the confirm-all level", () => {
+    for (const [code, names] of [["q1", ["Q_1", "Q.1"]], ["q1", ["Q1", "Ｑ１"]]] as const) {
+      const got = offered(code, [...names]);
+      expect(got.map(([v]) => v), code).toEqual([...names].sort());
+      for (const [, c] of got) expect(c, code).toBe(AMBIGUOUS_CODE_CONFIDENCE);
+      expect(AMBIGUOUS_CODE_CONFIDENCE).toBeLessThan(0.9);
+    }
+  });
+
+  it("one column that differs only in case or separators is still a confident match; families are unchanged", () => {
+    expect(offered("q1", ["Q1"])).toEqual([["Q1", 1]]);
+    expect(offered("EN20.1", ["EN20_1"])).toEqual([["EN20_1", 1]]);
+    expect(offered("Q1a", ["Q1_a"])).toEqual([["Q1_a", 1]]);
+    expect(offered("MR", ["MR_1", "MR_2", "MR_3"]).map(([v]) => v)).toEqual(["MR_1", "MR_2", "MR_3"]);
   });
 });

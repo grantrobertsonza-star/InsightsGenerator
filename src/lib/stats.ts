@@ -118,26 +118,64 @@ export function studentTTwoSidedP(t: number, df: number): number {
   return Math.min(1, Math.max(0, p));
 }
 
-export function pearsonCorrelation(xs: number[], ys: number[]) {
+export type PearsonResult = {
+  /** Null when r is undefined (a variable that does not vary); then nothing else is given. */
+  r: number | null;
+  n?: number;
+  pValue?: number | null;
+  /** True only when r is +-1 (to floating-point rounding) for nonconstant variables; pValue is then the limit, 0. */
+  exact?: boolean;
+  note?: string;
+};
+
+// How close to +-1 a computed r must be to count as exact (see pearsonCorrelation).
+const EXACT_R_TOLERANCE = 1e-12;
+
+/**
+ * Pearson r with its test against zero (t = r * sqrt((n - 2) / (1 - r^2)) on n - 2 degrees of
+ * freedom), for paired, complete, unweighted values. The shared test: imported-table discovery
+ * (tableComputation.ts) and the unweighted scatter (scatter.ts, scatterActions.ts) both read it.
+ *
+ * Undefined, and returned as `{ r: null }` with no p-value: fewer than 3 pairs (throws, as before) or
+ * a variable that does not vary. Constancy is decided exactly, on values shifted by their first
+ * element, so a constant column such as 0.1 repeated (whose floating-point mean is not exactly 0.1)
+ * has zero spread rather than a rounding residue that could read as a perfect correlation.
+ *
+ * EF-FND-F02 (batch 62): a nonconstant exact linear relationship (r = +1 or -1, from n >= 3 pairs)
+ * used to come back with a null p-value, because 1 - r^2 is 0 (or negative after floating point
+ * overshoots 1 by an ulp), and the discovery pass then dropped the strongest possible relationship.
+ * r within EXACT_R_TOLERANCE of +-1 is taken as exactly +-1 (floating-point overshoot or undershoot of
+ * an exact relationship); then t is infinite and the two-sided p-value is its limit, 0, reported
+ * as 0 with `exact: true` so a reader can say "an exact linear relationship" rather than quote a test
+ * statistic. No p-value is invented for an undefined r.
+ */
+export function pearsonCorrelation(xs: number[], ys: number[]): PearsonResult {
   const n = xs.length;
   if (n !== ys.length || n < 3)
     throw new Error("need matched lists of at least 3 pairs");
-  const meanX = xs.reduce((a, b) => a + b, 0) / n;
-  const meanY = ys.reduce((a, b) => a + b, 0) / n;
-  const cov = xs.reduce((a, x, i) => a + (x - meanX) * (ys[i] - meanY), 0);
-  const sdX = Math.sqrt(xs.reduce((a, x) => a + (x - meanX) ** 2, 0));
-  const sdY = Math.sqrt(ys.reduce((a, y) => a + (y - meanY) ** 2, 0));
-  if (sdX === 0 || sdY === 0) return { r: null as number | null };
-  const rRaw = cov / (sdX * sdY);
-  // Test of r against zero: t = r * sqrt((n - 2) / (1 - r^2)) on n - 2 degrees of freedom.
-  const pValue =
-    n > 2 && Math.abs(rRaw) < 1
-      ? studentTTwoSidedP(rRaw * Math.sqrt((n - 2) / (1 - rRaw * rRaw)), n - 2)
-      : null;
+  const x0 = xs[0];
+  const y0 = ys[0];
+  const dxs = xs.map((x) => x - x0);
+  const dys = ys.map((y) => y - y0);
+  if (dxs.every((d) => d === 0) || dys.every((d) => d === 0)) return { r: null };
+  const meanX = dxs.reduce((a, b) => a + b, 0) / n;
+  const meanY = dys.reduce((a, b) => a + b, 0) / n;
+  const cov = dxs.reduce((a, x, i) => a + (x - meanX) * (dys[i] - meanY), 0);
+  const sdX = Math.sqrt(dxs.reduce((a, x) => a + (x - meanX) ** 2, 0));
+  const sdY = Math.sqrt(dys.reduce((a, y) => a + (y - meanY) ** 2, 0));
+  if (!(sdX > 0) || !(sdY > 0)) return { r: null };
+  const rComputed = cov / (sdX * sdY);
+  // Within EXACT_R_TOLERANCE of +-1 the data are an exact linear relationship up to floating-point
+  // rounding (an affine series computes as 1 - 2e-16, 1 or 1 + 2e-16 depending on its values), so all
+  // three read the same way; a relationship with any real scatter is many orders of magnitude further away.
+  const exact = Math.abs(rComputed) >= 1 - EXACT_R_TOLERANCE;
+  const rRaw = exact ? Math.sign(rComputed) : rComputed;
+  const pValue = exact ? 0 : studentTTwoSidedP(rRaw * Math.sqrt((n - 2) / (1 - rRaw * rRaw)), n - 2);
   return {
     r: Math.round(rRaw * 100) / 100,
     n,
-    pValue: pValue === null ? null : Math.round(pValue * 10000) / 10000,
+    pValue: Number.isFinite(pValue) ? Math.round(pValue * 10000) / 10000 : null,
+    ...(exact ? { exact: true } : {}),
     note: "descriptive association only; not evidence of causation",
   };
 }

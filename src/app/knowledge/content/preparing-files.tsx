@@ -112,12 +112,12 @@ export default function PreparingFilesGuide() {
 
       <H2 id="raw">Raw case-level data</H2>
       <P>
-        Use <em>Raw data</em> for files with one row per respondent: .sav, .dta, .csv or Excel (SAS is excluded pending verification). This is what
+        Use <em>Raw data</em> for files with one row per respondent: .sav, .dta, SAS (.sas7bdat or .xpt), R (.rds or .RData), Parquet, .csv, delimited text (.txt) or Excel. This is what
         the cross tab tool works from.
       </P>
       <UL>
         <li>
-          <strong>Prefer SPSS, Stata or SAS to CSV.</strong> They carry variable labels and value labels, so the tool
+          <strong>Prefer SPSS or Stata to CSV.</strong> They carry variable labels and value labels, so the tool
           shows &quot;Very satisfied&quot; and the full question wording instead of codes such as 5 and Q12. A CSV has
           only what is in its cells, so add a questionnaire if you can.
         </li>

@@ -1,6 +1,7 @@
 # Initial supported import boundary
 
-The approved initial scope is 20,000,000 bytes and 100,000 cases per file. The shared contract is
+The limits are 100,000,000 bytes and 100,000 cases per file (raised from 20,000,000 bytes on 19 October 2026). The
+shared contract is
 `api/import-limits.json`, read by TypeScript and the Python engine. Server upload checks refuse byte
 overflow before reading the body or writing storage; canonical engine and dictionary checks refuse
 case overflow without publishing a partial calculation. Corrected smaller files can be uploaded again.

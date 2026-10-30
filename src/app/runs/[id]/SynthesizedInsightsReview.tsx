@@ -12,6 +12,8 @@ import { TrashIcon } from "@/components/icons";
 import type { InsightSupport } from "@/lib/supportStatusShared";
 import { SupportStatusNotice } from "./SupportStatusNotice";
 import { FigureCheckFor } from "./FigureCheckNotice";
+import InfoDot from "@/components/InfoDot";
+import { insightMatches, type CorroborationState, type InsightFilter, type QualityState } from "@/lib/evidenceOverview";
 
 // Matches MIN_CLUSTER_SIZE in src/lib/insightSynthesizer.ts (not imported
 // directly -- that file pulls in server-only dependencies this client
@@ -144,24 +146,6 @@ const qualityTierDefinition: Record<QualityTier, string> = {
     "insight -- no named mechanism, no clear action, or an unsupported leap from the evidence.",
 };
 
-/**
- * Small, discoverable hover target for a definition that doesn't fit in a
- * label. Plain title attribute underneath (same pattern already used on the
- * stability badges below), the visible "i" dot just signals there's
- * something to hover, since a bare label or count gives no such hint.
- */
-function InfoDot({ text }: { text: string }) {
-  return (
-    <span
-      title={text}
-      aria-label={text}
-      className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 cursor-help items-center justify-center rounded-full bg-slate-200 align-text-top text-[9px] font-bold leading-none text-slate-500"
-    >
-      i
-    </span>
-  );
-}
-
 const InsightSelection = createContext<{
   selectedId: string | null;
   select: (id: string) => void;
@@ -203,24 +187,75 @@ const InsightSelection = createContext<{
  * it's still visible in the Insights (pre-insights) section above, nothing
  * is hidden or deleted.
  */
+/**
+ * Where the Insights overview sent the researcher (InsightsWorkspace): the same filter the overview
+ * counted that figure with (lib/evidenceOverview.insightMatches), applied once, then editable here.
+ */
+export type InsightsReviewStart = InsightFilter & { selectedId?: string };
+
+const QUALITY_STATE_LABEL: Record<QualityState, string> = {
+  qualified: "Qualified",
+  partial: "Partial",
+  finding: "Finding only",
+  unscored: "Not scored",
+};
+const CORROBORATION_LABEL: Record<CorroborationState, string> = {
+  strong: "Strong, sources checked",
+  moderate: "Moderate, sources checked",
+  exploratory: "Exploratory, sources checked",
+  unrated: "Sources checked, no tier",
+  unchecked: "Sources not checked for independence",
+};
+type SupportFilter = "current" | "stale" | "invalid" | "unknown";
+const SUPPORT_FILTERS: [SupportFilter, string][] = [
+  ["current", "Current"],
+  ["stale", "Changed"],
+  ["invalid", "No longer valid"],
+  ["unknown", "Not checked"],
+];
+
 export default function SynthesizedInsightsReview({
   runId,
   insights,
+  request,
 }: {
   runId: string;
   insights: SynthesizedInsightRow[];
+  /**
+   * Where the overview sent the researcher. Each new request (a higher `n`) replaces the filters and
+   * the selection; between requests they are the researcher's own. Applied without remounting.
+   */
+  request?: { start: InsightsReviewStart; n: number };
 }) {
   const [confidenceFilter, setConfidenceFilter] = useState<
     "all" | ConfidenceTier
   >("all");
-  const [qualityFilter, setQualityFilter] = useState<"all" | QualityTier>(
+  // "unscored" is reached from the overview's Not scored figure; the buttons below set the tiers.
+  const [qualityFilter, setQualityFilter] = useState<"all" | QualityState>(
     "all",
   );
+  // Independent corroboration (OV-02) is set only from the overview and shown as a removable chip;
+  // the Triangulation buttons below stay a filter on the stored tier alone.
+  const [corroborationFilter, setCorroborationFilter] = useState<CorroborationState | null>(null);
   const [reviewFilter, setReviewFilter] = useState<"all" | ReviewStatus>("all");
+  // Support is its own filter (Grant, 2026-10-21, from the overview's evidence-health tile): which
+  // insights rest on support that changed or is no longer valid, separate from review and quality.
+  const [supportFilter, setSupportFilter] = useState<"all" | SupportFilter>("all");
   const [isCheckingStability, startStabilityCheck] = useTransition();
   const [stabilityError, setStabilityError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"insights" | "scores">("insights");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [appliedRequest, setAppliedRequest] = useState<number | null>(null);
+  if (request && request.n !== appliedRequest) {
+    setAppliedRequest(request.n);
+    const st = request.start;
+    setConfidenceFilter(st.confidence ?? "all");
+    setQualityFilter(st.quality ?? "all");
+    setReviewFilter(st.review ?? "all");
+    setSupportFilter(st.support ?? "all");
+    setCorroborationFilter(st.corroboration ?? null);
+    setSelectedId(st.selectedId ?? null);
+  }
 
   if (insights.length === 0) {
     return (
@@ -258,18 +293,15 @@ export default function SynthesizedInsightsReview({
   ).length;
   const rejectedCount = insights.length - acceptedCount;
 
-  const filtered = insights.filter((insight) => {
-    if (
-      confidenceFilter !== "all" &&
-      insight.confidence_tier !== confidenceFilter
-    )
-      return false;
-    if (qualityFilter !== "all" && insight.quality_tier !== qualityFilter)
-      return false;
-    if (reviewFilter !== "all" && insight.review_status !== reviewFilter)
-      return false;
-    return true;
-  });
+  // The same matcher the overview counts with, so a figure opened from there lists what it counted.
+  const activeFilter: InsightFilter = {
+    review: reviewFilter === "all" ? undefined : reviewFilter,
+    support: supportFilter === "all" ? undefined : supportFilter,
+    quality: qualityFilter === "all" ? undefined : qualityFilter,
+    confidence: confidenceFilter === "all" ? undefined : confidenceFilter,
+    corroboration: corroborationFilter ?? undefined,
+  };
+  const filtered = insights.filter((insight) => insightMatches(insight, activeFilter));
 
   function handleCheckStability() {
     setStabilityError(null);
@@ -286,7 +318,8 @@ export default function SynthesizedInsightsReview({
   const selected = insights.find((i) => i.id === selectedId) ?? null;
 
   const tabsBar = (
-      <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
+      // Wraps on a narrow column rather than widening the page (same treatment as UI-GT500-01).
+      <div className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
         {(
           [
             ["insights", "Insights", insights.length],
@@ -333,6 +366,9 @@ export default function SynthesizedInsightsReview({
       value={{ selectedId, select: setSelectedId }}
     >
       <ThreePane
+        leftOnTop
+        // Its own key, so folding or resizing here leaves the other sections as they are (DESIGN-GTR-01).
+        storageKey="insights-review"
         left={
           <Pane side="left" title="Filters">
           {acceptedCount > 0 && (
@@ -522,6 +558,35 @@ export default function SynthesizedInsightsReview({
             </div>
           </div>
 
+          <div className="flex flex-col gap-1.5" role="group" aria-label="Support">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Support</div>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSupportFilter("all")}
+                aria-pressed={supportFilter === "all"}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${supportFilter === "all" ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              >
+                All
+              </button>
+              {SUPPORT_FILTERS.map(([value, label]) => {
+                const n = insights.filter((i) => i.support.status === value).length;
+                if (n === 0 && supportFilter !== value) return null;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSupportFilter((f) => (f === value ? "all" : value))}
+                    aria-pressed={supportFilter === value}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${supportFilter === value ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                  >
+                    {`${label} (${n})`}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {rejectedCount > 0 && (
             <div className="flex flex-wrap gap-1.5">
               <button
@@ -581,6 +646,30 @@ export default function SynthesizedInsightsReview({
             }
           >
             {tabsBar}
+          {(corroborationFilter || qualityFilter === "unscored") && (
+            <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="insights-overview-filters">
+              {corroborationFilter && (
+                <button
+                  type="button"
+                  onClick={() => setCorroborationFilter(null)}
+                  className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                  aria-label={`Remove filter: ${CORROBORATION_LABEL[corroborationFilter]}`}
+                >
+                  {`${CORROBORATION_LABEL[corroborationFilter]} ×`}
+                </button>
+              )}
+              {qualityFilter === "unscored" && (
+                <button
+                  type="button"
+                  onClick={() => setQualityFilter("all")}
+                  className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                  aria-label={`Remove filter: ${QUALITY_STATE_LABEL.unscored}`}
+                >
+                  {`${QUALITY_STATE_LABEL.unscored} ×`}
+                </button>
+              )}
+            </div>
+          )}
           {filtered.length === 0 ? (
             <p className="text-sm text-muted">
               No synthesized insights match this filter.
@@ -777,6 +866,7 @@ function SynthesizedInsightCard({
       data-testid="synthesized-insight-card"
       data-insight-id={insight.id}
       data-review-status={insight.review_status}
+      data-support-status={insight.support.status}
       data-source-finding-ids={(insight.source_finding_ids ?? []).join(" ")}
       onClick={() => select(insight.id)}
       className={`card-surface flex cursor-pointer flex-col gap-3 rounded-xl border bg-white p-4 ${isSelected ? "border-primary/50 ring-2 ring-primary/40" : "border-border"} ${isRejected ? "opacity-50" : ""}`}

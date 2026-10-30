@@ -2,13 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 
-import { buildCrosstab, loadCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import { buildCrosstab, computeCrosstab, loadCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import type { CrosstabRequest } from "./parseStatsFile";
 import { resolveSurveyDesign, effectiveDesignChoice } from "./surveyDesign";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { withTenant } from "./db";
+import { RUN_NOT_AVAILABLE, assertRunOwned, runAccessible } from "./runOwnership";
 import { recordHumanReview } from "./findingProvenance";
 import { defaultWeight } from "./starterTables";
 import { baseOf } from "./descriptiveFindings";
+import { exactPct, exactTotalPct } from "./crosstabExact";
 import { requireTenantId } from "./requestContext";
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
@@ -18,8 +21,15 @@ export type ChartSeries = {
   n: number;
   /** rawCode: the bar's underlying answer code when the source row carried one (CrosstabRow.rawCode) -
    * see ANA-BRAND-002: wave tracking aligns bars across waves on this, not on `label`, since a wording-only
-   * value-label change between waves must not look like a different category. */
-  bars: { label: string; pct: number; rawCode?: string }[];
+   * value-label change between waves must not look like a different category.
+   * share: the bar's percentage unrounded (the engine's pctExact; CT5K-F01), null where the table
+   * suppressed it, for figures derived from several bars (csmMetrics.summarizeSeries). `pct` is the
+   * one-decimal display value (0 for a suppressed cell, as drawn). Absent on series built elsewhere
+   * (wave tracking), which summarizeSeries reads from pct. */
+  bars: { label: string; pct: number; share?: number | null; rawCode?: string }[];
+  /** The banner column's answer code when the series is one category of a group variable (a company, D3b): the
+   * series' identity; `name` is its label, for presentation only. Absent on an ungrouped series. */
+  code?: string;
 };
 
 export type ChartResult = {
@@ -31,7 +41,18 @@ export type ChartResult = {
   grouped: boolean;
   groupLabel: string | null;
   series: ChartSeries[];
+  /**
+   * How the bars were made, as this action actually built them (IR-10, 2026-10-20): "bins" when the
+   * engine returned no answer categories and its histogram ranges were used, "values" when each bar
+   * is one answer category (which includes a numeric question tabulated as categories, for example
+   * after a researcher's categorical correction). Charts describe their encoding from this, never
+   * from a guess about the variable. Absent on results built elsewhere (wave tracking).
+   */
+  method?: ChartMethod;
 };
+
+/** See ChartResult.method. */
+export type ChartMethod = "bins" | "values";
 
 type Fail = { ok: false; error: string };
 
@@ -51,8 +72,12 @@ export async function runDistributionAction(
   // distinct here, or an explicit "None" silently gets the default back.
   weightVar: string | null | undefined,
   groupVar: string | null,
+  // "compute": read the distribution without saving the table it is read from (a dashboard that recalculates each
+  // time it opens, D3); "save" keeps the evidence table, as the chart tool always has.
+  table: "save" | "compute" = "save",
 ): Promise<{ ok: true; result: ChartResult } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     // ANA-NPS-003 (Brief 37 repair): the dictionary's build/cache path depends on the
     // document's persisted layout - a required saved input distinct from design, and not
@@ -86,20 +111,17 @@ export async function runDistributionAction(
     const setup = setupStatus.setup;
     const resolvedDesign = resolveSurveyDesign(dict, effectiveDesignChoice(setup.design, undefined));
 
-    const built = await buildCrosstab(
-      TENANT_ID,
-      runId,
-      documentId,
-      {
-        columnVars: g ? [g.name] : [],
-        rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
-        weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
-        source: "ask",
-        design: resolvedDesign.design ?? undefined,
-      },
-      { status: "evidence" },
-    );
-    const { result } = await loadCrosstab(TENANT_ID, runId, built.tableId);
+    const request: CrosstabRequest = {
+      columnVars: g ? [g.name] : [],
+      rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
+      weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
+      source: "ask",
+      design: resolvedDesign.design ?? undefined,
+    };
+    const { result } =
+      table === "compute"
+        ? await computeCrosstab(TENANT_ID, runId, documentId, request)
+        : await loadCrosstab(TENANT_ID, runId, (await buildCrosstab(TENANT_ID, runId, documentId, request, { status: "evidence" })).tableId);
     if (!result || result.questions.length === 0) return { ok: false, error: "This question could not be tabulated." };
 
     const q = result.questions[0];
@@ -121,11 +143,12 @@ export async function runDistributionAction(
             weighted: !!result.weightVar,
             grouped: false,
             groupLabel: null,
+            method: "bins",
             series: [
               {
                 name: "All respondents",
                 n: Math.round(n),
-                bars: hist.map((b) => ({ label: b.lo === b.hi ? `${b.lo}` : `${b.lo} to ${b.hi}`, pct: round1(b.pct) })),
+                bars: hist.map((b) => ({ label: b.lo === b.hi ? `${b.lo}` : `${b.lo} to ${b.hi}`, pct: round1(b.pct), share: b.pctExact ?? b.pct })),
               },
             ],
           },
@@ -151,7 +174,8 @@ export async function runDistributionAction(
           weighted: !!result.weightVar,
           grouped: false,
           groupLabel: null,
-          series: [{ name: "All respondents", n: Math.round(n0), bars: answers.map((r) => ({ label: r.label, pct: round1(r.total.pct as number), rawCode: r.rawCode })) }],
+          method: "values",
+          series: [{ name: "All respondents", n: Math.round(n0), bars: answers.map((r) => ({ label: r.label, pct: round1(r.total.pct as number), share: exactTotalPct(r), rawCode: r.rawCode })) }],
         },
       };
     }
@@ -173,7 +197,8 @@ export async function runDistributionAction(
       return {
         name: c.name,
         n: Math.round(n),
-        bars: answers.map((r) => ({ label: r.label, pct: r.pct[i] !== null && r.pct[i] !== undefined ? round1(r.pct[i] as number) : 0, rawCode: r.rawCode })),
+        bars: answers.map((r) => ({ label: r.label, pct: r.pct[i] !== null && r.pct[i] !== undefined ? round1(r.pct[i] as number) : 0, share: exactPct(r, i), rawCode: r.rawCode })),
+        ...(c.rawCode !== undefined ? { code: c.rawCode } : {}),
       };
     });
 
@@ -185,6 +210,7 @@ export async function runDistributionAction(
         n: Math.round(n0),
         weighted: !!result.weightVar,
         grouped: true,
+        method: "values",
         groupLabel: g.label || g.name,
         series,
       },
@@ -226,6 +252,7 @@ export async function addChartFindingAction(
   const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       // Scoped by source_document_id too: two documents in the same run (two waves, say) can
       // each have their own variable of the same name, and without this a second document's
       // chart would be mistaken for an existing finding from the first.
@@ -291,6 +318,7 @@ export async function removeChartFindingAction(
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         `update findings set status = 'rejected'
          where run_id = $1 and pattern_type = 'level' and stated_stats->>'source' = 'chart_tool'
@@ -317,6 +345,7 @@ export async function chartFindingStatusAction(
   groupVar: string | null,
 ): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

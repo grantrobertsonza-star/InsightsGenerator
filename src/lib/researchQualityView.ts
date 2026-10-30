@@ -9,8 +9,10 @@
 // Researcher state: acceptance, dismissal and wording belong to one observation VERSION. When a
 // newer review produced a new version, the earlier decision and wording are shown as history and
 // the new version is "awaiting review"; nothing is carried over silently.
+import { DASHBOARDS, reviewDashboards, type DashboardView } from "./researchQualityDashboard";
 import { findChecklist, gapRecommendations, scoreChecklist, type ChecklistScore, type ElementResult, type ElementStatus, type GapRecommendation } from "./researchQualityChecklist";
 import type { PoolClient } from "pg";
+import type { OneSidedComparison, UnverifiedEvidence } from "./researchQualityPresentation";
 import { withTenantRead, withTenantRepeatableRead } from "./db";
 import { CRITERIA, referenceCatalogue } from "./researchQualityRules";
 import { assertModuleTables, assertRunOwned } from "./researchQualityRepository";
@@ -19,6 +21,7 @@ import {
   type ObservationPayload,
   type ReviewManifest,
   type SourceRole,
+  type ReviewKind,
 } from "./researchQualityTypes";
 
 export type Freshness = "current" | "requires_review" | "could_not_check";
@@ -45,6 +48,10 @@ export type ObservationView = {
 export type ReviewSummary = {
   id: string;
   sequence: number;
+  /** null for a review made before review kinds (2026-10-19): readable, in the older format. */
+  kind: ReviewKind | null;
+  /** The documents reviewed, with the role each had (for the document list). */
+  sources: { documentId: string | null; filename: string; roles: SourceRole[] }[];
   state: "pending" | "running" | "complete" | "partial" | "failed";
   mode: string;
   studyType: string;
@@ -80,6 +87,14 @@ export type ResearchQualityView = {
     checklists: ChecklistView[];
     /** Why no checklist was run, when none was: the migration was missing, or the review predates it. */
     checklistNote: string | null;
+    /** Bird's-eye dashboards (researchQualityDashboard.ts), computed from the stored ratings. */
+    dashboards: DashboardView[];
+    /** Why there is no dashboard, when a document type has one but this review shows none. */
+    dashboardNote: string | null;
+    /** Codex RQ-F01: per document, quotes left out because they could not be verified (none listed when all were). */
+    unverifiedEvidence: UnverifiedEvidence[];
+    /** Codex RQ-F02: saved comparison ratings resting on one document's words only. */
+    oneSidedComparisons: OneSidedComparison[];
   });
 };
 
@@ -115,6 +130,48 @@ export type ChecklistView = {
  */
 export type ReviewProgress = { total: number; done: number; failed: number; working: number; waiting: number; interrupted: boolean };
 export const INTERRUPTED_AFTER_SECONDS = 120;
+
+/**
+ * Rated comparison criteria (RQ-CMP-*, live observations) whose quoted statements come from the
+ * proposal only or the brief only. An Absent rating citing only the brief is the documented gap the
+ * rule allows ("the proposal does not cover it") and is not listed.
+ */
+export function oneSidedComparisons(
+  observations: Pick<ObservationView, "criterionId" | "status" | "payload">[],
+  manifest: Pick<ReviewManifest, "sources">,
+): OneSidedComparison[] {
+  const roleOf = (versionId: string) => manifest.sources.find((s) => s.sourceVersionId === versionId)?.roles ?? [];
+  const out: OneSidedComparison[] = [];
+  for (const o of observations) {
+    if (!o.criterionId.startsWith("RQ-CMP-") || o.status === "dismissed" || o.payload.rating.score === null) continue;
+    if (o.payload.statements.length === 0) continue;
+    const roles = new Set(o.payload.statements.flatMap((st) => roleOf(st.sourceVersionId)));
+    const proposal = roles.has("proposal");
+    const brief = roles.has("brief");
+    if (proposal && brief) continue;
+    if (!proposal && brief && o.payload.rating.score === 0) continue;
+    if (!out.some((x) => x.criterionId === o.criterionId)) out.push({ criterionId: o.criterionId, citedOnly: proposal ? "proposal" : "brief" });
+  }
+  return out;
+}
+
+/** Quotes left out as unverifiable, summed per document over its succeeded extraction steps. */
+export function unverifiedEvidenceBySource(
+  rows: { result: { input?: { sourceIndex?: number }; facts?: unknown[] } | null; validation: { droppedUnverifiableQuotes?: unknown } | null }[],
+  manifest: Pick<ReviewManifest, "sources">,
+): UnverifiedEvidence[] {
+  const bySource = new Map<number, UnverifiedEvidence>();
+  for (const row of rows) {
+    const i = row.result?.input?.sourceIndex;
+    const src = i === undefined ? undefined : manifest.sources[i];
+    if (i === undefined || !src) continue;
+    const entry = bySource.get(i) ?? { filename: src.filename, rejected: 0, kept: 0 };
+    entry.rejected += Math.max(0, Number(row.validation?.droppedUnverifiableQuotes ?? 0) || 0);
+    entry.kept += Array.isArray(row.result?.facts) ? row.result!.facts!.length : 0;
+    bySource.set(i, entry);
+  }
+  return [...bySource.entries()].sort(([a], [b]) => a - b).map(([, e]) => e).filter((e) => e.rejected > 0);
+}
 
 function checklistViews(
   tasks: { task_key: string; status: string; error: string | null; result: { input?: { sourceIndex?: number; checklistId?: string }; elements?: ElementResult[] } | null }[],
@@ -198,6 +255,8 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
     const summary = (r: Record<string, unknown>): ReviewSummary => ({
       id: r.id as string,
       sequence: r.sequence as number,
+      kind: (r.manifest as ReviewManifest).kind ?? null,
+      sources: ((r.manifest as ReviewManifest).sources ?? []).map((x) => ({ documentId: x.documentId, filename: x.filename, roles: x.roles })),
       state: r.state as ReviewSummary["state"],
       mode: r.mode as string,
       studyType: r.study_type as string,
@@ -259,9 +318,22 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
       referencePassages: [],
       checklists: [],
       checklistNote: null,
+      dashboards: [],
+      dashboardNote: null,
+      unverifiedEvidence: [],
+      oneSidedComparisons: [],
       progress: { total: progress.total, done: progress.done, failed: progress.failed, working: progress.working, waiting: progress.waiting, interrupted: active && progress.working === 0 && progress.idle },
     };
     view.review.sourceFreshness = await sourceFreshness(client, manifest);
+    // Read from the task rows themselves (as `progress` is), so a review saved before RQ-F01, whose
+    // all-rejected extraction was published as succeeded, is qualified too.
+    const extractRows = (
+      await client.query<{ result: { input?: { sourceIndex?: number }; facts?: unknown[] } | null; validation: { droppedUnverifiableQuotes?: unknown } | null }>(
+        `select result, validation from research_quality_tasks where review_id = $1 and stage = 'extract' and status = 'succeeded' order by task_key`,
+        [chosen.id],
+      )
+    ).rows;
+    view.review.unverifiedEvidence = unverifiedEvidenceBySource(extractRows, manifest);
     view.review.facts = await reviewFacts(client, chosen.id as string, manifest);
     const checklistTasks = (
       await client.query<{ task_key: string; status: string; error: string | null; result: { input?: { sourceIndex?: number; checklistId?: string }; elements?: ElementResult[] } | null }>(
@@ -271,7 +343,9 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
     ).rows;
     view.review.checklists = checklistViews(checklistTasks, manifest, view.review.facts);
     view.review.checklistNote =
-      checklistTasks.length > 0
+      checklistTasks.length > 0 || manifest.kind
+        ? null
+        : checklistTasks.length > 0
         ? null
         : manifest.checklistRelease === undefined
           ? "This review was made before the scored checklist existed. Start a new review version to score the documents."
@@ -279,6 +353,25 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
             ? "The scored checklist needs database migration 0106. Apply it, then start a new review version."
             : "None of the selected documents has a role with a checklist (brief, proposal, questionnaire, methodology, report or fieldwork).";
     view.review.observations = await reviewObservations(client, runId, chosen.id as string, chosen.sequence as number, view.review.sourceFreshness);
+    view.review.oneSidedComparisons = oneSidedComparisons(view.review.observations, manifest);
+    const assessTasks = new Map(
+      (await client.query<{ task_key: string; status: string }>(`select task_key, status from research_quality_tasks where review_id = $1 and stage = 'assess'`, [chosen.id])).rows.map((t) => [t.task_key, t.status]),
+    );
+    const selectedCriteria = manifest.criteria.filter((c) => c.status === "selected").map((c) => c.criterionId);
+    view.review.dashboards = reviewDashboards({
+      criteriaRelease: view.review.criteriaRelease,
+      selectedCriteria,
+      observations: view.review.observations,
+      assessState: (criterionId) => {
+        const group = CRITERIA.criteria.find((c) => c.criterionId === criterionId)?.group;
+        const status = group ? assessTasks.get(`assess:${group}`) : undefined;
+        return status === "succeeded" ? "done" : status === "failed" ? "failed" : "pending";
+      },
+    });
+    view.review.dashboardNote =
+      view.review.dashboards.length === 0 && DASHBOARDS.some((d) => d.criteria.some((c) => selectedCriteria.includes(c)))
+        ? `This review was made with criteria release ${view.review.criteriaRelease}, before the dashboard. Start a new review version to see it.`
+        : null;
     const cat = referenceCatalogue();
     const usedRefs = new Set(view.review.observations.flatMap((o) => o.payload.methodologicalReferenceRefs.map((r) => `${r.referenceId}:${r.passageId}`)));
     view.review.referencePassages = cat.entries.flatMap((e) =>

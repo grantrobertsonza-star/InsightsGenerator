@@ -43,6 +43,7 @@ vi.mock("../verifyAfterGenerate", () => ({
     if (hooks.verifyWrites) await hooks.verifyWrites(runId);
   }),
 }));
+vi.mock("@/lib/analysisPlan", async () => await import("../analysisPlan"));
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/sourceAttribution", async () => await import("../sourceAttribution"));
 vi.mock("@/lib/findingWording", async () => await import("../findingWording"));

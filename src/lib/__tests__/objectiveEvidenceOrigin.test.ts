@@ -8,6 +8,8 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeObjectiveDb, type FakeObjectiveDb, type Row } from "./helpers/fakeObjectiveDb";
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+// SEC2: the action's entry check that the project is the signed-in tenant's (helpers/ownedRun.ts).
+vi.mock("../runOwnership", async () => (await import("./helpers/ownedRun")).ownedRunModule());
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
@@ -18,7 +20,7 @@ const TENANT = vi.hoisted(() => {
   process.env.DEFAULT_TENANT_ID = id;
   return id;
 });
-const RUN = "run-1";
+const RUN = "00000000-0000-4000-8000-0000000000cc";
 
 let db: FakeObjectiveDb;
 const drafted: string[] = [];
@@ -36,6 +38,7 @@ vi.mock("../anthropic", () => ({
       create: vi.fn(async (args: { messages: { content: string }[] }) => {
         drafted.push(args.messages[0].content);
         return {
+          stop_reason: "tool_use",
           content: [{ type: "tool_use", id: "t", name: "submit_questions", input: { questions: [{ question: `Q for ${args.messages[0].content}`, request: "mobile banking by gender", supports_if: "higher", against_if: "lower", expectation: { kind: "none" } }] } }],
           usage: { input_tokens: 1, output_tokens: 1 },
         };

@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { finishedToolInput } from "./modelToolResult";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -151,8 +152,9 @@ async function locate(tenantId: string, runId: string, claim: string, picks: Loa
     messages: [{ role: "user", content: `Claim: ${claim}` }],
   });
   await logApiUsage(tenantId, runId, "claim_table_check", response.usage);
-  const tu = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-  const raw = tu && Array.isArray((tu.input as { atoms?: unknown }).atoms) ? ((tu.input as { atoms: unknown[] }).atoms as Record<string, unknown>[]) : [];
+  // EC10K-F02: only a finished call is used; an unfinished one throws instead of reading as "no table speaks to this claim".
+  const finished = finishedToolInput(response, "record_atoms", "The pointing of a claim at its table cells");
+  const raw = Array.isArray(finished.atoms) ? (finished.atoms as Record<string, unknown>[]) : [];
   const s = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : null);
   const out: (Atom & { table: number })[] = [];
   for (const a of raw.slice(0, 3)) {

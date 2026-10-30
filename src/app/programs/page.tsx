@@ -4,54 +4,18 @@ import { revalidatePath } from "next/cache";
 import SubmitButton from "@/components/SubmitButton";
 import { ChartIcon, ArrowLeftIcon } from "@/components/icons";
 import { requireTenantId } from "@/lib/requestContext";
+import { loadProgramsWithWaves, type ProgramWithWaves } from "@/lib/projectReads";
+import ProgramControls from "./ProgramControls";
 
 // Same no-login-yet placeholder as every other page (see src/app/page.tsx).
 
 
-type ProgramWave = {
-  id: string;
-  project_name: string | null;
-  wave_label: string | null;
-  created_at: string;
-};
-
-type Program = {
-  id: string;
-  name: string;
-  created_at: string;
-  waves: ProgramWave[];
-};
+type Program = ProgramWithWaves;
 
 async function getPrograms(): Promise<Program[]> {
   const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    const programsResult = await client.query<{
-      id: string;
-      name: string;
-      created_at: string;
-    }>("select id, name, created_at from programs order by created_at desc");
-    // One query for all waves across every program, same "tally in one
-    // pass rather than a query per card" reasoning the project list uses
-    // for its findings counts.
-    const wavesResult = await client.query<
-      ProgramWave & { program_id: string }
-    >(
-      `select id, program_id, project_name, wave_label, created_at
-       from runs
-       where program_id is not null
-       order by created_at asc`,
-    );
-    const wavesByProgram = new Map<string, ProgramWave[]>();
-    for (const wave of wavesResult.rows) {
-      const list = wavesByProgram.get(wave.program_id) ?? [];
-      list.push(wave);
-      wavesByProgram.set(wave.program_id, list);
-    }
-    return programsResult.rows.map((program) => ({
-      ...program,
-      waves: wavesByProgram.get(program.id) ?? [],
-    }));
-  });
+  // SEC1: filtered by tenant in the statement itself (projectReads.ts), not only by row-level security.
+  return loadProgramsWithWaves(TENANT_ID);
 }
 
 async function createProgram(formData: FormData) {
@@ -88,13 +52,12 @@ export default async function ProgramsPage() {
         Programs
       </h1>
       <p className="mb-10 text-sm text-muted">
-        A program is an ongoing tracking study, one client commissioning the
-        same research again across multiple waves. The questionnaire can vary a
-        little wave to wave, that&apos;s fine; what matters is that every
-        wave&apos;s findings end up grouped under one program so the narrative
-        can eventually speak to change over time rather than just one snapshot.
-        A project stays a perfectly normal, one-off project unless and until you
-        attach it to a program here.
+        A program groups related projects, for example one client&apos;s brand and satisfaction
+        trackers, so they are easy to find together. For the waves of one tracking study, keep them in
+        one project: add each wave&apos;s data file under Import data and give it a wave label and
+        fieldwork month; Analytics then compares the waves. A project stays a normal project unless you
+        add it to a program. Deleting a program only removes the grouping; its projects and their data
+        are kept.
       </p>
 
       <div className="card-surface mb-12 rounded-xl border border-border bg-white p-6">
@@ -153,8 +116,9 @@ export default async function ProgramsPage() {
               <span className="text-border">&middot;</span>
               <span className="text-sm text-muted">
                 {program.waves.length}{" "}
-                {program.waves.length === 1 ? "wave" : "waves"}
+                {program.waves.length === 1 ? "project" : "projects"}
               </span>
+              <ProgramControls programId={program.id} name={program.name} projects={program.waves.length} />
             </div>
             {program.waves.length > 0 ? (
               <ul className="mt-3 flex flex-col gap-1.5 border-l-2 border-border pl-4">
@@ -164,10 +128,10 @@ export default async function ProgramsPage() {
                       href={`/runs/${wave.id}`}
                       className="font-medium text-foreground hover:text-primary"
                     >
-                      {wave.wave_label ?? "Unlabeled wave"}
+                      {wave.project_name ?? "Untitled project"}
                     </Link>
                     <span className="ml-2 text-muted">
-                      {wave.project_name ?? "Untitled project"} &middot;{" "}
+                      {wave.wave_label ? `${wave.wave_label} · ` : ""}
                       {new Date(wave.created_at).toLocaleDateString()}
                     </span>
                   </li>
@@ -175,8 +139,8 @@ export default async function ProgramsPage() {
               </ul>
             ) : (
               <p className="mt-2 text-sm text-muted">
-                No waves attached yet. Open a project and link it to this
-                program to add its first wave.
+                No projects in it yet. Open a project and add it to this
+                program under Import data.
               </p>
             )}
           </li>

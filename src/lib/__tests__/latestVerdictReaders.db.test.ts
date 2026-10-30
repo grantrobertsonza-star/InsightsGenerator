@@ -24,13 +24,14 @@ import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type 
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/methodologyStatus", async () => await import("../methodologyStatus"));
 
 const charted: { id: string }[][] = [];
 const prompts: string[] = [];
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
-for (const m of ["db", "deckSlides", "docxReport", "caveatLabels", "supportStatus", "supportStatusShared", "sourceAttribution", "narrativeSupportSummary", "figureChecks", "numberTrace", "storyNarrative", "latestVerdict", "discoveryReport", "decisionContext", "recommendationQualification"]) {
+for (const m of ["db", "deckSlides", "docxReport", "caveatLabels", "supportStatus", "supportStatusShared", "sourceAttribution", "narrativeSupportSummary", "figureChecks", "numberTrace", "storyNarrative", "latestVerdict", "discoveryReport", "decisionContext", "recommendationQualification", "objectiveCoverage", "narrativeFreshness", "evidenceTrail", "evidenceTrailSlides"]) {
   vi.doMock(`@/lib/${m}`, async () => await import(`../${m}`));
 }
 vi.mock("@/lib/discoverySlides", () => ({ addDiscoverySlides: vi.fn() }));
@@ -90,8 +91,11 @@ describe.skipIf(!TEST_DATABASE_URL)("readers use each finding's latest verdict (
     );
   }, 120000);
   afterAll(async () => {
-    const { pool } = await import("../db");
+    // The assistant now takes a capacity slot from the claim pool (RR-F08): both pools are closed
+    // before the database is dropped (Codex RR-M03).
+    const { pool, claimPool } = await import("../db");
     await pool.end();
+    await claimPool?.end?.();
     await db.drop();
   });
 

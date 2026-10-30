@@ -1,10 +1,13 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import type { TableCell } from "./rowCells";
+import { mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { supabaseAdmin } from "./supabaseAdmin";
+import { convertedCopyPath } from "./documentStorageCleanup";
+import { beginConvertedCopy, finishConvertedCopy } from "./projectStorageCleanup";
 
 const execFileAsync = promisify(execFile);
 
@@ -12,10 +15,12 @@ const BUCKET = "documents";
 
 export type ParsedTable = {
   headers: string[];
-  rows: Record<string, string | number | null>[];
+  rows: Record<string, TableCell>[];
   /** Set only when a very wide file was cut down to its usable variables. */
   totalVariables?: number;
   keptVariables?: number;
+  /** The engine reader that produced it (STATS_READER), stored as the table's read provenance. */
+  reader?: string;
 };
 
 import { isStatsFileName } from "./statsFileName";
@@ -51,11 +56,28 @@ export { isStatsFileName };
  * download, not a function invocation payload, so it has no such limit.
  */
 export async function parseStatsFile(storagePath: string, sourceFilename: string): Promise<ParsedTable> {
+  return runEngineConversion<ParsedTable>("convert", storagePath, sourceFilename, {});
+}
+
+/**
+ * Runs one of the engine's actions whose answer is too large to return directly: "convert"
+ * (SPSS/Stata/SAS, above), "table" (the one reader for CSV, TSV and Excel; parseTable.ts) or
+ * "indicators" (Indicator data; indicatorData.ts). The answers are respondent-level tables or a file's
+ * indicator observations, usually past a serverless response limit, so the engine writes them to the
+ * file's converted copy and this reads them back from storage (see parseStatsFile's comment), then
+ * removes the copy.
+ */
+export async function runEngineConversion<T>(
+  action: "convert" | "table" | "indicators",
+  storagePath: string,
+  sourceFilename: string,
+  args: Record<string, unknown>,
+): Promise<T> {
   // Plain `next dev` does not serve the Python function, so when neither
   // VERCEL_URL nor PARSE_STATS_FILE_URL is set, run the same conversion
   // with a local Python instead (needs: pip install pyreadstat).
   if (!process.env.VERCEL_URL && !process.env.PARSE_STATS_FILE_URL) {
-    return runLocalStatsPython<ParsedTable>(storagePath, sourceFilename, "convert");
+    return runLocalStatsPython<T>(storagePath, sourceFilename, action, args);
   }
   // VERCEL_URL is set automatically on Vercel (preview and production) to
   // this deployment's own hostname, so this always calls the sibling
@@ -70,52 +92,60 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
     ? `https://${process.env.VERCEL_URL}`
     : process.env.PARSE_STATS_FILE_URL ?? "http://127.0.0.1:3000";
 
-  const response = await fetch(`${base}/api/parse-stats-file`, {
-    method: "POST",
-    // IMP-001: the request is signed for exactly this file and action (parseRequestSignature.ts);
-    // the shared secret itself is never sent. PARSE_STATS_SHARED_SECRET must hold the same value
-    // here and in the Python function's environment, or every request fails with a 401, surfaced
-    // below as an actionable message rather than a generic parsing failure.
-    headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signParseRequest("convert", BUCKET, storagePath) },
-    body: JSON.stringify({ storagePath, sourceFilename, bucket: BUCKET }),
-  });
+  // The converted copy is respondent-level data (Codex RR-F03). It is recorded before the parser is
+  // asked, in a record that outlives the project, and removed (with its record) once the parser has
+  // answered; a removal that fails stays on the record for retry. A request that fails without an
+  // answer leaves the record in flight: the parser may still write the copy, and a retry removes it
+  // after the in-flight time (projectStorageCleanup.ts). Nothing is asked when it cannot be recorded.
+  const converted = convertedCopyPath(storagePath);
+  const intent = await beginConvertedCopy(storagePath, converted);
+  let parserDone = false;
+  try {
+    const response = await fetch(`${base}/api/parse-stats-file`, {
+      method: "POST",
+      // IMP-001: the request is signed for exactly this file and action (parseRequestSignature.ts);
+      // the shared secret itself is never sent. PARSE_STATS_SHARED_SECRET must hold the same value
+      // here and in the Python function's environment, or every request fails with a 401, surfaced
+      // below as an actionable message rather than a generic parsing failure.
+      headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signParseRequest(action, BUCKET, storagePath) },
+      body: JSON.stringify({ storagePath, sourceFilename, bucket: BUCKET, action, args }),
+    });
+    parserDone = true;
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    let message = detail;
-    try {
-      message = (JSON.parse(detail) as { error?: string }).error ?? detail;
-    } catch {
-      // detail wasn't JSON; use it as-is
-    }
-    if (response.status === 401) {
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      let message = detail;
+      try {
+        message = (JSON.parse(detail) as { error?: string }).error ?? detail;
+      } catch {
+        // detail wasn't JSON; use it as-is
+      }
+      if (response.status === 401) {
+        throw new Error(
+          "The conversion service rejected this request as unauthorized. PARSE_STATS_SHARED_SECRET must be set to the " +
+            "same value in both this app's environment and the parse-stats-file function's own environment.",
+        );
+      }
       throw new Error(
-        "The conversion service rejected this request as unauthorized. PARSE_STATS_SHARED_SECRET must be set to the " +
-          "same value in both this app's environment and the parse-stats-file function's own environment.",
+        `Couldn't read this data file (${response.status}). ${message || "The conversion step failed."}`
       );
     }
-    throw new Error(
-      `Couldn't read this data file (${response.status}). ${message || "The conversion step failed."}`
-    );
+
+    const { resultPath } = (await response.json()) as { resultPath: string };
+    // It must be where the parser is known to write it, so a reply can never point this at another
+    // object.
+    if (resultPath !== converted) {
+      throw new Error("The conversion service answered with an unexpected result location, so its result was not used.");
+    }
+    const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(resultPath);
+    if (error || !data) {
+      throw new Error(`The data file's converted result could not be read back from storage: ${error?.message}`);
+    }
+    return JSON.parse(await data.text()) as T;
+  } finally {
+    await finishConvertedCopy(intent, converted, parserDone);
   }
-
-  const { resultPath } = (await response.json()) as { resultPath: string };
-
-  const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(resultPath);
-  if (error || !data) {
-    throw new Error(`Converted SPSS/Stata/SAS result could not be read back from storage: ${error?.message}`);
-  }
-  const parsed = JSON.parse(await data.text()) as ParsedTable;
-
-  // Best-effort cleanup: this intermediate file has no further use once
-  // read, and leaving it around would otherwise just accumulate in the
-  // bucket indefinitely. A failure here is never worth surfacing to the
-  // caller - the actual table has already been read successfully.
-  await supabaseAdmin.storage.from(BUCKET).remove([resultPath]).catch(() => {});
-
-  return parsed;
 }
-
 // --- Local worker -------------------------------------------------------
 // Under plain `next dev` the Python engine runs on this machine. Starting a
 // new Python process, importing pandas and re-reading the data file for every
@@ -123,16 +153,35 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
 // and keeps the last files it read in memory. If it cannot start, or dies, the
 // one-shot runner below is used instead, exactly as before.
 
-type WorkerReply = { id?: number; result?: unknown; error?: string; ready?: boolean };
+type WorkerReply = { id?: number; result?: unknown; error?: string; ready?: boolean; restart?: boolean };
+/** The worker's own script changed on disk since it started; it exits and the request goes to a fresh one. */
+class WorkerRestarting extends Error {}
 type LocalWorker = {
   proc: ChildProcess;
   pending: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>;
   nextId: number;
+  /** WORKER_PROTOCOL of the code that started it. Absent on a worker started before the tag existed. */
+  protocol?: number;
 };
+/**
+ * The worker conversation this code speaks: refuses unknown actions, asks to restart when its script
+ * changes (batch 31). A worker kept on globalThis from before that (a dev server running since an
+ * older version) cannot run the new script's guard, so it is recognised by the missing or older tag
+ * and replaced before it is used (Codex B31-F01). Raise this when the request or reply shape changes.
+ */
+const WORKER_PROTOCOL = 6; // 3: the respondent_quality action; 4: codebook and instrument_sheet; 5: indicators; 6: value_labels
 
 const WORKER_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 // Kept on globalThis so a hot reload does not leave an orphan worker behind.
-const workerHolder = globalThis as unknown as { __statsWorker?: Promise<LocalWorker | null>; __statsWorkerOff?: boolean };
+// __statsWorkerStarts counts workers that reached "ready" in this process, so a test can show that
+// simultaneous callers share one replacement (B35-F02) on any platform, without listing processes.
+const workerHolder = globalThis as unknown as { __statsWorker?: Promise<LocalWorker | null>; __statsWorkerOff?: boolean; __statsWorkerLive?: LocalWorker; __statsWorkerStarts?: number };
+/** Forgets this worker, unless a newer one has replaced it (an old worker exiting must not orphan the new one). */
+function forgetWorker(worker: LocalWorker) {
+  if (workerHolder.__statsWorkerLive !== worker) return;
+  workerHolder.__statsWorker = undefined;
+  workerHolder.__statsWorkerLive = undefined;
+}
 
 function startWorker(): Promise<LocalWorker | null> {
   return new Promise((resolve) => {
@@ -145,7 +194,7 @@ function startWorker(): Promise<LocalWorker | null> {
         stdio: ["pipe", "pipe", "ignore"],
         env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
       });
-      const worker: LocalWorker = { proc, pending: new Map(), nextId: 1 };
+      const worker: LocalWorker = { proc, pending: new Map(), nextId: 1, protocol: WORKER_PROTOCOL };
       proc.stdin!.on("error", () => {}); // a dead worker is reported through "exit"
       const fail = (message: string) => {
         for (const p of worker.pending.values()) {
@@ -153,7 +202,7 @@ function startWorker(): Promise<LocalWorker | null> {
           p.reject(new Error(message));
         }
         worker.pending.clear();
-        workerHolder.__statsWorker = undefined; // next call starts a fresh one
+        forgetWorker(worker); // next call starts a fresh one
       };
       const startupTimer = setTimeout(() => {
         if (settled) return;
@@ -180,6 +229,7 @@ function startWorker(): Promise<LocalWorker | null> {
             if (!settled) {
               settled = true;
               clearTimeout(startupTimer);
+              workerHolder.__statsWorkerStarts = (workerHolder.__statsWorkerStarts ?? 0) + 1;
               resolve(worker);
             }
             continue;
@@ -188,7 +238,10 @@ function startWorker(): Promise<LocalWorker | null> {
           if (!p) continue;
           worker.pending.delete(msg.id as number);
           clearTimeout(p.timer);
-          if (msg.error !== undefined) p.reject(new Error(msg.error));
+          if (msg.restart) {
+            forgetWorker(worker);
+            p.reject(new WorkerRestarting("restart"));
+          } else if (msg.error !== undefined) p.reject(new Error(msg.error));
           else p.resolve(msg.result);
         }
       });
@@ -217,9 +270,36 @@ function startWorker(): Promise<LocalWorker | null> {
 }
 
 async function callWorker<T>(srcPath: string, sourceFilename: string, action: string, args: unknown): Promise<{ ok: true; value: T } | { ok: false; unavailable: true }> {
+  try {
+    return await callWorkerOnce<T>(srcPath, sourceFilename, action, args);
+  } catch (error) {
+    // Once only: a fresh worker runs the current script, so it does not ask again.
+    if (error instanceof WorkerRestarting) return callWorkerOnce<T>(srcPath, sourceFilename, action, args);
+    throw error;
+  }
+}
+
+async function callWorkerOnce<T>(srcPath: string, sourceFilename: string, action: string, args: unknown): Promise<{ ok: true; value: T } | { ok: false; unavailable: true }> {
   if (workerHolder.__statsWorkerOff) return { ok: false, unavailable: true };
   if (!workerHolder.__statsWorker) workerHolder.__statsWorker = startWorker();
-  const worker = await workerHolder.__statsWorker;
+  const awaited = workerHolder.__statsWorker;
+  let worker = await awaited;
+  if (worker && worker.protocol !== WORKER_PROTOCOL) {
+    // Started by older code: stop it (its pending requests fail as a stopped worker) and use a fresh one.
+    // B35-F02: single flight. Every caller that waited on the old worker reaches this point; only the
+    // first, finding the holder still on the promise it awaited, stops the old worker and starts the
+    // replacement. The others find the holder already moved on and share that replacement, so no
+    // second worker is started and left running without an owner.
+    if (workerHolder.__statsWorker === awaited) {
+      workerHolder.__statsWorkerLive = worker;
+      forgetWorker(worker);
+      worker.proc.kill();
+      workerHolder.__statsWorker = startWorker();
+    }
+    // undefined when the replacement could not start and the caller that started it gave up on it.
+    worker = (await workerHolder.__statsWorker) ?? null;
+  }
+  if (worker) workerHolder.__statsWorkerLive = worker;
   if (!worker) {
     workerHolder.__statsWorker = undefined;
     workerHolder.__statsWorkerOff = true; // do not retry a worker that cannot start this session
@@ -230,7 +310,7 @@ async function callWorker<T>(srcPath: string, sourceFilename: string, action: st
     const timer = setTimeout(() => {
       worker.pending.delete(id);
       worker.proc.kill(); // a stuck request: drop the worker, the next call starts a new one
-      workerHolder.__statsWorker = undefined;
+      forgetWorker(worker);
       reject(new Error("The statistics worker took too long and was restarted. Try again."));
     }, WORKER_REQUEST_TIMEOUT_MS);
     worker.pending.set(id, {
@@ -243,20 +323,67 @@ async function callWorker<T>(srcPath: string, sourceFilename: string, action: st
   });
 }
 
+/** How long a downloaded data file is reused before it is fetched again. */
+const STATS_CACHE_FRESH_MS = 10 * 60 * 1000;
+/**
+ * A cached download older than this is deleted. Longer than the reuse window plus the worker's
+ * longest request (5 minutes), so a file handed to the worker just inside the window is never
+ * removed while the worker reads it.
+ */
+export const STATS_CACHE_KEEP_MS = 30 * 60 * 1000;
+const STATS_CACHE_PREFIX = "stats-src-";
+let lastSweep = 0;
+
+/**
+ * Removes cached data file downloads (and half-written `.part` files left by a crash) older than
+ * STATS_CACHE_KEEP_MS from `dir`. Before this, each data file read left its download in the
+ * temporary folder for good: respondent-level data kept on disk with no end, and the folder
+ * growing by one file per data file per session. Best effort: a file that cannot be removed now
+ * (in use on Windows, already gone) is left for the next sweep and never fails the read that ran
+ * the sweep. Returns the names removed.
+ */
+export async function sweepStatsCache(dir: string = tmpdir(), now: number = Date.now()): Promise<string[]> {
+  const removed: string[] = [];
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return removed;
+  }
+  for (const name of names) {
+    if (!name.startsWith(STATS_CACHE_PREFIX)) continue;
+    const file = path.join(dir, name);
+    try {
+      const info = await stat(file);
+      if (!info.isFile() || now - info.mtimeMs <= STATS_CACHE_KEEP_MS) continue;
+      await rm(file, { force: true });
+      removed.push(name);
+    } catch {
+      // Left for the next sweep.
+    }
+  }
+  return removed;
+}
+
 async function runLocalStatsPython<T>(
   storagePath: string,
   sourceFilename: string,
-  action: "convert" | "dictionary" | "crosstab" | "categories" | "columns",
+  action: "convert" | "table" | "indicators" | "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet" | "value_labels",
   args: unknown = {},
 ): Promise<T> {
   // The same data file is read many times in a session (every table built,
   // every variable list), so the download is kept on disk for a few minutes
   // instead of being fetched again each time.
-  const cached = path.join(tmpdir(), `stats-src-${createHash("sha1").update(storagePath).digest("hex")}`);
+  const cached = path.join(tmpdir(), `${STATS_CACHE_PREFIX}${createHash("sha1").update(storagePath).digest("hex")}`);
+  // At most once a minute per server process, old downloads are cleared (sweepStatsCache).
+  if (Date.now() - lastSweep > 60 * 1000) {
+    lastSweep = Date.now();
+    void sweepStatsCache();
+  }
   let bytes: Buffer | null = null;
   try {
     const info = await stat(cached);
-    if (Date.now() - info.mtimeMs < 10 * 60 * 1000) bytes = await readFile(cached);
+    if (Date.now() - info.mtimeMs < STATS_CACHE_FRESH_MS) bytes = await readFile(cached);
   } catch {
     // not cached yet
   }
@@ -300,7 +427,11 @@ async function runLocalStatsPython<T>(
         if (err.code === "ENOENT") continue; // this interpreter name isn't installed
         lastError = (err.stderr || err.message || "").trim().split("\n").slice(-3).join(" ");
         if (/No module named ['"]?pyreadstat/.test(lastError)) {
-          throw new Error("Reading SPSS/Stata/SAS files locally needs the Python package pyreadstat. Run: pip install pyreadstat");
+          throw new Error("Reading SPSS/Stata/SAS files locally needs the Python package pyreadstat. Run: pip install -r requirements.txt");
+        }
+        // R (.rds, .RData) and Parquet files need two more packages (26 October 2026).
+        if (/No module named ['"]?(pyreadr|fastparquet)/.test(lastError)) {
+          throw new Error("Reading R and Parquet files locally needs the Python packages pyreadr and fastparquet. Run: pip install -r requirements.txt");
         }
         ran = true;
         break;
@@ -332,6 +463,9 @@ export type VariableInfo = {
   text?: boolean;
   setKey?: string | null;
   inSet?: string;
+  /** The distinct whole-number values the variable holds, as code strings, when there are at most 60 (dictionary
+   * version 16); null for a measure or decimals; absent from an older dictionary. */
+  codes?: string[] | null;
 };
 /** A multiple-response question: yes/no option variables that share a name stem. */
 export type SetKind = "multi" | "grid" | "battery";
@@ -387,6 +521,10 @@ export type VariableDictionary = {
    * dictionary was computed, so a cached copy can be told apart from a stale one read under
    * a different orientation. Absent on dictionaries cached before this was tracked. */
   layout?: string | null;
+  /** The document's header row choice (DataSetup.headerRowsSkipped) in effect when this dictionary was computed: a
+   * cached copy read under another header row names other variables and is stale. Absent on dictionaries cached
+   * before the choice existed, all read with the header detected automatically, so absent is read as null. */
+  headerRowsSkipped?: number | null;
   /** An Excel workbook whose label sheets (or codebook) declared two different labels for the
    * same variable or the same value code, and where each came from. Present only when such a
    * conflict was found; capped at 50 entries. IMP-015 (version 7+): neither label is applied -
@@ -437,6 +575,13 @@ export type CrosstabGroup = {
   minus?: string[];
   /** Where the row sits: after the answers (default), or above or below the answers it summarises. */
   place?: "end" | "above" | "below";
+  /**
+   * Mean only: when the engine does not judge the answers an ordered scale (its _is_ordered_scale:
+   * the file's measurement level, a numbered scale, or scale wording in the labels), the row's label
+   * gains "(mean of the answer codes, which may not be in order)" and the row carries
+   * codesMayBeUnordered. Set by plain-English mean requests (crosstabAsk.ts).
+   */
+  qualifyCodes?: boolean;
 };
 export type CrosstabRequest = {
   columnVars: string[];
@@ -445,7 +590,7 @@ export type CrosstabRequest = {
   /** Per column variable: categories combined into one column. */
   columnGroups?: Record<string, CrosstabGroup[]>;
   /** Which way of making tables produced this one. Used to group the table set by mode. */
-  source?: "workspace" | "ask" | "window" | "starter";
+  source?: "workspace" | "ask" | "window" | "starter" | "assistant";
   /** Built from the suggested starter set: findings from it are controlled for false discoveries. */
   starter?: boolean;
   /** How the many column tests in a table are corrected. Defaults to false discovery rate. */
@@ -459,6 +604,9 @@ export type CrosstabRequest = {
   design?: { psu: string | null; strata: string | null };
   /** Leave don't know, refused and not applicable out of percentage bases. Defaults to true. */
   excludeDk?: boolean;
+  /** Batch 48, the "Mean" tick: a mean row above each single choice question whose codes form a rating
+   * scale. Only true asks; absent (a request saved before the tick) builds without. */
+  meanRows?: boolean;
   /** Restrict the whole table to one category of a filter variable. */
   filters?: CrosstabFilter[];
   /** Extra percentiles (0 to 100) to report for averages. */
@@ -502,13 +650,17 @@ export type CrosstabDesc = {
   skewness?: number | null;
   kurtosis?: number | null;
   /** Histogram bars: one per value when there are 12 or fewer, otherwise ten equal-width bins. */
-  hist?: { lo: number; hi: number; pct: number }[];
+  /** pctExact: the same share unrounded (engine 2026.10.28 on; CT5K-F01). */
+  hist?: { lo: number; hi: number; pct: number; pctExact?: number }[];
   percentiles?: { p: number; v: number | null }[];
 };
 export type CrosstabNetCell = {
   block: number;
   count: number | null;
   pct: number | null;
+  /** The NET column's count and pct unrounded (see CrosstabRow.countExact). */
+  countExact?: number | null;
+  pctExact?: number | null;
   rowPct: number | null;
   /** Share of responses (mentions), multiple response only. */
   respPct?: number | null;
@@ -532,6 +684,10 @@ export type CrosstabRow = {
   /** A net score or mean score row: shown as points or an average, not a percentage. */
   isScore?: boolean;
   isMean?: boolean;
+  /** Batch 48: a mean row added by the Mean tick (label "Mean"), not a group the researcher defined. */
+  autoMean?: boolean;
+  /** A requested mean whose codes the engine does not judge an ordered scale (CrosstabGroup.qualifyCodes); its label says so. */
+  codesMayBeUnordered?: boolean;
   /** Descriptive statistics of an average or grid row. */
   desc?: CrosstabDesc | null;
   /** Eta of an average against each banner variable. */
@@ -542,6 +698,13 @@ export type CrosstabRow = {
   /** One entry per banner variable, in block order. Absent on tables saved before 9 October 2026. */
   net?: CrosstabNetCell[];
   pct: (number | null)[];
+  /** CT5K-F01 (batch 59): the weighted count and the percentage (or, on a mean or score row, the mean) of
+   * each column unrounded, saved with the table. `count` and `pct` are rounded for display; every figure
+   * derived from them (NPS, top-box, coded means, the export's Total line) is computed from these and
+   * rounded once at the end (read through src/lib/crosstabExact.ts). pctExact is null exactly where pct
+   * is. Absent on tables built before engine 2026.10.28, which tableMethodStatus reports as earlier. */
+  countExact?: (number | null)[];
+  pctExact?: (number | null)[];
   rowPct: (number | null)[];
   /** Share of responses (mentions) in each column, multiple response options only. */
   respPct?: (number | null)[];
@@ -551,6 +714,8 @@ export type CrosstabRow = {
   sig: number[];
   /** Standard error of each column percentage, in percentage points (design based when a design was given). */
   se?: (number | null)[];
+  /** se unrounded (engine 2026.10.28 on), for intervals around derived figures; see countExact. */
+  seExact?: (number | null)[];
   /** Letters of the columns this cell is significantly higher than (column-pair test). */
   letters?: string[];
   /** Standardized residual (observed minus expected, over the square root of expected), one per column.
@@ -559,10 +724,12 @@ export type CrosstabRow = {
   /** Adjusted residual: the standardized residual divided by its own standard error, so it reads like a z-score. */
   adjResidual?: (number | null)[];
   base: CellBase[];
-  total: { count: number | null; nCell?: number | null; pct: number | null; respPct?: number | null; base: CellBase };
+  total: { count: number | null; nCell?: number | null; pct: number | null; countExact?: number | null; pctExact?: number | null; respPct?: number | null; base: CellBase };
 };
 /** What produced a table, kept so any number can be traced and reproduced. */
 export type CrosstabProvenance = {
+  /** Batch 48: the Mean tick as it was when this table was built. */
+  meanRows?: boolean;
   builtAt: string;
   engine: string | null;
   sourceFile: string;
@@ -587,6 +754,10 @@ export type CrosstabProvenance = {
    * provenance recorded sourceFile/sourceDocumentId but nothing naming which sheet of a
    * multi-sheet workbook the saved numbers came from. */
   selectedSheet?: string | null;
+  /** The header row choice the file was read under (DataSetup.headerRowsSkipped, decision 9): null when detected
+   * automatically. Absent on tables built before it was recorded (all read with detection). Provenance only: a table
+   * is not marked stale by it, the same as for the layout. */
+  headerRowsSkipped?: number | null;
 };
 /** Whole-table association test of one question against one banner variable (first-order Rao-Scott). */
 /** Whole-table test of one answer against one banner variable, with association measures from the weighted table. */
@@ -648,6 +819,14 @@ export type CrosstabResult = {
      * in descriptiveFindings.ts prefers this over its own SRS/avg-design-effect fallback whenever
      * it's available. */
     npsContrastSe?: { total: number | null; columns: (number | null)[] };
+    /** D2b: each banner column's NPS against the rest of its banner variable, in points, with the domain contrast's
+     * standard error (design-based, or with-replacement without a design) and Benjamini-Hochberg adjusted p across the
+     * columns of one banner variable. Present for a 0 to 10 scale with two or more columns. */
+    npsGroupTests?: {
+      method: "design" | "with_replacement";
+      correction: "fdr";
+      columns: ({ block: number; nps: number; restNps: number; difference: number; se: number; z: number | null; p: number | null; pAdjusted?: number } | null)[];
+    };
   }[];
   notes?: {
     test: string;
@@ -659,6 +838,15 @@ export type CrosstabResult = {
     design?: string;
     overlap?: string;
     tableTest?: string;
+    /** The version of the rules this table's figures and flags came from (engine TABLE_METHOD); absent on a
+     * table built before it was recorded. Compared with CURRENT_TABLE_METHOD by tableMethodStatus. */
+    methodVersion?: string;
+    /** Batch 48: whether the Mean tick was on when the table was built, and the questions it gave no mean
+     * (codes not a rating scale), in words; null when none. */
+    meanRows?: boolean;
+    meanNotAdded?: string | null;
+    /** Under a survey design, cells or column pairs at 0% or 100% left untested, with the count; null when none. */
+    degenerateUntested?: string | null;
     designUsed?: { psu: string; strata: string | null; nPsu: number; nStrata: number; pooledPsus: number; casesMissingDesign: number } | null;
     /** ANA-NPS-003 (second counter-review): true only when a sampling design was actually applied
      * to compute this table's design-aware figures (server-side dsg is not None) - as opposed to
@@ -691,7 +879,7 @@ export type CrosstabResult = {
  * the Python function; otherwise it runs the same code with local Python.
  */
 export async function runStatsTool<T>(
-  action: "dictionary" | "crosstab" | "categories" | "columns",
+  action: "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet" | "value_labels",
   storagePath: string,
   sourceFilename: string,
   args: unknown = {},

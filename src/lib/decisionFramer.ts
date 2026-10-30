@@ -1,9 +1,11 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolInput } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
-import { syncDecisionStatement } from "./runSync";
+import { lockRunForContextChange, syncDecisionStatement } from "./runSync";
 import { suggestionsNotAlreadyOnRun } from "./candidateSuggestionFilter";
 import { evidenceStatusLabel, NO_INVENTED_EXPLANATIONS_RULE } from "./groundingRules";
+import { candidateSourceColumnAvailable, FINDING_SOURCE_DOCUMENT_SQL, sourceDocumentsOf } from "./candidateSourceDocuments";
 
 const MAX_FINDINGS_FOR_PROMPT = 120;
 const MAX_INSIGHTS_FOR_PROMPT = 120;
@@ -81,6 +83,9 @@ export async function generateDecisionCandidates(
 
   let evidence: EvidenceItem[];
   let evidenceKindLabel: string;
+  // The files the evidence came from (candidateSourceDocuments.ts), recorded on each suggestion so
+  // removing the only one of them removes an unreviewed suggestion (documentBin).
+  let sourceDocuments: string[] | null;
 
   if (isGenerateMode) {
     const insights = await withTenant(tenantId, async (client) => {
@@ -90,8 +95,9 @@ export async function generateDecisionCandidates(
         tension: string;
         implication: string;
         theme: string | null;
+        source_document: string | null;
       }>(
-        `select i.headline, i.observation, i.tension, i.implication, f.theme
+        `select i.headline, i.observation, i.tension, i.implication, f.theme, ${FINDING_SOURCE_DOCUMENT_SQL("f")} as source_document
          from insights i
          join findings f on f.id = i.finding_id
          where i.run_id = $1 and f.status != 'rejected'
@@ -111,6 +117,7 @@ export async function generateDecisionCandidates(
     }
 
     evidenceKindLabel = "insights";
+    sourceDocuments = sourceDocumentsOf(insights);
     evidence = insights.map((i) => ({
       theme: i.theme,
       text: `${i.headline}. Observation: ${i.observation} Tension: ${i.tension} Implication: ${i.implication}`,
@@ -125,8 +132,9 @@ export async function generateDecisionCandidates(
         origin: string | null;
         verdict_tier: string | null;
         verification_basis: string | null;
+        source_document: string | null;
       }>(
-        `select f.finding_text, f.theme, f.origin, v.verdict_tier, v.verification_basis
+        `select f.finding_text, f.theme, f.origin, v.verdict_tier, v.verification_basis, ${FINDING_SOURCE_DOCUMENT_SQL("f")} as source_document
          from findings f
          left join lateral (
            select verdict_tier, verification_basis from verdicts
@@ -147,6 +155,7 @@ export async function generateDecisionCandidates(
     }
 
     evidenceKindLabel = "findings";
+    sourceDocuments = sourceDocumentsOf(findings);
     evidence = findings.map((f) => ({
       theme: f.theme,
       text: `${f.finding_text} [${evidenceStatusLabel({
@@ -229,11 +238,9 @@ export async function generateDecisionCandidates(
 
   await logApiUsage(tenantId, runId, "decision_framer_synthesis", synthesisResponse.usage);
 
-  const synthesisToolUse = synthesisResponse.content.find((block) => block.type === "tool_use");
-  const synthesisInput =
-    synthesisToolUse && synthesisToolUse.type === "tool_use"
-      ? (synthesisToolUse.input as { synthesis?: unknown })
-      : undefined;
+  // EC10K-F02: only a finished call is used. A cut-off synthesis would otherwise be saved over the
+  // previous one as if whole; it throws, so nothing is saved and the previous synthesis and candidates stand.
+  const synthesisInput = finishedToolInput(synthesisResponse, "record_evidence_synthesis", "The evidence synthesis") as { synthesis?: unknown };
   const evidenceSynthesis =
     synthesisInput && typeof synthesisInput.synthesis === "string" && synthesisInput.synthesis.trim().length > 0
       ? synthesisInput.synthesis.trim()
@@ -325,12 +332,8 @@ export async function generateDecisionCandidates(
 
   await logApiUsage(tenantId, runId, "decision_framer_candidates", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
-    throw new Error("Did not return a structured decision candidate list");
-  }
-
-  const rawInput = toolUse.input as { candidates?: unknown };
+  // EC10K-F02: a cut-off, refused or other-tool answer throws (nothing is saved), as a missing one did.
+  const rawInput = finishedToolInput(response, "record_decision_candidates", "The decision suggestions") as { candidates?: unknown };
   // The model sometimes returns an array field as a JSON string.
   let candidatesField: unknown = rawInput.candidates;
   if (typeof candidatesField === "string") {
@@ -382,6 +385,9 @@ export async function generateDecisionCandidates(
     // of deleted with nothing to replace them.
     try {
       await client.query("begin");
+      // Codex OBJ500-F01: the run row first, as every candidate change does (runSync.ts), so a
+      // regeneration and a researcher's accept, reject or delete are serialized.
+      await lockRunForContextChange(client, runId, tenantId);
 
       // Re-running the framer replaces its previous AI-suggested
       // candidates rather than piling up duplicates. This has to catch
@@ -412,12 +418,17 @@ export async function generateDecisionCandidates(
           "No new decision suggestions came back this time (every suggestion repeats wording already on this run). Nothing was changed, try again."
         );
       }
+      const sourceColumn = await candidateSourceColumnAvailable(client, "decision_candidates");
       for (const candidate of newSuggestions) {
         const result = await client.query<{ id: string; candidate_text: string }>(
-          `insert into decision_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-           values ($1, $2, $3, $4, 'ai_suggested', 'accepted')
-           returning id, candidate_text`,
-          [tenantId, runId, candidate.candidate_text, candidate.rationale]
+          sourceColumn
+            ? `insert into decision_candidates (tenant_id, run_id, candidate_text, rationale, source, status, source_document_ids)
+               values ($1, $2, $3, $4, 'ai_suggested', 'accepted', $5)
+               returning id, candidate_text`
+            : `insert into decision_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
+               values ($1, $2, $3, $4, 'ai_suggested', 'accepted')
+               returning id, candidate_text`,
+          [tenantId, runId, candidate.candidate_text, candidate.rationale, ...(sourceColumn ? [sourceDocuments] : [])]
         );
         rows.push(result.rows[0]);
       }

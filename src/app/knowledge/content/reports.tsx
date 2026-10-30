@@ -309,9 +309,9 @@ export default function ReportsGuide() {
       <Limit title="Verdicts do not travel as proof">
         A finding labelled robust in the report means the evidence in the material supported it as worded. It does
         not mean the claim is true of the world, and significance is a narrow statement that is easily over-read
-        (Wasserstein &amp; Lazar, 2016). Corrections for many comparisons exist for the starter set of table findings
-        (Benjamini &amp; Hochberg, 1995), not for hand-built tables, and a contrast between two results is not itself
-        tested (Gelman &amp; Stern, 2006).
+        (Wasserstein &amp; Lazar, 2016). Table findings are corrected for many comparisons within
+        their own table (by default the false discovery rate; Benjamini &amp; Hochberg, 1995), not across the tables of a project, and a contrast
+        between two results is not itself tested (Gelman &amp; Stern, 2006).
       </Limit>
       <Limit title="Gaps depend on what was recorded">
         The objectives and decisions pages exist only if the check has run, which needs objectives or decisions to

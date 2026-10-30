@@ -20,6 +20,7 @@
 // This is a MEASUREMENT on one fixture and one run, not a pass threshold: the test fails only when
 // the pipeline itself does not complete. Results go to real-model-quality.json and stdout.
 import { expect, test } from "@playwright/test";
+import { crosstabWorkspace, openCrosstabs } from "./helpers/crosstabs.mjs";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -70,11 +71,7 @@ const OMITTED_EFFECT = {
 // button, so it is picked here with the workspace's own controls; everything else is the adapter's.
 async function buildSetTable(page, setName, column) {
   await page.reload({ waitUntil: "networkidle" });
-  const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-  if (!(await dialog.isVisible())) {
-    await page.getByRole("button", { name: /^Analytics(\s*\d+)?$/ }).first().click();
-    await page.getByRole("button", { name: /^Crosstabs/ }).click();
-  }
+  const dialog = (await crosstabWorkspace(page).isVisible()) ? crosstabWorkspace(page) : await openCrosstabs(page);
   const search = dialog.getByPlaceholder("Search name or label");
   const rowOf = (name) => dialog.locator(`div.grid:has(> span[title="${name}"])`).first();
   await search.fill(column);
@@ -167,6 +164,7 @@ test("real-model quality on golden-thread-1: claim verdicts, omitted effect, fig
     // Synthesis.
     await page.goto(run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Insights(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("insights-tab-review"); if (await t.count()) await t.click(); } // the review tab (the section opens on an overview)
     const synth = page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).first();
     // Synthesis needs insights; when none were drafted it produces nothing, which is recorded, not
     // a harness failure, so the measurements below always run.

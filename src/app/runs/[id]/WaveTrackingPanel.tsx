@@ -102,6 +102,9 @@ function DriverWaveTable({ table }: { table: WaveDriverTable }) {
 export default function WaveTrackingPanel({ runId }: { runId: string }) {
   const [loading, setLoading] = useState(true);
   const [files, setFiles] = useState<WaveFile[]>([]);
+  // Waves taken out under Import data, and how the waves are ordered, as the server decided (waves.ts).
+  const [excluded, setExcluded] = useState<WaveFile[]>([]);
+  const [orderText, setOrderText] = useState<string | null>(null);
   const [variables, setVariables] = useState<{ name: string; label: string }[]>([]);
   const [weights, setWeights] = useState<{ name: string; label: string }[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -142,6 +145,8 @@ export default function WaveTrackingPanel({ runId }: { runId: string }) {
         return;
       }
       setFiles(r.files);
+      setExcluded(r.excluded);
+      setOrderText(r.order);
       if (r.files.length >= 2) {
         const v = await sharedWaveVariablesAction(
           runId,
@@ -386,14 +391,19 @@ export default function WaveTrackingPanel({ runId }: { runId: string }) {
       </div>
 
       <div className="rounded-xl border border-border bg-white p-3 text-xs shadow-sm">
-        <p className="mb-1.5 font-medium text-foreground">Files, oldest upload first</p>
-        <ol className="flex flex-wrap gap-x-4 gap-y-1 text-muted">
+        <p className="mb-1.5 font-medium text-foreground" data-testid="wave-order">{orderText ?? "Waves"}</p>
+        <ol className="flex flex-wrap gap-x-4 gap-y-1 text-muted" data-testid="wave-list">
           {files.map((f, i) => (
             <li key={f.documentId}>
-              {i + 1}. <span className="font-medium text-foreground">{f.wave}</span> ({f.filename})
+              {i + 1}. <span className="font-medium text-foreground">{f.wave}</span> ({f.filename}{f.waveDate ? `, fieldwork ${f.waveDate}` : ""})
             </li>
           ))}
         </ol>
+        {excluded.length > 0 && (
+          <p className="mt-1.5 text-muted" data-testid="wave-excluded">
+            Left out of the analysis (Import data, the file&apos;s set-up): {excluded.map((f) => `${f.wave} (${f.filename})`).join(", ")}.
+          </p>
+        )}
       </div>
 
       {error && <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 shadow-sm">{error}</p>}

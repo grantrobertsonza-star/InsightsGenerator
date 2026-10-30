@@ -128,8 +128,20 @@ export function createFakeFindingsDb(initial: Partial<FakeDbState> = {}, options
         return { rows: [] };
       }
       if (s.startsWith("select set_config")) return { rows: [] };
+      // DI-F07: finding_history.researcher_note (migration 0114) is present in the migrated world.
+      if (s.includes("from information_schema.columns") && s.includes("researcher_note")) {
+        return { rows: [{ n: provenance ? 1 : 0 }] };
+      }
       if (s.includes("from information_schema.columns")) {
         return { rows: [{ n: provenance ? 10 : 0 }] };
+      }
+      // DI-F07, before 0114: is any finding about to be retired carrying a note?
+      if (s.startsWith("select 1 from findings where") && s.includes("btrim(researcher_note)")) {
+        const ids = Array.isArray(params[0]) ? (params[0] as string[]) : null;
+        const noted = state.findings.some(
+          (f) => (ids ? ids.includes(f.id as string) : f.source_document_id === params[0]) && String(f.researcher_note ?? "").trim() !== "",
+        );
+        return { rows: noted ? [{ "?column?": 1 }] : [] };
       }
 
       if (s.startsWith("select storage_path, source_filename from documents")) {
@@ -211,14 +223,16 @@ export function createFakeFindingsDb(initial: Partial<FakeDbState> = {}, options
       }
 
       // findingActions.ts (researcher actions) and findingProvenance.ts writes.
-      const one = (r: Row) => r.id === params[1] && r.run_id === params[2];
-      if (s === "update findings set status = $1 where id = $2 and run_id = $3 returning id") return updateFindings(one, "status", params[0]);
-      if (s === "update findings set finding_kind = $1 where id = $2 and run_id = $3 returning id") return updateFindings(one, "finding_kind", params[0]);
-      if (s === "update findings set theme = $1 where id = $2 and run_id = $3 returning id") return updateFindings(one, "theme", params[0]);
-      if (s === "update findings set researcher_note = $1 where id = $2 and run_id = $3 returning id") return updateFindings(one, "researcher_note", params[0]);
-      if (s === "update findings set status = $1 where run_id = $2 and id = any($3::uuid[]) returning id") {
+      // SEC1: each of these names tenant_id as well ($4), matched against the row's tenant.
+      const sameTenant = (r: Row) => r.tenant_id === undefined || r.tenant_id === params[3];
+      const one = (r: Row) => r.id === params[1] && r.run_id === params[2] && sameTenant(r);
+      if (s === "update findings set status = $1 where id = $2 and run_id = $3 and tenant_id = $4 returning id") return updateFindings(one, "status", params[0]);
+      if (s === "update findings set finding_kind = $1 where id = $2 and run_id = $3 and tenant_id = $4 returning id") return updateFindings(one, "finding_kind", params[0]);
+      if (s === "update findings set theme = $1 where id = $2 and run_id = $3 and tenant_id = $4 returning id") return updateFindings(one, "theme", params[0]);
+      if (s === "update findings set researcher_note = $1 where id = $2 and run_id = $3 and tenant_id = $4 returning id") return updateFindings(one, "researcher_note", params[0]);
+      if (s === "update findings set status = $1 where run_id = $2 and id = any($3::uuid[]) and tenant_id = $4 returning id") {
         const ids = new Set(params[2] as string[]);
-        return updateFindings((r) => r.run_id === params[1] && ids.has(r.id as string), "status", params[0]);
+        return updateFindings((r) => r.run_id === params[1] && ids.has(r.id as string) && sameTenant(r), "status", params[0]);
       }
       if (s.startsWith("update findings set human_reviewed_at = now(), human_review_action = $2 where id = any($1::uuid[])")) {
         const ids = new Set(params[0] as string[]);

@@ -36,14 +36,15 @@ vi.mock("../anthropic", () => ({
     messages: {
       create: vi.fn(async (req: { messages: { content: string }[] }) => {
         const content = req.messages[0].content;
-        const decision = /this project has confirmed: \\?"([^"\\]*)\\?"/.exec(JSON.stringify(req))?.[1] ?? "(none)";
+        // CE-2: the decisions are listed numbered; the first is the one these runs have.
+        const decision = /this project has confirmed, numbered:\\n0\. (.*?)\\n/.exec(JSON.stringify(req))?.[1] ?? "(none)";
         const count = (content.match(/^\d+\. (\[[^\]]*\] )?Headline:/gm) ?? []).length;
         if (model.duringCall) { const f = model.duringCall; model.duringCall = null; await f(); }
         const recommendations = Array.from({ length: count }, (_, index) => ({
           index, action_text: `Act for ${decision}`, owner_role: "Lead", owner_feasibility_note: "n", timeline: "Q1",
           metric: "m", priority: "high", assumptions_and_risks: "a", alternatives_considered: "b",
         }));
-        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", input: { recommendations } }] };
+        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "record_recommendations", input: { recommendations } }] };
       }),
     },
   },
@@ -59,7 +60,8 @@ describe.skipIf(!TEST_DATABASE_URL)("recommendations are judged on the decisions
     process.env.DEFAULT_TENANT_ID = tenant;
     await db.pool.query("insert into tenants(id,name) values($1,'Synthetic recommendation context')", [tenant]);
   }, 120000);
-  afterAll(async () => { const { pool } = await import("../db"); await pool.end(); await db.drop(); });
+  // A drop under a loaded full run can take longer than the 10-second hook default (Codex V-B19-01 review).
+  afterAll(async () => { const { pool } = await import("../db"); await pool.end(); await db.drop(); }, 60000);
 
   const id = async (sql: string, p: unknown[]) => (await db.pool.query(sql, p)).rows[0].id as string;
   const newRun = async (decision: string, entry = "generate") => {

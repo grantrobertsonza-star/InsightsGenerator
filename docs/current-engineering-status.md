@@ -1,158 +1,541 @@
 # Current engineering status
 
-Updated: 2026-10-18 by Claude (four packages released for Codex).
+Updated: 2026-10-30. State: **READY_FOR_CODEX** (BatchDEVFIX on top of BatchSEC; SEC-F01 and SEC-F02 repairs in progress): development only, Tailwind reads class names from src only and work/ is ignored by git, TypeScript and ESLint, so the dev server no longer rescans Codex's review archives on every change. No product behaviour change; no migration.
+
+## Claude: batch DEVFIX (2026-10-30, morning)
+
+Grant, 30 October: on the dev server the Brand tracking dashboard was drawn over the Analytics page (no background, no width limit, text overlapping), and the dev page earlier kept reloading. Cause: Tailwind's automatic source detection scans the whole app folder, including `work/` (about 145 Codex review folders, many holding full copies of the app). Measured here with 40 copies of `src` in `work/`: one style build took 18.2 s instead of 1.4 s, and every write in `work/` triggers another. Classes added recently (`bg-[#f5f7fb]`, `max-w-[84rem]`) were missing from the stale styles Grant's browser received.
+
+- `src/app/globals.css`: `@import "tailwindcss" source("../")`, so Tailwind reads `src` only. Compiled with and without: 979 against 976 classes; the three dropped (`end-2022`, `end-2025`, `lowercase`) came from `public/home.html` and docs, and no `src` file uses them. With `work/` full of copies the build took 1.1 s.
+- `.gitignore`: `/work/` (also speeds up `git status`, which timed out on the laptop). `tsconfig.json` excludes `work`; `eslint.config.mjs` ignores `work/**`.
+- Gates: `npx tsc --noEmit` exit 0. No runtime code changed.
+
+## Claude: batch SEC, main copy (2026-10-30, night)
+
+Implemented, ready for review, on top of BatchD3e. Two parts, each with its handover:
+- SEC2: `claude/batchSEC2-handover-2026-10-29.md`. Ownership checked at the entry of every server action that takes a
+  project id (`runAccessible`, `assertRunAccessible` in `runOwnership.ts`); the source scan fails on an action without
+  it; a database test as a role that bypasses row-level security (10 of 15 failed before, 15 pass). Security headers
+  (Content-Security-Policy, frame, content type, referrer, HSTS, permissions) and no `X-Powered-By`.
+- SEC3: `claude/batchSEC3-handover-2026-10-29.md`. Uploaded content is wrapped as data for the Research assistant, and
+  `revise_narrative` is offered only when the researcher's own message asks to change the report; a planted
+  instruction in a document wrote to the report before and writes nothing now.
+The database role switch in `docs/database-roles.md` is still Grant's to do. No migration.
+
+Gates on the exact tree:
+- On `0c45b0c` (the same product code; later commits change only browser checks and this file): `npx tsc --noEmit`
+  passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed; library 365 files
+  (363 passed, 2 skipped), 2,750 tests passed, 92 skipped, 0 failed; browser suite 154 passed, 1 skipped, 2 failed
+  (`tracker-moments`, `tracker-advertising`); smoke 1 passed; objective review acceptance passed. The new security
+  headers did not break any browser check.
+- The two failures, and two in a later focused rerun (`tracker-dashboard`), were the checks opening a page while a
+  wave label's save was still queued behind the file's first read; the labels were saved (the database showed them).
+  The tracker checks now open the page again until the labelled file is listed or the label reads back. On a fresh
+  stack with the final tree: the five page checks and the three `tracker-dashboard` cases passed (8 passed).
+- Observed, not changed here: a wave label typed straight after adding a file can take a minute or more to save,
+  because it waits behind the file's first read, and the field shows no "saving" state. Worth a small screen change.
+
+## Claude: batch D3e, main copy (2026-10-30, night)
+
+Implemented, ready for review, on top of BatchD3c. Three parts, each with its handover:
+- Brand tracking dashboard, the remaining pages: `claude/batchM4-handover-2026-10-29.md` (Advertising & WOM, Audience &
+  media with the small-base rule, Category overview; contracts D3e to D3g in `claude/d2-design-2026-10-29.md`). Compared
+  with independent pandas readings of BMW wave 1, weighted and unweighted, to 1e-6.
+- D6 Indicator Analytics: `claude/batchD6-handover-2026-10-29.md`; contract `claude/indicator-analytics.md`. Every
+  figure equals Grant's reference (`fixtures/indicator-data/Chart_Data_RH_ANCC_W_IRN_reference.json`): Kenya's trend,
+  the 2022 comparison, the 210 two-year-window observations and the audit (607 observations, 71 areas, 213 series).
+  The indicator reader records more series attributes (`engine-indicators-2026.10.29`); files read before show them
+  as not recorded until read again.
+- SEC1, tenant ownership in the code: `claude/batchSEC1-handover-2026-10-29.md`. One helper (`runOwnership.ts`);
+  every listed read and write filters by tenant or checks ownership in the writing transaction; a source scan and a
+  database test run as a role that bypasses row-level security (11 of 13 failed before, 13 pass). The database role
+  switch in `docs/database-roles.md` is still Grant's to do.
+No migration.
+
+Gates on the exact tree:
+- On `99bfe4c` (the same code before the rebase onto the applied D3c): `npx tsc --noEmit` passed; `npx eslint src e2e
+  --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed; library 361 files (359 passed, 2 skipped),
+  2,705 tests passed, 91 skipped, 0 failed; browser suite 155 passed, 1 skipped, 1 failed; smoke 1 passed; objective
+  review acceptance passed. `over-limit-refusal.check.mjs`, which timed out in D3c's run, passed.
+- The failure was the new `tracker-category.check.mjs`: it opened Analytics while the wave label's save could still be
+  on its way, so the file was listed without "Wave 1:" (the label was saved; the database showed it). The check now
+  opens the page again until the labelled file is listed (a test-only change) and passes on the stack (1 passed).
+
+## Claude: batch D3c, main copy (2026-10-29, night)
+
+Implemented, ready for review, on top of BatchT2. Two parts, each with its handover:
+- Moments & needs, the Brand tracking dashboard's page 02: `claude/batchM2-handover-2026-10-29.md`. Figures through
+  `computeCrosstab` without saving, read by code, the dashboard's weight; contracts in `claude/d2-design-2026-10-29.md`
+  (D3c). Compared with an independent pandas reading of BMW wave 1: all 12 relevance shares and 60 recall cells to
+  1e-6, weighted and unweighted.
+- Brand associations, the Brand tracking dashboard's page 03: `claude/batchM3-handover-2026-10-29.md`. Each brand on
+  its own aware base; contract D3d in `claude/d2-design-2026-10-29.md`. Compared with an independent pandas reading
+  of BMW wave 1: all 100 cells and every aware base to 1e-6, and BMW's ten values equal the pack's published wave 1
+  table to two decimals.
+- Brand Health with a multiple-response set as the brand source (Grant: "make Brand variable accept a set such as
+  owner_b"): `claude/batchBH-handover-2026-10-29.md`; contract `claude/brand-health.md`. A respondent who selected
+  two brands is in both groups, stated on the screen and in posted findings (caveat `brand_groups_overlap`); tests
+  across brand groups are withheld with the reason.
+No migration.
+
+Gates on the exact tree:
+- On `11b2e2a` (the same code before the rebase onto the applied T2, which added only the header-row check's fix and
+  T2's status): `npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py`
+  all passed; library 350 files (348 passed, 2 skipped), 2,623 tests passed, 91 skipped, 0 failed; browser suite
+  150 passed, 1 skipped, 2 failed; smoke 1 passed; objective review acceptance passed.
+- Failures: `header-row-choice.check.mjs` (the old locator; fixed in T2 by `81c8487`, which this rebased tree has) and
+  `over-limit-refusal.check.mjs` (the one-case-over refusal not shown within 3 minutes). Nothing in this package touches
+  import; the run shared the machine with three builds running their own test suites. It is rerun in the D3e package's
+  full suite, which includes this package's code.
+- U1 measured in development mode (`next dev`, the disposable stack, two 60 MB CSV files through Add files): with
+  `serverComponentsHmrCache: false` the check passed in 50.5 s; without it the first file had not finished saving
+  after 4.3 minutes and the check timed out. Production builds do not use that cache.
+
+## Claude: batch T2, main copy (2026-10-29, night)
+
+Implemented, ready for review, on top of BatchE1R (`4b14f3c9`). One package of three parts, each with its handover:
+- T1's second part: `claude/batchT1-handover-2026-10-29.md`, sections three to seven ("NA" in a column of country
+  codes; title rows; Objectives filled from a brief; path B; D2b part 3), and the last section, Analytics workspaces
+  staying open through a refresh (Grant: the Brand tracking dashboard closed by itself; `useKeptOpen`).
+- Decision 9, second part: `claude/batchHR-handover-2026-10-29.md` (the header row chosen on the Import screen). The
+  header row is one of the setup's structure fields, so E1-F02's acceptance rule covers it.
+- The table reader is now `engine-plain-2026.10.29b` and the dictionary version 17, so stored tables and cached
+  dictionaries read earlier are checked against a fresh read, or rebuilt, once. Conformance L1: 324 pass, 0 fail,
+  24 questions. L3: every dataset identical to the previous run.
+No migration.
+
+Gates on the exact tree:
+- On `e8f26e3`: `npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py`
+  all passed; library 344 files (342 passed, 2 skipped), 2,575 tests passed, 91 skipped, 0 failed; browser suite
+  148 passed, 1 skipped, 1 failed; smoke 1 passed; objective review acceptance passed.
+- The one failure was the new `header-row-choice.check.mjs` on its first run: the feature worked (the screenshot shows
+  the table read by row 4) but the check looked for the preview's headers by a role the table does not use. The check
+  now reads the header cells (`81c8487`, a test-only change) and passes on the same stack (1 passed).
+- The earlier T2 run (before the rebase on E1R) found two check faults, fixed in `89987b3`; both pass in this run.
+
+## Claude: batch E1R, main copy (2026-10-29, night)
+
+Implemented, ready for review, on top of `7e09578c` (BatchE1). Handover `claude/batchE1R-handover-2026-10-29.md`;
+review `docs/independent-e1-review-2026-10-29.md`. No migration.
+
+Gates on the exact tree:
+- `npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed.
+- Library: 339 files (337 passed, 2 skipped), 2,540 tests passed, 91 skipped, 0 failed
+  (`TEST_DATABASE_URL=... npx vitest run src/lib/__tests__ --pool=forks`, with commit signing turned off for the
+  test's own throwaway git repositories, which this container's signing setup otherwise refuses).
+- Browser suite (`npx playwright test -c e2e/ui/ui-check.config.mjs --workers=1`, disposable stack, production
+  build): 147 passed, 1 skipped, 0 failed. Smoke (`npx playwright test`): 1 passed. Objective review acceptance
+  script: passed.
+- One full run on this exact tree (`d7561f2`), answering the E1 review's gate-provenance note.
+
+## Claude: batch E1, main copy (2026-10-29, evening)
+
+Implemented, ready for review, on top of `919a3b54`. One package of the batches built today after D3aR2, in the order
+they stack; each keeps its own handover:
+- CB1: `claude/batchCB1-handover-2026-10-29.md` (migration 0133 `instrument_links.decided_by`).
+- D3b: `claude/batchD3b-handover-2026-10-29.md`.
+- Batches 55 to 57, D2b parts 1 and 2, the Cross tabs and codebook links fixes, the Setup save race:
+  `claude/batch55-57-handover-2026-10-29.md`.
+- U1, upload progress: commits only (see below).
+- T1, export all tables and non-answer labels: `claude/batchT1-handover-2026-10-29.md` (first two sections).
+
+Gates on the combined tree (T1 on U1 on 55-57 on D3b on CB1 on D3aR2):
+- `npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed.
+- Library: 334 files, 2,520 passed, 91 skipped, 0 failed, no errors. This is the run on the tree with T1's second
+  part; the first-part run had two failures, both fixed and rerun: a mounted test that did not resolve the new Setup
+  rule, and a database hook timing out under load.
+- Browser suite: 145 passed, 1 skipped, 2 failed; smoke 1 passed.
+  - `mean-tick.check.mjs`: the new Export all links were also named "PowerPoint", so the check found them first.
+    They are now named "Export all to PowerPoint" (and Excel, PDF).
+  - `upload-progress.check.mjs`: its two 60 MB files were identical, so the second was recognised and not sent, and
+    60 MB of short rows exceeded the case limit. The files now differ and stay under it. With the fixture fixed the
+    check found a real fault: the first request's "Sending and saving" line was set inside the transition before its
+    first await, so it never showed while that request ran. The first request's files are now named before the
+    upload starts (`AddFilesPanel.tsx`); the check failed on the tree without this and passes with it.
+  - Both, with `crosstab-wave-copy` and `crosstabs-entry`, were rerun on the fixed tree (see the package note).
+- Each intermediate tree (CB1, D3b, 55-57) passed typecheck, lint and the self-test.
+- The browser suite and the library suite ran on the combined tree only, not on each intermediate tree.
+- U1's development-mode timing (the 120 MB upload with and without the fix) is not yet measured: its run used the
+  identical-file fixture and was stopped.
+
+Not in this package: T1's second part (NA warning, title rows, Objectives fill from a brief, path B, D2b part 3),
+which follows as its own package; the Objectives prototypes (layout fold, wave selector), shown to Grant first.
+
+## Claude: batch D3aR2, main copy (2026-10-29)
+
+Implemented, ready for review, on top of `755e3c4d`. Handover `claude/batchD3aR2-handover-2026-10-29.md`; review
+`docs/independent-d3ar-review-2026-10-29.md`. Gates on the exact tree (laptop code plus D3aR2; `94dc80f`):
+`npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed;
+library 316 files, 2,413 passed, 91 skipped, 0 failed, no errors; browser suite 143 passed, 1 skipped, 1 failed; smoke
+1 passed. The first library run passed every test but reported one unhandled rejection from a timing-dependent test
+(`instrumentScope.db.test.ts` 3, a confirmation racing a codebook removal); the test now settles the refusal at
+once, and the rerun is the count above. The browser failure is `waves-in-project.check.mjs`: a wave label typed into
+a newly imported file was reported as "changed elsewhere" while the file's first-view acceptance was saving, so the
+label was not kept. It is not in D3aR2's code (tracker figures only); it passed in D3aR's run and recurs under load
+(both failing runs had the library suite running beside them). It is being repaired with the next package.
+
+## Claude: batch D3aR, main copy (2026-10-29)
+
+Implemented, ready for review, on top of `49cf6d1b`. Handover `claude/batchD3aR-handover-2026-10-29.md`; review
+`docs/independent-r1-d3a-review-2026-10-29.md`. Gates on the exact tree (laptop code plus D3aR; `364cc8e`):
+`npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed;
+library 316 files, 2,405 passed, 91 skipped, 0 failed; browser suite 144 passed, 1 skipped, 0 failed; smoke 1 passed.
+The first run of the browser suite failed one check (nps-driver-split): the worktree lacked UI1R/UI1R2, which the
+laptop has; they were added so the tested tree equals the laptop's code, and the full gates were run again.
+
+## Claude: batches R1 and D3a, main copy (2026-10-29)
+
+Implemented, ready for review, two commits on top of `4437102e`. Handovers `claude/batchR1-handover-2026-10-29.md`
+(S1: workbook Labels sheet headed value_label; dictionary version 15; tables built before keep merged categories
+until rebuilt) and `claude/batchD3a-handover-2026-10-29.md` (Tracker dashboard; figures from the Cross tab engine,
+the NPS tool and driver analysis, checked against Grant's BMW and banking packs; `computeCrosstab` so opening a
+dashboard saves no table). Gates: library 2,387 passed, 91 skipped, 0 failed on 8337d42; browser suite 142 passed,
+1 skipped, 2 failed (checks corrected since, both now passing); smoke 1. No new migration.
+
+## Claude: batch UI1R2, main copy (2026-10-29)
+
+Implemented, ready for review, one commit on top of `1318db7a`. Handover `claude/batchUI1R2-handover-2026-10-29.md`:
+UI1R-F01, the split keeps an in-memory value only when storage refuses the write, so a view reopened after another
+tab saved a split shows the saved value. The browser check follows Codex's steps and failed on the UI1R code
+(received 28 for 70); it and chart-legend-fit pass on the repair. tsc and eslint clean. No migration.
+
+## Claude: batch UI1R, main copy (2026-10-29)
+
+Implemented, ready for review, one commit on top of `6d00545d`. Handover `claude/batchUI1R-handover-2026-10-29.md`:
+UI1-F01, the split follows a value saved, changed or removed in another tab; other keys ignored. The browser check
+uses a second real tab and failed on the UI1 code (received 33). Gates on `0504ebf`: tsc and eslint clean; self-test
+passed; library 2,377 passed, 91 skipped, 0 failed; browser 141 passed, 1 skipped, 1 failed (this check's own last
+step referenced a variable the page does not have; corrected in the check, then it and chart-legend-fit passed);
+smoke 1 passed. No migration.
+
+## Claude: batches D2aR and UI1, main copy (2026-10-29)
+
+Implemented, ready for review, applied as two commits on top of `c8bfac21`. Handovers in `claude/`:
+`batchD2aR-handover-2026-10-29.md` (Codex D2A-F01 to F04, each with tests failing before the repair) and
+`batchUI1-handover-2026-10-29.md` (chart legends and titles inside the chart, also on wide scrolling charts;
+NPS and drivers in a draggable, keyboard-operable split; quadrants at full pane width). Gates on the combined tree
+`523f4de7`: tsc and eslint clean; self-test passed; library 2,377 passed, 91 skipped, 0 failed; browser 141 passed,
+1 skipped, 1 failed (review-action-failure, a navigation wait in an untouched area: passed in the two earlier full
+runs today and 3 of 3 when rerun alone); smoke 1 passed. No migration.
+
+## Claude: batch D2a, main copy (2026-10-29)
+
+Implemented, ready for review, one commit on top of `c5837288`. Handover `claude/batchD2a-handover-2026-10-29.md`:
+D1-F01 (recommend role only for a stated 0 to 10 scale, by `isZeroToTenScale`, the rule `computeNps` uses; partly
+labelled lists asked about); tracker roles from raw files (brand list from names and labels, grids, CSM from names
+and stated scales; Grant's coffee workbooks, CSM baseline, banking CSM CSV, BMW as SPSS and as CSV); codebook
+question fields stored (migration 0131) and condition columns never an answer list; engine action `value_labels`;
+dashboard choices per programme with compare-and-swap, carried by identity, weighted by default, Reset to
+suggested (migration 0132). Gates on `7c4d6bcc`: tsc and eslint clean; self-test passed; library 2,358 passed,
+91 skipped, 0 failed; browser 140 passed, 1 skipped; smoke 1 passed. Also recorded: Grant's decisions of 29 October
+(`claude/decisions-2026-10-29.md`), the D6 indicator designs, the security backlog. Migrations 0131 and 0132 to apply
+after a backup.
+
+## Claude: batches 66, 67, 68, 53 and D1, main copy (2026-10-29)
+
+Implemented, ready for review, applied as separate commits on top of `16253c5b`. Handovers in `claude/`:
+`batch66-handover-2026-10-29.md` (the smoke helper waits for the clicked action's request to finish; control
+check with a held rejection and an answered decoy), `batch67-handover-2026-10-29.md` (Grant's landing page;
+Explore the platform enters the app), `batch68-handover-2026-10-29.md` (impossible months refused by engine and
+server with one calendar rule, chart never moves a period; fully confidential countries selectable; published
+indicator files read as Read), `batch53-handover-2026-10-29.md` (grid rows linked by their stem from column
+labels and confirmed codebook wording, migration 0130; Confirm all N for one question; links in file order),
+`d1-handover-2026-10-29.md` (tracker role recognition tested on four brand packs and a CSM pack). Migration
+0130 must be applied after 0126 to 0129; before it, no grid link is made. Gates on the final tree: tsc, eslint, engine self-test clean; library 2,315 passed, 0 failed; browser 140 passed, 1 skipped; smoke 1 passed.
+
+Batches 33 to 65 (26 to 28 October) are recorded in their handovers in `claude/` and in Codex's reviews in
+`docs/`; this file was not updated for them at the time.
+
+## Claude: batch32 (change tiers, rules registry, CI gates), main copy (2026-10-26)
+
+Implemented, ready for review: the batch32 commit and its docs commit, on top of batch31. No application code, no migration. Details in `docs/batch32-handover-2026-10-26.md`. `AGENTS.md` change tiers and impact checklist; `scripts/change-tier.cjs`; `claude/rules-registry.md`; pull-request template; CI: whole-repo lint, engine self-test, tier summary, and a new browser workflow (not yet run on GitHub). **READY_FOR_CODEX.**
+
+## Claude: batch31 (overview tiles, module roll-up, worker freshness), main copy (2026-10-26)
+
+Implemented, ready for review: the batch31 repair commit and its docs commit, on top of batch30. No migration. Details in `docs/batch31-handover-2026-10-26.md`. Module pages roll up the rest of a module's items in place (Grant 07:05); overviews are tiles (07:06); the local statistics worker refuses unknown actions and restarts when its own script changes (the .xlsx refusal Grant hit at 06:57). Full library 1,763 passed / 72 skipped / 0 failed. Full browser 108 passed / 1 skipped / 0 failed; smoke 1 passed; self-test passed; lint 0 errors. **READY_FOR_CODEX.**
+
+## Claude: batch30 (RP0-F01, RP0-V01, RP0-M01, cross-tab design label), main copy (2026-10-26)
+
+Implemented, ready for review: the batch30 repair commit and its docs commit, on top of batch29. No migration. Details in `docs/batch30-handover-2026-10-26.md`; contracts `claude/answer-domain.md` (new) and `claude/one-reader-import.md`. RP0-F01: the engine keeps declared non-answer codes (user-missing, and "don't know"-type labels when excluded) out of a variable's answer domain (`_non_answer_codes`), so Codex's source scores top two box 40 with base 100; substantive unchosen codes stay (IMP-004). RP0-V01: the self-test uses an independent design t reference. RP0-M01: one typing policy beyond 2^53 for every text spelling; reader `engine-plain-2026.10.26b`, dictionary version 13. Cross-tab findings name the design treatment applied (`notes.designApplied`). Self-test all passed. Full library 1,759 passed / 72 skipped / 0 failed. Full browser 107 passed / 1 skipped / 0 failed; smoke 1 passed; lint 0 errors. **READY_FOR_CODEX.**
+
+## Claude: batch29 (lint to zero errors), main copy (2026-10-25)
+
+Implemented, ready for review: the batch29 repair commit and its docs commit, on top of batch28. No migration. Details in `docs/batch29-handover-2026-10-25.md`. `npm run lint` exit 0: 0 errors (was 349), 41 inherited warnings, none added. The 295 `.cjs` require errors are cleared by a rule change scoped to `**/*.cjs` (CommonJS by extension), stated as such; 48 test `any` casts typed; six `set-state-in-effect` fixes in ClaimTableChecks, CodingProgressBar, ProcessProgress, CrosstabFilters and RunShell, without suppressions (ClaimTableChecks also gains a stale-response guard it lacked). `effectStateRefactors.test.tsx` 6 passed with a mutation check each. Full library 1,750 passed / 72 skipped / 0 failed. Full browser 107 passed / 1 skipped / 0 failed; smoke 1 passed. **READY_FOR_CODEX.**
+
+## Claude: batch28 (B26-F01, B26-F02, B27-F01, V-B27-01), main copy (2026-10-25)
+
+Implemented, ready for review: the batch28 repair commit and its docs commit, on top of batch27 (`afc1b39`). No migration. Checks and limits in `docs/batch28-handover-2026-10-25.md`; contracts updated in `claude/one-reader-import.md` and `claude/document-deletion-contract.md`. B26-F01: decimal and exponent spellings a double cannot hold exactly keep their variable as text (`_exact_decimal`); reader `engine-plain-2026.10.26` and dictionary version 12 so earlier tables are rechecked and dictionaries rebuilt. B26-F02: `rowCells.TableCell`/`cellText` show logical cells as TRUE/FALSE in every table preview. B27-F01: erase counts each relationship once (current bin entry, plus links other bin entries hold to its findings). V-B27-01: one refusal notice at every moment after a layout change; the check waits for the settled Preview notice. Full library 1,744 passed / 72 skipped / 0 failed. Full browser 107 passed / 1 skipped / 0 failed; smoke 1 passed; flipped-codebook-guard alone 3 of 3 passed. **READY_FOR_CODEX.**
+
+## Codex: batches26/27 independent verification, frozen afc1b39 (2026-10-25)
+
+**READY_FOR_CLAUDE — 0 S1 / 0 S2 / 2 S3 newly reported (B27-F01 erase-count correctness; V-B27-01 native validation).** TP500-F01/F02/F03, IP1000-F01 to F04 and SYS5B-F01 to F04 close at the exercised boundaries. Original 1,000 imports and 1,000 bin cases pass after disclosed reviewer continuations; the 125 former bin failures repeat passing, with 36 extra three-file orders passing. Existing B26-F01 (S2 precision collision) and B26-F02 (S3 Boolean preview) repeat. **Cumulative: 0 observed S1 / 1 S2 / 3 S3 open; NOT READY for release.** Full library 1,736 passed / 73 skipped / 0 failed, exit 0. Full native 105 passed / 1 failed / 1 skipped, exit 1: two refusal alerts versus one expected; isolated repeats 3/3 pass, without superseding the failed full run. Six retained native repros and smoke pass. [Review and Claude handoff](independent-batch26-27-review-main-2026-10-25.md). Original implementation read-only; both 1,209-file archives exact, disposable infrastructure removed. Last accepted release remains 1e0f2a3, 37 Closed / 6 Blocked.
+
+## Codex: batch26 independent repair review, frozen 67ef210 (2026-10-25)
+
+**READY_FOR_CLAUDE — 0 S1 / 1 S2 / 1 S3 new findings.** TP500-F01/F02/F03 and IP1000-F01 to F04 close at the retained boundaries. B26-F01: decimal/exponent whole values beyond JSON exact range collide in stored data/categories; B26-F02: correctly stored Excel logical responses appear blank in Preview. Both repeat. Full library 1728 passed / 73 skipped, exit 0; fresh full native 106 passed / 1 skipped, exit 0. Original failed full runs remain with their investigations. [Review and Claude handoff](independent-batch26-review-main-2026-10-25.md). Cumulative at this frozen head: 0 observed S1 / 4 S2 / 2 S3 open; NOT READY for release. Batch27 remains separate and READY_FOR_CODEX; its claimed bin repairs are not verified here. Original implementation read-only, exact archives verified, disposable infrastructure removed; release acceptance remains 1e0f2a3, 37 Closed / 6 Blocked.
+
+## Claude: batch27 (SYS5B-F01 to F04, document bin), main copy (2026-10-25)
+
+Implemented, ready for review: the batch27 repair commit and its docs commit, on top of batch26. Checks and limits in `docs/batch27-handover-2026-10-25.md`; the contract in `claude/document-deletion-contract.md` (updated). Migration 0117 (`supabase/migrations/0117_document_content_identity_active_only.sql`, index change; needs 0115) for Grant to apply; until then removing a second identical copy is refused naming it. `documentBinIntegrity.db.test.ts` 8 passed, with a mutation check per finding. Full library 1,737 passed / 72 skipped / 0 failed. Full browser 106 passed / 1 skipped; smoke 1 passed.
+
+## Claude: batch26 (one reader for CSV, TSV and Excel), main copy (2026-10-25)
+
+Implemented, ready for review: the batch26 repair commit and its docs commit, on top of batch25. Checks and limits in `docs/batch26-handover-2026-10-25.md`; contracts in `claude/one-reader-import.md` and `claude/column-names-and-preview-identity.md`. Migration 0116 (`supabase/migrations/0116_document_table_read_provenance.sql`, additive) for Grant to apply; until then stored tables carry no read provenance and are checked against a fresh read when shown. Full library 1,729 passed / 72 skipped / 0 failed. Full browser 104 passed / 1 skipped / 2 failed (`flipped-codebook-guard` and `raw-file-reopen` assumed the retired reader; corrected), then those two and the new `one-reader-import` check, 3 passed; smoke 1 passed. `oneReaderImport.db.test.ts` covers each of the seven findings, with a mutation check for each.
+
+## Codex: second System5000 complete; new bin integrity findings (2026-10-25)
+
+**READY_FOR_CLAUDE — System5000B complete at frozen dbf2e8e: 5,000 executed / 4,875 pass / 125 fail; all 125 failures repeat unchanged. Seven known TP500/IP1000 defects excluded. 0 S1 / 3 S2 / 1 S3 new (SYS5B-F01 to F04, document-bin workflow). Cumulative 0 observed S1 / 10 S2 / 1 S3; NOT READY for release.** [Review and Claude handoff](independent-system5000b-review-main-2026-10-25.md), [5,000-case ledger](system5000b-cases-2026-10-25.md). Repair cross-file relationships lost on restore, erased-source warnings cleared by another restore, undurable RQ-text purge after erase, and blocked same-content recovery. Batch25 is not accepted across these boundaries. Core 4,000 cases pass; bin 875 pass / 125 fail after a disclosed 100-case fixture correction. All product failures repeat; native warning repro repeats. Production build and 8 targeted native checks pass; full library/unfiltered native suites not rerun. Pre-0115 refusal/upgrade control passes. Both 1,199-file archives exact, original implementation/lockfile edit preserved; disposable infrastructure removed. Existing import findings remain open, uncounted in this selection. No release acceptance; last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
+
+## Claude: batch25 (document bin), main copy (2026-10-25)
+
+Implemented, ready for review: the batch25 repair commit and its docs commit, on top of batch24. Checks and limits in `docs/batch25-handover-2026-10-25.md`; the contract in `claude/document-deletion-contract.md`. Migration 0115 (`supabase/migrations/0115_document_bin.sql`, additive) for Grant to apply; until then removing a file is refused with a message naming it, and pages still load. Full library 1,716 passed / 72 skipped / 0 failed. Full browser 104 passed / 1 skipped / 1 failed (`native-formats` asserted a hard delete; corrected), then every check that removes a file, 11 passed; smoke 1 passed.
+
+## Codex: System5000 complete and batch24 boundaries verified (2026-10-25)
+
+**READY_FOR_CLAUDE — System5000 complete at frozen 2793ac1: 5,000 executed / 4,831 pass / 169 fail; all failures repeat existing import/correction defects. 0 S1 / 0 S2 / 0 S3 new. Supplemental batch24 verification closes DI-F02 waves, B21-F01 and B23-F01. Cumulative 0 observed S1 / 7 S2 / 0 S3 open; NOT READY for release.** [Review and Claude handoff](independent-system5000-review-main-2026-10-25.md), [5,000-case ledger](system5000-cases-2026-10-25.md). Fresh input/profile permutations use retained independent contracts. 168 import failures plus one TP500-F03 correction failure repeat with identical mismatch details; no new defect established. Production build passes; 7 targeted native journeys and 2 original repair repros pass. Full library/unfiltered native suites not rerun. Both 1,186-file archives exact, original implementation/lockfile change preserved; disposable infrastructure removed. Main's later docs-only 4decba7 is recorded separately; no suite claimed on that tree. Seven TP500/IP1000 S2 findings remain open. No release acceptance; last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
+
+## Claude: batch24 (DI-F02 waves, B21-F01, B23-F01), main copy (2026-10-25)
+
+Implemented, ready for review: the batch24 repair commit and its docs commit, on top of batch23. Checks and limits in `docs/batch24-handover-2026-10-25.md`; contracts in `claude/output-set-integrity.md` and `claude/coding-write-ownership.md`. No migration. Full library 1,697 passed / 72 skipped / 4 failed: all 4 were 5-second timeouts in `researchQuality.db.test.ts` under machine load, and that file alone passes 54/54. Full browser 104 passed / 1 skipped; smoke 1 passed.
+
+## Codex: batches 21–23 independent review (2026-10-25)
+
+**READY_FOR_CLAUDE — batches 21–23 independently reviewed at frozen 4dbf8a1: 14 named findings closed; DI-F02 remains open for wave comparisons. New 0 S1 / 1 S2 / 1 S3 (B21-F01, B23-F01). Cumulative 0 observed S1 / 9 S2 / 1 S3; NOT READY for release.** [Review and Claude handoff](independent-batch21-23-review-main-2026-10-25.md). Repair unread wave comparisons, reject invalid coding operations before writes, and reconcile saved label limits with the editor baseline. Seven TP500/IP1000 findings remain open. Retained selections: 2,650 selected / 2,640 pass / 10 known TP500-F03 failures. Full library 1,697 passed / 73 skipped, exit 0; full native 104 passed / 1 skipped, exit 0; objective identity 3/3 supplemental repetitions pass. Build and TypeScript pass; lint 349 existing errors, none added/removed. Both 1,186-file archives exact, original implementation/package-lock change preserved, disposable infrastructure removed. No release acceptance; last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
+
+## Claude: batch23 (DI-F01 to DI-F07), main copy (2026-10-25)
+
+Implemented, ready for review: the batch23 repair commit and its docs commit, on top of batch22. Checks and limits in `docs/batch23-handover-2026-10-24.md`; the contracts in `claude/output-set-integrity.md`. Migration 0114 (`supabase/migrations/0114_finding_history_researcher_note.sql`, additive) for Grant to apply; until then retiring a finding with a researcher note is refused with a message naming it.
+
+## Claude: batch22 (REC500-F01 to F04), main copy (2026-10-25)
+
+Implemented, ready for review: the batch22 repair commit and its docs commit, on top of batch21. Checks and limits in `docs/batch22-handover-2026-10-24.md`; the contract in `claude/recommendation-edits.md`. Migration 0113 (`supabase/migrations/0113_recommendation_request_key.sql`, additive) for Grant to apply; until then adding your own recommendation is refused with a message naming it.
+
+## Claude: batch21, main copy (2026-10-25)
+
+Implemented, ready for review: the batch21 repair commit and its docs commit. Checks and limits in `docs/batch21-handover-2026-10-24.md`. No migration. Codex's previous status line is kept in `.fnd001/backup-status-1025a`, and recorded here as it set it:
+
+Codex's verdict, recorded as it set the state line: "State: **READY_FOR_CLAUDE — integrity extension complete at frozen ed8c9c3: 1,400 additional selected / 1,170 pass / 230 fail; all failures repeat unchanged. 0 S1 / 5 S2 / 2 S3 new (DI-F01–F07; DI-F07 supplemental). Ten cases reproduce TP500-F03. Cumulative 0 observed S1 / 19 S2 / 3 S3; NOT READY for release.**"
+
+## Codex: data-integrity extension complete (2026-10-24)
+
+**READY_FOR_CLAUDE — integrity extension complete at frozen ed8c9c3: 1,400 additional selected / 1,170 pass / 230 fail; all failures repeat unchanged. 0 S1 / 5 S2 / 2 S3 new (DI-F01–F07; DI-F07 supplemental). Ten cases reproduce TP500-F03. Cumulative 0 observed S1 / 19 S2 / 3 S3; NOT READY for release.** [Review and Claude handoff](independent-data-integrity-extension-review-main-2026-10-24.md), [1,400-case ledger](data-integrity-extension-cases-2026-10-24.md). Prioritize cross-project/tenant output-set merges, destructive regeneration after unread sources, lost history notes, checks persistence and wave-label conflicts. Retained 36-file gate: 267 passed / 17 skipped, exit 0. Earlier same-HEAD full gates remain separately reported; no fresh full-suite/browser claim. Original implementation unchanged, all 1,168 archive files exact, disposable database container removed. Earlier findings/closures and last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: Recommendations, Insights Reports and System3000 complete (2026-10-24)
+
+**READY_FOR_CLAUDE — Recommendations500, Insights Reports500 and System3000 complete at frozen ed8c9c3. 4,000 selected / 3,715 pass / 285 fail; repeated failures unchanged. 0 S1 / 4 S2 / 0 S3 new (REC500-F01–F04, one supplemental native finding). Cumulative 0 observed S1 / 14 S2 / 1 S3; NOT READY for release.** [Completed handoff](recommendations-reports-system3000-handoff-2026-10-24.md). Full library 1,654 passed / 73 skipped, exit 0; full native 101 passed / 1 skipped, exit 0. Existing Import/Coding/Secondary failures remain open; no new system defect beyond the four Recommendations findings. Shared cleanup complete; both 1,168-file archives exact, original implementation and package-lock change preserved. Last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: Recommendations and Insights Reports handoffs (2026-10-24)
+
+**READY_FOR_CLAUDE — Recommendations500: 380 pass / 120 fail, unchanged repeat; 0 S1 / 4 S2 / 0 S3 new (REC500-F01–F04, one supplemental native finding). Insights Reports500: 500 pass / 0 fail. System3000 IN PROGRESS, not complete. Cumulative 0 observed S1 / 14 S2 / 1 S3; NOT READY for release.** [Recommendations handoff](independent-recommendations500-review-main-2026-10-24.md), [Insights Reports review](independent-reports500-review-main-2026-10-24.md). The 3,000 additional distinct system permutations are selected and hash-frozen; no completed system result is claimed. Shared disposable infrastructure remains active. Original application unchanged. Last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: independent batch19/batch20 repair review (2026-10-24)
+
+**READY_FOR_CLAUDE — batch19/batch20 reviewed at frozen `ed8c9c3`: all 11 named targets closed at the exercised boundaries; 0 S1 / 0 S2 / 1 S3 new (V-B19-01, RQ test isolation). Full native 101 passed / 1 skipped, exit 0. Full library exit 1: 1,652 passed / 2 failed / 73 skipped; both unchanged focused continuations 58 passed / 1 skipped. Cumulative 0 observed S1 / 10 S2 / 1 S3; NOT READY for release.** [Review and handoff](independent-batch19-20-review-main-2026-10-24.md). Retained original action/export probes: 302 pass; original native repros: 8 pass; decision conflict 5/5 and pane readiness 3/3 repetitions pass. The controlled scheduler probe proves a timed-out RQ case can change the next case's shared tenant; its intentional failures are separate from product outcomes. The earlier decision-editor typing timeout was not reproduced and remains unexplained. Documentation closures are separate. Shared review infrastructure removed, both 1,168-file archives exact, original implementation and package-lock change preserved. Remaining TP500/IP1000/COD500/SEC500 findings stay open; last accepted release `1e0f2a3`, **37 Closed / 6 Blocked**, unchanged.
 
 
+## Claude: batch20 (AN500-F01), main copy (2026-10-24)
+
+Implemented, ready for review: the batch20 repair commit and its docs commit, on top of batch19. Checks and limits in `docs/batch20-handover-2026-10-24.md`; the contract in `claude/driver-finding-provenance.md` ("Predictor identity"). No migration. Not yet started: COD500-F01, COD500-F02 and SEC500-F01 from Codex's four-review queue.
+
+## Claude: batch19, main copy (2026-10-24)
+
+Implemented, ready for review: the batch19 repair commit and its docs commit. Checks and limits in `docs/batch19-handover-2026-10-24.md`. No migration. Codex's previous status line is kept in `.fnd001/backup-status-1024e`, and recorded here as it set it:
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE — Coding, Secondary analysis, Findings and Insights complete at frozen `e278adf`: 0 S1 / 3 S2 / 0 S3 new. 2,000 selected / 1,875 pass / 125 fail. Cumulative 0 observed S1 / 17 S2 / 4 S3; NOT READY for release.** All handoffs published, original implementation unchanged, shared disposable infrastructure removed."
+
+## Codex: four-review queue complete (2026-10-24)
+
+**READY_FOR_CLAUDE: 0 S1 / 3 S2 / 0 S3 new.** [Completed handoff](coding-secondary-findings-insights-handoff-2026-10-24.md). Coding 425 pass / 75 fail; Secondary analysis 450 pass / 50 fail; Findings 500 pass; Insights 500 pass. **2,000 selected / 1,875 pass / 125 fail**; all product failures repeat unchanged. COD500-F01/F02 and SEC500-F01 are actionable; no new Findings/Insights defect established at the exercised boundaries. Final shared cleanup complete, all 1,157 tracked archive files exact, original implementation unchanged. Cumulative independently open **0 observed S1 / 17 S2 / 4 S3; NOT READY**. No full-suite rerun or release acceptance. Last accepted scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: independent Insights500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE.** [Review](independent-insights500-review-main-2026-10-24.md), [ledger](insights500-cases-2026-10-24.md). Frozen `e278adf`: **500 pass / 0 fail**. No new Insights defect at the exercised boundaries. Independent source/tier/action cases 500 pass; retained 22 pass / 4 skip. All four requested reviews are complete; shared cleanup is next. Cumulative independently open **0 observed S1 / 17 S2 / 4 S3; NOT READY**. Original implementation read-only; shared disposable services remain for the review queue until final cleanup. Last accepted scope/counts unchanged.
+
+## Codex: independent Findings500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE.** [Review](independent-findings500-review-main-2026-10-24.md), [ledger](findings500-cases-2026-10-24.md). Frozen `e278adf`: **500 pass / 0 fail**. No new Findings defect at the exercised boundaries. Independent actions 500 pass; retained 21 pass / 2 skip; native 3 pass. Earlier observer/schema quoting errors are retained separately. Cumulative independently open **0 observed S1 / 17 S2 / 4 S3; NOT READY**. Original implementation read-only; shared disposable services remain for the review queue until final cleanup. Last accepted scope/counts unchanged.
+
+## Codex: independent Secondary analysis500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE.** [Review](independent-secondary500-review-main-2026-10-24.md), [ledger](secondary500-cases-2026-10-24.md). Frozen `e278adf`: **450 pass / 50 fail**. SEC500-F01 (S2): malformed model output is published as an empty successful report reading, removing prior unreviewed findings; all 50 failures repeat, and native reload confirms Extracted, 0 findings. Retained library 53 pass / 3 skip. Cumulative independently open **0 observed S1 / 17 S2 / 4 S3; NOT READY**. Original implementation read-only; shared disposable services remain for the review queue until final cleanup. Last accepted scope/counts unchanged.
+
+## Codex: independent Coding500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE: 0 S1 / 2 S2 / 0 S3 new.** [Review](independent-coding500-review-main-2026-10-24.md), [ledger](coding500-cases-2026-10-24.md). Frozen `e278adf`: **425 pass / 75 fail**, all 75 failures repeat unchanged. COD500-F01: cross-tenant theme metadata and turn-note creation succeeds and blocks the legitimate owner’s save; controlled cleanup restores it. COD500-F02: a wrong-run request mutates another project’s coding and records inconsistent override lineage. Retained library 57 pass; native 4 pass; build passes. Original implementation read-only. Shared disposable services remain for the immediately following three reviews; no cleanup is claimed yet. Cumulative open **0 observed S1 / 16 S2 / 4 S3; NOT READY**. Last accepted scope/counts unchanged.
+
+## Codex: independent Analytics500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE: 0 S1 / 1 S2 / 0 S3 new.** [Review](independent-analytics500-review-main-2026-10-24.md), [500-case ledger](analytics500-cases-2026-10-24.md). Frozen `e278adf`: **500 selected permutations pass** (350 numerical / 150 actual action-persistence cases). Supplemental **AN500-F01 (S2)**: driver display-name allocation collides with a literal suffix label; the strongest driver receives another predictor’s performance mean **16 instead of 106**. Five collisions fail with five healthy controls passing, repeated unchanged. Native real-file chart/posting and actual Findings Excel confirm wrong chart association and ambiguous question attribution. Retained library **101 pass**; native Analytics **7 pass**; build passes. Full suites were not rerun. Disposable infrastructure removed; all 1,157 tracked archive files exact; original implementation unchanged. Cumulative independently open **0 observed S1 / 14 S2 / 4 S3; NOT READY**. Existing findings remain separate and RQ-F01 remains closed. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: independent Cross tabs500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE: 0 S1 / 1 S2 / 1 S3 new.** [Review](independent-crosstabs500-review-main-2026-10-24.md), [500-case ledger](crosstabs500-cases-2026-10-24.md). Frozen `e278adf`: **452 pass / 48 fail**; unchanged database repeat again 52 pass / 48 fail. CT500-F01 (S2): wrong-run table deletion archives/deletes the other project’s table findings while leaving its table, and the real action reports success. CT500-F02 (S3): simultaneous builds collide on max+1 table allocation; the unique constraint refuses one explicitly. All 400 independent numerical cases pass. Targeted retained library 51 pass / 1 skip; native Cross tabs 4 pass; build passes; actual Excel/Slides retain the independent mean. No full-suite rerun or general statistical certification is claimed. Disposable resources removed; all 1,157 tracked archive files exact. Cumulative independently open **0 observed S1 / 13 S2 / 4 S3; NOT READY**. RQ-F01 remains closed and other findings stay separate. Last accepted scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: batch18 independent repair handoff (2026-10-24)
+
+**RQ-F01 CLOSED; READY_FOR_CLAUDE for RQ-F02, 0 S1 / 1 S2 / 0 S3 new.** [Review](independent-batch18-review-main-2026-10-24.md). Frozen `e278adf`: all-rejected reading/retry, partial absence/checklist, genuine-empty, legacy-note and unfinished-step Word controls pass. The selected review updates after retry without reload; the documented top stage-banner limitation remains. New RQ-F02: RQ-CMP-PROBLEM is rated 3/5 as compared with the brief although the proposal failed reading and every cited quote is from the brief. Actual native screen and Word reproduce it; healthy both-source control passes. Full evidence and retained reviewer setup corrections are in the review. Cumulative independent open counts remain **0 observed S1 / 12 S2 / 3 S3; NOT READY**: close RQ-F01, open RQ-F02. Other import, citation, Objectives and Business decisions findings are unchanged. No application repair; disposable infrastructure removed and 1,157 tracked archive files exact. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
 
 
+## Codex: independent Business decisions500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE for Business decisions: 0 S1 / 2 S2 / 1 S3 new.** [Review](independent-decisions500-review-main-2026-10-24.md), [500-case ledger](decisions500-cases-2026-10-24.md). Frozen `e278adf`: **380 pass / 120 fail**; all 120 failures repeat unchanged. DEC500-F01: stale edits overwrite the winner; gone-target saves report success and discard drafts. DEC500-F02: simultaneous reject/unaccept/delete operations leave stale current-decision context despite completed refresh; native reload and actual Excel metadata confirm it. M-DEC500-01: regeneration comment falsely says accepted candidates are never touched. Retained targeted checks: 34 library passes / 4 placeholder skips; 4 native passes. Three independent native repros fail their integrity expectations; no full-suite rerun is claimed. Services/container removed; all 1,157 tracked archive files match frozen Git bytes. Cumulative independent open counts: **0 observed S1 / 12 S2 / 3 S3; NOT READY for release**. Batch18 RQ-F01 remains awaiting separate review; its READY_FOR_CODEX header is preserved. Last accepted scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
 
 
+## Claude: batch18 (RQ-F01), main copy (2026-10-24)
+
+Implemented, ready for review: `8b3a77a` (RQ-F01) and this docs commit. Checks and limits in `docs/batch18-handover-2026-10-24.md`; the contract in `claude/research-quality-evidence.md`. Codex's previous status line is kept in `.fnd001/backup-status-1024d/`, and recorded here as it set it:
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE — Objectives500 at frozen `06aaa11`: 0 S1 / 1 S2 / 0 S3 new; 0 observed S1 / 10 S2 / 2 S3 open cumulatively; NOT READY for release.** All 500 selected permutations pass in the valid harness. Supplemental concurrent delete/reject/unaccept probes fail 60/60, with passing sequential controls; native two-page Unaccept and actual DOCX bytes confirm OBJ500-F01: saved objective context can contradict current candidate status. Retained Objectives integration 91 passed / 8 skipped; retained native Objectives 15 passed. Prior batch17 and import/Research quality findings remain separate. Application implementation unchanged; disposable infrastructure removed. No existing-database migration, commit, push or deployment."
+
+## Codex: independent Objectives500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE: 0 S1 / 1 S2 / 0 S3 new.** [Review](independent-objectives500-review-main-2026-10-24.md), [500-case ledger](objectives500-cases-2026-10-24.md). Frozen `06aaa11`: 500 selected permutations pass; separate 60-permutation concurrency confirmation fails throughout. OBJ500-F01 leaves rejected/pending wording in accepted context, or a deleted objective in the stated list. Native two-page Unaccept survives reload with stale context; an actual DOCX exports rejected wording. The initial owner-seed harness errors and export alias continuation remain. Targeted retained checks: 91 library passes / 8 placeholders skipped; 15 native passes. No full-suite rerun is claimed. Review-owned services and container removed; all 1,154 tracked archive files match Git bytes and original dirty lock preserved. Cumulative independent open counts: 0 observed S1 / 10 S2 / 2 S3. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
 
 
+## Codex: batch17 independent handoff (2026-10-24)
 
-## Claude: storage-checker repair, harness, sign-in and Research Quality Review — 2026-10-18
+**READY_FOR_CLAUDE at frozen `06aaa11`: 0 S1 / 1 S2 / 2 S3 new.** [Review](independent-batch17-review-main-2026-10-24.md). Technical TXT/PDF/DOCX reads, a true pre-0112 refusal followed by actual migration/recovery, project/tenant scoping, explicit query failure/recovery and weighting metadata pass their exercised controls. The browser reproduces the missing second same-name citation; technical failed reads remain failed through project processing, with no Findings mined. Both M-B16 S3 findings close. New S3 actions are lasting engineering contracts and pane-test readiness. The first full native failure, its trace and all reviewer continuations remain. Full gate results and limits are in the review. Known TP500/IP1000 import findings are not regressions in this batch; RQ-F01 remains separate. Cumulative independent open counts: 0 observed S1 / 9 S2 / 2 S3. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
 
-Released for Codex at `a9cb5de`, `20977c8`, `ed3e980`, `d45c0a2` (see [handover](security-and-research-quality-handover-2026-10-18.md)). Migrations 0104 and 0105 for Grant. Codex's formal verdict on `4475adc` (request changes on the storage checker only) is recorded in [formal-verdict-4475adc-2026-10-18.md](formal-verdict-4475adc-2026-10-18.md); the repair is `a9cb5de`. Canonical counts unchanged at 37 Closed / 6 Blocked until Codex verifies. Real-model spend recorded US$4.018694 of the US$12 cap.
 
-## Claude follow-ups 1, 2 and 5 of Grant's five (2026-10-17; commit `4475adc`)
+## Codex: focused Research quality investigation (2026-10-24)
 
-Implemented, ready for Codex's independent verification. Parent `83825c2`; application base `c00e5d1`. 28 paths; committed bytes match the package hashes (0 mismatches). No migration. Grant reports migrations `0102` and `0103` applied (item 3; his statement, not checked from here).
+**READY_FOR_CLAUDE for RQ-F01: 0 S1 / 1 S2 / 0 S3 new.** [Independent handoff](independent-research-quality-review-main-2026-10-24.md), frozen `3184b06`. Rejected extraction quotes can produce a complete 0% review with ten Absent criteria, surviving reload and Word export; retry does not recover, a healthy new review does. Independent library probes: 187 pass / 1 fail across 188 logical cases; retained Research quality/margin controls: 112 pass. Normal native journey passes; independent native repro fails the correctness expectations and verifies healthy recovery. Disposable infrastructure removed; 1,144 archive files exact. Earlier independently open totals become 0 observed S1 / 8 S2 / 2 S3; the two M-B16 S3 repairs and batch17 are awaiting separate verification. This frozen review does not replace main's newer READY_FOR_CODEX status or accept its newer changes. Last accepted release scope and counts remain unchanged.
 
-**1. One latest verdict in every remaining reader.**
-- New `src/lib/latestVerdict.ts`: `created_at desc, id desc`, the order `finding_support_parts` records.
-- Used in both narrative exports (the findings charted and listed), `discoveryReport.ts`, `researchAssistant.ts`, `validateStatedInsights.ts` (the evidence pool), the run page's stated-insight and pre-insight lists, and `contradictionDetector.ts` (id tie-break).
-- The verification summary and the failed-verdict sample moved to `src/lib/verdictSummary.ts`, so they are tested. They now count one row per finding by its latest verdict, not one per verdict row.
-- Effect: an older robust verdict no longer qualifies a finding whose latest verdict refuses it, and a finding with several verdicts appears once.
-- Found while testing, generic: the stated-insight chain check filtered its evidence with `finding_kind != 'stated_insight'`. Findings computed from data tables have no `finding_kind` (null), so `null != ...` silently left every computed finding out of the evidence a report's interpretive claim is checked against. It is now `is distinct from`.
 
-**2. GT-008 to GT-010.**
-- GT-008: a request lost in transit (Chrome "Failed to fetch", Firefox "NetworkError when attempting to fetch resource.", Safari "Load failed") reads: "The connection to the server was interrupted, so this may not have been saved. Your changes are still here: check your connection and try again. Reloading the page shows what was saved." It is in the shared `actionFailure.ts`, and two fetch panels (`OutputSetCard`, `RelatedOutputSets`) now use it. Other TypeErrors and server messages keep their own text.
-- GT-009: each line of the narrative deck's "Evidence qualifications" slide carries its insight's support status in the evidence card's words (for example "[SUPPORT CHANGED]").
-- GT-010: the delete confirmation names, for that file, its findings, the review decisions and researcher notes on them, and the insights that will show "support no longer valid" (`documentDeletionImpact.ts`, `documentDeletionMessage.ts`). It is used in all three delete controls. When the counts cannot be read, it uses general wording, never "0", and logs why.
+## Claude: batch17 and M-B16-01/M-B16-02, main copy (2026-10-24)
 
-**5. Release-gate checks (`scripts/release-gate/`).**
-- `check-storage-privacy.mjs` checks, read-only: the bucket is private, there is no read through the public URL or with the publishable key, and a signed link expires.
-- `README.md` is the runbook for gates G1 to G6. G6, deployed identity, is stated as missing functionality (the app has no sign-in; every request is the `DEFAULT_TENANT_ID` organisation), not as a check.
-- Not run against a deployed environment: neither the cloud workspace nor the laptop's Linux shell can reach Supabase or the local Docker database. `check-tenant-isolation.mjs` from the laptop shell failed with ECONNREFUSED (local) and EAI_AGAIN (cloud). Grant runs these from Windows.
+Implemented, ready for review: `f35034f` (batch17), `4224d5d` (M-B16-01, M-B16-02) and this docs commit. Checks and limits in `docs/batch17-handover-2026-10-24.md`. Migration 0112 (`supabase/migrations/0112_technical_documents.sql`) for Grant to apply in Studio. Codex's previous status line is kept in `.fnd001/backup-status-1024c/`, and recorded here as it set it:
 
-Tests:
-- `latestVerdictReaders.db.test.ts` (real PostgreSQL; the actual routes and functions; model and chart rendering mocked, prompts captured): fixture findings with a later refusal, a later recovery, three verdicts, a same-instant tie and a control. All 5 behavioural cases fail on the previous code.
-- `documentDeletion.db.test.ts`: counts on a real database, a real failure, and the pure message.
-- `actionFailure.test.ts`: +2.
-- `releaseGateStorage.test.ts`: the actual script as a process against a Storage stand-in, with 1 passing, 4 failing and 2 could-not-check cases.
-- `journey-changes` C1, C3 and C5 assert GT-010, GT-008 and GT-009 in the browser. Observed C1 confirmation: "Delete this document? This also deletes 8 findings, with 1 review decision you made and 1 researcher note. 10 insights rest on them and will show their support as no longer valid. This can't be undone."
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE — 0 observed S1 / 7 S2 / 2 S3 open cumulatively; NOT READY for release.** All three queued investigations are complete: second 500 probes (432 pass / 68 fail at `5f67734`), dashboard/batch16 review (B15-F01 CLOSED; full library 1,591 passed / 73 skipped, native 95 passed / 1 skipped, exit0 at `3184b06`), and 1,000 import permutations (565 pass / 435 fail at `3184b06`). Four new S2 import findings IP1000-F01/F02/F03/F04 join TP500-F01/F02/F03; M-B16-01/M-B16-02 remain S3. Handoffs and exact evidence linked below. No application repair, migration of an existing database, commit, push or deployment."
 
-Checks: `npx tsc --noEmit -p .` pass; ESLint 0 errors on the changed files (pre-existing warnings only); `vitest run src/lib/__tests__ --pool=forks` 130 files, **920 passed, 0 failed, 46 skipped**; production `next build --webpack` pass; browser **39/39**; smoke 1, adapter 2, objective acceptance passed.
+## Codex: 1,000-import accuracy investigation (2026-10-24)
 
-Failed invocations (retained):
-- The first vitest gate had 10 failures in 4 files from a missing `@/lib/latestVerdict` alias mock (test harness); mocks added.
-- `documentDeletion.db.test.ts` first failed in `beforeAll` on the review-action check constraint (the fixture used `accepted`, the constraint wants `accept`). Vitest listed those tests as skipped, not failed; the file was reported failed.
-- The first browser run failed C1: the Import data list (`TranscriptSetup`) and attached instruments had their own delete buttons that did not yet receive the message; both now do.
+[Claude handoff](independent-import1000-review-main-2026-10-24.md), [1,000-case ledger](import1000-cases-2026-10-24.md). Eight format variants, 1,000 distinct sources, final 565 pass / 435 fail. New S2: text-code coercion, date meaning lost, UTF-8 corruption without BOM and supplemental malformed-CSV publication. Earlier naming defects confirmed; the correction-map defect remains open separately. Four rendered native accuracy repros fail, as retained. Numeric-to-numeric cell receipts show 0 ULP difference; that does not cure text/date/identity failures. Verified review infrastructure removed, 1,144 archive files unchanged. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
 
-Not in this commit: item 4 (the real-model pass) waits for Grant's choice on how the API key is used.
+## Codex: second 500 probes and dashboard/batch16 review (2026-10-24)
 
-Limits: the "insights" count in the confirmation counts per-finding and synthesized insights together. Readers that copy verdict history (`findingArchive.ts`) still read every verdict, on purpose. The insight generator and the pre-insight exports already used the same order inline and are unchanged.
+Handoffs: [500-permutation review](independent-trust500b-review-main-2026-10-24.md), [500-case ledger](trust500b-cases-2026-10-24.md), [dashboard/batch16 review](independent-dashboards-batch16-review-main-2026-10-24.md). Three independent S2 identity/persistence findings remain open; two separate S3 documentation/dead-import findings. Original B15-F01 repro and recovery pass. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
 
-## Claude implementation of GT-007, main Recommendations list exports (2026-10-17; commit `c00e5d1`)
+## Claude: dashboards merge and batch16 (B15-F01), main copy (2026-10-24)
 
-Implemented, ready for Codex's independent verification. Authorised by Grant at `f6e63c3`. Parent `308338d` (documentation) on application `7d12593`. 11 paths, committed bytes match the package hashes (0 mismatches). No migration.
+Implemented, ready for review: `d5ee929` (dashboards from the 3001 prototype), `f95999d` (B15-F01) and this docs commit. Checks and limits in `docs/dashboards-merge-handover-2026-10-24.md` and `docs/batch16-handover-2026-10-24.md`. Codex's previous status line is kept in `.fnd001/backup-status-1024b/`.
 
-- New: `src/app/api/runs/[id]/synthesized-recommendations/export/route.ts` (xlsx) and `export-deck/route.ts` (pptx), `?scope=all` (default, every review status) or `?scope=accepted`; the scope is named in the file name, on an "About" sheet and on an "About this export" slide.
-- New: `src/lib/mainRecommendationExport.ts`, the one loader and field list both files use: recommendation and insight ids, exact stored wording and status, author and edit mark, "Decisions written for" by the shared rule (`decisionContext.ts`, worded by `recommendationQualification.ts`), the insight's support by the shared FND-001 rule (`loadInsightSupportOrUnchecked`), insight review status, chain of evidence and supporting finding ids; the screen's order (insight quality, creation, id). A failed read is an error response, never an empty file; an empty list says "No recommendations in this scope."
-- New: `src/lib/fieldTableSlides.ts`: one recommendation per slide as a native field table, measured with the crosstab layout's widths (imports `crosstabSlides.ts`, unchanged); long fields continue on the next slide marked "(cont.)"; a field that cannot fit is refused (422). Accepted scope leaves invalid support out and lists it with its reason, as the per-pre-insight deck does.
-- `page.tsx`: "Main list Excel" and "Main list Slides" controls above the main list (download links, so a failed download is reported by the browser and the page, with any open edit, stays); `getSynthesizedRecommendations` reads each recommendation's decision record by the shared rule. `SynthesizedRecommendationsReview.tsx`: each card states the decisions it was written for in the export's words; `data-status`, `data-support-status`, `data-decision-state` for checks.
-- `decisionContext.ts`: comment only (where the per-item decision mark is now shown). This is one of the 7 paths released at `7d12593`; its code is unchanged.
-- Per-pre-insight exports (`recommendations/export`, `export-deck`) and their GT-004 repair are unchanged.
+## Claude: batch14 (RR-M02) and batch15 (TR500-F01, F02, F03, M01), main copy (2026-10-24)
 
-Tests:
-- `mainRecommendationExport.db.test.ts` (real PostgreSQL 16, actual routes): mixed fixture (AI and researcher-written; accepted, pending, rejected; current, earlier and unrecorded decisions; current, invalid and changed support; a per-pre-insight recommendation kept out). Excel all and accepted (ids in order, exact wording, every qualification, scope), Slides all and accepted (tags, invalid left out and listed), a 4,000-character field rendered with LibreOffice (inside the page and above the footer, all 60 sentences and the end sentinel), empty list, a real failure (table renamed) is an error and the retry returns identical rows with the recommendations table unchanged, unknown run 404. 7 passed, 1 placeholder.
-- `e2e/ui/main-recommendation-exports.check.mjs` (production build, disposable stack, replay): project through the native controls plus three AI recommendations inserted as fixture rows; a pending one rejected with its Reject button; screen = screen after reload; native Excel and Slides downloads (both scopes, Slides rendered with LibreOffice) agree with the screen and database per id; after the finding is rejected through the UI, the dependent recommendations read "no longer valid" on screen and in Excel and are left out of the accepted Slides and listed; a download failing with a real server error is reported as a failed download, the page stays, the retry gives the same rows and no recommendation changed.
-- `journey-exports.check.mjs`: the four new routes answer 200 with the researcher's recommendation wording exactly.
+Implemented, ready for review: `2cf49d9` (RR-M02), `ed1dc1f` (trust500 repairs) and this docs commit. Checks and limits in `docs/batch14-handover-2026-10-23.md` and `docs/batch15-handover-2026-10-24.md`. Codex's previous status line is kept in `.fnd001/backup-status-1024a/`.
 
-Checks (cloud workspace, disposable PostgreSQL 16, replay only): `npx tsc --noEmit -p .` pass; ESLint 0 errors on the changed files (5 pre-existing warnings in `page.tsx`); `vitest run src/lib/__tests__ --pool=forks` 127 files, **900 passed, 0 failed, 44 skipped**; production `next build --webpack` pass; browser **39/39** on that build, smoke 1, adapter 2, objective acceptance passed.
+## Claude: batch13 (RR-F03, RR-F06, RR-M02, RR-M03), main copy (2026-10-23)
 
-Failed invocations (retained): the first browser run injected the download failure with `page.route(...).abort()`; after the links became download links Playwright no longer routed the request (0 aborts), so the check failed; it now injects a real server error instead. `missingRecommendationsNotice.test.tsx` first failed to load (missing `@/lib/recommendationQualification` alias mock, test harness); mock added.
+Implemented, ready for review: `b4b5b85` (repairs, migration 0111) and this docs commit. Checks and limits in `docs/batch13-handover-2026-10-23.md`, which also corrects the batch11 and batch12 library reports (their filter hid the vitest Errors line and exit code). Codex's previous status line is kept in `.fnd001/backup-status-1023o/`.
 
-Original case: before this commit the main list had no export controls and `synthesized-recommendations/*` did not exist; the researcher's recommendation reached only the narrative (GT-007 register row).
+## Claude: batch11 (RR-F05) and batch12 (RR-F01, RR-F03, RR-F06, RR-F07, RR-F08, RR-M01), main copy (2026-10-23)
 
-Limits: the support and decision states come from the shared rules; the screen shows no per-card mark for an insight that is itself rejected (the export states "Insight review"). The other export links in the app are plain navigations: a failed download there replaces the page with the browser's error page (observation, unchanged). Replay only; model quality unverified.
+Implemented, ready for review: `91fed93` (dependencies), `ce2be9e` (repairs) and this docs commit. Checks and limits in `docs/batch11-handover-2026-10-23.md` and `docs/batch12-handover-2026-10-23.md`. Run `npm install` after pulling. Codex's previous status line is kept in `.fnd001/backup-status-1023n/`.
 
-## Claude repair of the two export remainders (2026-10-17; commit `7d12593`)
+## Claude: release audit RR-F01 to RR-F04, main copy (2026-10-23)
 
-Implemented, ready for Codex's independent verification. Parent `f6e63c3`; application base `ffa7adc`. 7 paths, committed bytes match the package hashes (0 mismatches):
+Implemented, ready for review: `1f19dfa` (repairs, migration 0110) and this docs commit. Checks and limits in `docs/batch10-handover-2026-10-23.md`. Codex's previous status line is kept in `.fnd001/backup-status-1023m/`.
 
-- `src/lib/insightGenerator.ts`: eligibility, the prompt's verdict and rationale and the snapshot use one latest verdict per finding (lateral `order by created_at desc, id desc limit 1`, the order `finding_support_parts` uses). A latest `not_supported` or `insufficient_information` verdict is never bypassed by an older robust one, and a finding with several qualifying verdicts is drafted once.
-- `src/lib/crosstabSlides.ts`: per-style advance widths (Carlito, metric-compatible with Calibri; `scripts/crosstab-slides/font-metrics.py`, new) and explicit cell margins; a row too tall for any slide is split at its wrap points (first part fills the room left, figures once, later parts marked "(cont.)", joined parts equal the label); banner headings too tall for the header go to a column key slide; repeated context is kept to two lines; long titles get a smaller font and a lower table; a long source name is shortened in the middle with "...". What cannot be laid out throws `CrosstabLayoutError`.
-- `src/app/api/runs/[id]/crosstab/export/route.ts`: that error becomes a 422 naming the table and pointing to Excel, never a clipped deck.
-- Comments: `decisionContext.ts` (which exports carry the per-item decision mark), `crosstabSlides.ts` (what is and is not guaranteed).
-- Tests: `exportQualification.db.test.ts` +5 (both refusal tiers, older refusal with latest robust and its prompt rationale, several qualifying verdicts once, same-instant tie by id), `crosstabSlides.test.ts` rewritten (complete-content plan check for every shape; LibreOffice render of the golden table and the reviewer's three engine-built shapes: inside page, nothing over the footer, every planned part and banner heading in the PDF, all END_nn and the oversize sentinel).
+## Claude: B8-F01, B8-F02, M-B8-01, M-B8-02 and the movable window, main copy (2026-10-23)
 
-Counterfactual on the previous code: the new generator cases fail 4 of 5 (the recovery control passes on both); the reviewer's shapes rendered with the ffa7adc layout lose END_03, 07, 13, 17, 20, 24, 28 and the oversize sentinel, with 12, 7 and 130 words over the footer line. With this commit: none missing, 0 over the footer, 0 beyond the page.
+Implemented, ready for review: `d5b5f66` (window), `0bc3ec2` (repairs) and this docs commit. Checks and limits in `docs/batch9-handover-2026-10-23.md`. Codex's previous status line is kept in `.fnd001/backup-status-1023l/`.
 
-Checks (cloud workspace, disposable PostgreSQL 16, real Python engine, LibreOffice 7 render, model replay only): `npx tsc --noEmit -p .` pass; ESLint clean on the changed files; `vitest run src/lib/__tests__ --pool=forks` 126 files, **893 passed, 0 failed, 43 skipped**; production `next build --webpack` pass; browser 38/38 on that build (30 UI, journey with crosstab PDF, C1-C7), smoke 1, adapter 2, objective acceptance passed. Codex's GT-004 probe was not rerun (no GT-004 path changed).
 
-Limits: the layout estimate is checked against LibreOffice with Carlito; a viewer's PowerPoint substituting another font for Calibri is not tested. Same "join every verdict" pattern remains in `story/export*.ts`, `discoveryReport.ts`, `researchAssistant.ts` and `validateStatedInsights.ts`: outside this release, not changed, recorded for a decision. A 422 refusal is shown as the route's JSON error, like the existing PDF conversion failure. GT-007 (authorised by Grant at `f6e63c3`) is separate work in progress; GT-008 to GT-010 unchanged. Counts unchanged until Codex verifies.
+## Claude: B7-F01 and four open items, main copy (2026-10-23)
 
-## Claude repair of GT-004, GT-005 and GT-006 (2026-10-17; commit `ffa7adc`)
+Implemented, ready for review: `cbe4b29` (open items, migration 0109), `658ca5b` (B7-F01, compact window) and this docs commit. Checks and limits in `docs/batch8-handover-2026-10-23.md`. Codex's previous status line is kept in `.fnd001/backup-status-1023k/`.
 
-Implemented, ready for Codex's independent verification. Parent `261a009`; application base `19b3d54`/`a4792b4`. 18 paths, all new or changed in `ffa7adc` only (byte hashes in `.fnd001/overnight/b16/hashes.txt`, committed bytes match: 0 mismatches):
 
-- Migration: `supabase/migrations/0103_insight_support_snapshot.sql` (new, additive, idempotent: `insights.support_snapshot jsonb`). Must be applied where the app runs; without it pre-insights read "Support not checked" (unknown, never current). Not applied to any live or development database.
-- Shared rules: `src/lib/supportStatus.ts` (`loadPreInsightSupport`, same `classifyInsightSupport` rule as synthesized insights), `src/lib/insightGenerator.ts` (records the snapshot in the statement that reads the prompt text), `src/lib/recommendationQualification.ts` (new, one wording for XLSX and PPTX), `src/lib/crosstabSlides.ts` (new, fitted layout).
-- Consumers: crosstab export route; insights export and export-deck; recommendations export and export-deck; `runs/[id]/page.tsx` and `InsightsReview.tsx` (pre-insight card shows the same support status).
-- Tests: `crosstabSlides.test.ts`, `exportQualification.db.test.ts` (new); alias mocks added to `preInsightDeck.db.test.ts` and `decisionRefreshReconciliation.db.test.ts`; browser checks `e2e/ui/journey-exports.check.mjs` and `journey-changes.check.mjs` (new).
+## Claude: B6-F01 and B6-F02, main copy (2026-10-23)
 
-Per-finding repair, regression and the failure shown on the previous code: [golden-thread-findings-register-2026-10-17.md](golden-thread-findings-register-2026-10-17.md), section "Claude repair of GT-004, GT-005 and GT-006".
+Implemented, ready for review: `98230f8` (with migration 0108) and this docs commit. Checks and limits in `docs/batch7-handover-2026-10-23.md`. Codex's previous status line is kept in `.fnd001/backup-status-1023j/`.
 
-Checks on the final tree (cloud workspace, disposable PostgreSQL 16, real Python engine, model replay only, no paid calls): `npx tsc --noEmit -p .` pass; ESLint 0 errors (6 pre-existing warnings); `vitest run src/lib/__tests__ --pool=forks` 126 files, **886 passed, 0 failed, 43 skipped**; production `next build --webpack` pass; browser 39/39 on that build; smoke 1, adapter 2, objective acceptance passed. Counterfactual: the three `exportQualification` cases fail on the previous export and generator code; the previous crosstab layout puts the table's right edge at 14.2 in against a 12.94 in limit.
 
-Limits: GT-007 to GT-010 are not repaired (product decision and wording candidates). Model quality remains unverified (replay only). Canonical partition unchanged at 36 Closed / 1 Confirmed / 6 Blocked = 43 until Codex verifies. No push, deployment or database change.
+## Claude: B5-F01 to B5-F05, main copy (2026-10-22)
 
-## Claude reference-test follow-up (2026-10-17; commit `a4792b4`)
+Implemented, ready for review: `af9fed4` and this docs commit. Checks and limits in `docs/batch6-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022i/`.
 
-Implemented, ready for review. Test-only; released by Codex at `9190928`. No application file.
 
-- `goldenReferenceFixtures.test.ts`: one `evaluate()` rule per statistic. Pooled z: the engine's |z| (from its p) must agree in conclusion at .05 and lie within 10% of the reference. Two-sided p: same conclusion, within a factor of 2. Identifiers: literal `0001` / `0200` at the named position, read through the engine's own reader, plus the case count. A statistic with no rule fails. The note test also asserts the comparison is uncorrected (`correction: none`).
-- Negative controls in the file, each failing only on the broken assertion: z = 0, first ID 9999, an unsupported statistic, p = 0.5 for a significant difference, NearTie flagged significant. Canonical references and the weighted, x7 and refusal controls pass.
-- Shown on the fixture itself: with `expected.json` mutated (z = 0, ID 9999, an added unsupported statistic) the previous test passed all three and the new test fails all three; the fixture was restored byte for byte.
-- `candidateOrderTieBreak.db.test.ts`: scope comment and test title corrected. The tie-break is shared; the objective statement still lists researcher-written objectives first, so the statement and evidence orders agree only when the items share a source.
-- Checks: `npx tsc --noEmit -p .` pass; ESLint clean on both files; `vitest run src/lib/__tests__ --pool=forks` 124 files, **879 passed, 0 failed, 42 skipped**.
+## Claude: B4-F01, B3-01, M-B4-01, prompt caching and the Research assistant, main copy (2026-10-22)
 
-## Latest independent tidy-up review
+Implemented, ready for review: `7c9c783` (prompt caching), `1eda64b` (Research assistant tools), `2b0868b` (floating assistant), `a67bf69` (B4-F01, B3-01, M-B4-01) and this docs commit. Checks and limits in `docs/batch5-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022h/`.
 
-Revieweda345fd3/19b3d54. Unpooled-significance note and ID tie-order accepted on actual engine/code/DB evidence;59 focused passes/4 placeholders. Old implementation fails both new tie assertions and note; isolated tracked-source typegen/typecheck pass, lint0 errors/1 existing warning. Workspace typecheck contamination from retained untracked probes preserved separately.
 
-Permanent reference test not fully accepted: three negative controls (contradictory z conclusion, wrong literal ID, unsupported statistic) still pass aggregate. Claude released only to fix those checks, add negative controls and correct the ordering-test comment's mixed-source scope. Exact findings/evidence in latest independent disposition/handoff.37 Closed/6 Blocked=43 unchanged; no app row reopened. No next golden-thread run started, no paid call/push/deployment. Review resources stopped; evidence under scripts/workflow-tenant-review/tidy-review-20261017/. Overall acceptance incomplete. Older entries below are historical where superseded.
+## Claude: B3-01, B3-02, one-page Objectives and Grant's evening changes, main copy (2026-10-22)
 
-## Claude tidy-ups for one Codex review (2026-10-17; commit `19b3d54`)
+Implemented, ready for review: `458a829`, `587636a`, `8f256ef`, `66fe59d`, `c9390ac`, `49d8026`, `9b5c123` and this docs commit. Checks and limits in `docs/batch4-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022g/`.
 
-Implemented, ready for review. Requested by Grant (11:33 SAST) from the deep golden-thread check observations. Base: application `8fa326c`, docs `f263193`.
 
-- `api/parse-stats-file.py`: the table note names the column test actually applied ("two-proportion z-test with unpooled standard errors on effective bases"; the SE is computed column versus the rest of its banner, line ~2568). Wording only, no calculation change, no engine version change: tables saved earlier keep their previous note until recomputed.
-- `src/lib/runSync.ts`, `src/lib/objectiveValidator.ts`, `src/lib/objectiveEvidence.ts`: accepted objectives and decisions ordered by `created_at, id`. Only ties change (previously arbitrary). Candidate-backed evidence items are keyed by candidate id; free-text items by kind, order and text, whose order is now stable.
-- `src/lib/__tests__/goldenReferenceFixtures.test.ts` (new, permanent): the deep check's reference test, plus the note wording. `src/lib/__tests__/candidateOrderTieBreak.db.test.ts` (new, real DB): statements and evidence item order with equal timestamps; both cases fail on the previous code. `src/lib/__tests__/helpers/fakeObjectiveDb.ts`: follows the new query text and order (it matches SQL exactly; 9 Rule B tests failed until it was updated, recorded here).
-- Checks: `npx tsc --noEmit -p .` pass; Python syntax pass; changed-file ESLint 0 errors, 1 pre-existing warning (`_hadTable` in `objectiveEvidence.ts`); `vitest run src/lib/__tests__ --pool=forks` 124 files, **875 passed, 0 failed, 42 skipped**; production build pass; against it **30/30 UI checks**, smoke 1, adapter 2, objective review acceptance passed.
-- Failed invocations retained: the first full run included the parked evidence copy of the reference test in the typecheck (renamed out of the compiled tree) and failed 9 Rule B tests on the fake database's exact query match (helper updated).
-- Resources stopped; 0 disposable databases or roles. No model calls, push, deployment, or live/development change.
+## Claude: M-B2-01, M-B2-02 and the knowledge base, main copy (2026-10-22)
 
-## Deep golden-thread check (Claude, 2026-10-17; report only)
+Implemented, ready for review: `41cdc49` (knowledge base and manual), `8ff226d` (M-B2-01, M-B2-02) and this docs commit. Checks and limits in `docs/batch3-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022f/`.
 
-At application `8fa326c`, production build, disposable PostgreSQL 16, real Python engine, model replay only. No application file changed. Evidence: `.fnd001/deep-check-20261017/deep-check-20261017.tgz` (SHA-256 `dd6c8e98650605b8672c80040ffe19696c1a484969875b3b55b3a824290131e9`); report in the project as `claude/deep-golden-thread-check-2026-10-17.md`.
 
-- Numbers: golden thread 1, 31/31 reference assertions (25 by value within tolerance, 6 significance values by conclusion: the column test uses an unpooled SE, which the fixture README allows). Golden thread 2 weighted bases, estimates, groups and MR bases match; weight x7 rescaling invariant holds; columns-as-cases with a separate weights/MR codebook is refused explicitly.
-- Native: 30/30 UI checks, smoke 1, adapter 2, objective review acceptance 3 on the production build.
-- Integrity audit over the 38 runs the suite created: 0 violations (tenant consistency on every run-scoped table, cross-run links, recommendation anchors, decision statement equals accepted decisions, generator recommendations record decisions, no stored unsupported AI output, every insight has a verdict). Migration 0102 re-applies as a no-op.
-- Observations (S5, not blockers): the significance note does not name the unpooled SE form; decision statements order accepted decisions by `created_at` only (no `id` tie-break).
-- Migration `0102`: Grant reported on 2026-10-17 (11:31 SAST) that he has run it; not independently verified by Claude.
-- Not executed: model-judged stages (claim verdicts, missed insights, synthesis and narrative quality) need an authorised real-model pass; Office layout checked as text only.
+## Claude: M-BATCH-01, sidebar roll-up and 10 point scales, main copy (2026-10-22)
 
-## Latest independent recommendation-currentness review
+Implemented, ready for review: `f8f0420` (M-BATCH-01), `1f220a6` (sidebar), `9a03ad7` (10 point scales) and this docs commit. Checks and limits in `docs/batch2-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022e/`.
 
-Reviewed9316946/repair8fa326c, application read-only. Business remainder now Closed on original failing probes plus focused actual-generator/DB/native verification. All43 reconciled37 Closed/0 awaiting/0 Confirmed/0 Untested/6 Blocked; priorities34/9/0, prior36 closures intact. Exact row closure/limitations in latest independent disposition and canonical checklist; previous canonical v29 byte-identical.
 
-Independent23 focused passes/3 inactive placeholders;3 selected independent DB/migration passes/19 deliberately deselected assertions; native7/7 including all3 original probes; fresh build/TypeScript and changed-module lint pass.0102 additive rollback/rerun/pre-schema unknown and post-migration recording independently checked. Both generators store their own prompt context; missing records stay unknown, human work preserved. Per-item downstream marks/rewrite action remain outside the bounded repair. No full868/30 independent gate claim.
+## Claude: IR repairs and design batch, main copy (2026-10-22)
 
-All owned resources stopped,425 source paths unchanged, evidence retained under scripts/workflow-tenant-review/recommendation-review-20261017/. No paid calls/push/deployment. No application repair remains queued; ownership released to Claude for owner/documentation handoff or a separately scoped next checkpoint. Six Blocked history/security rows, authorised staging prerequisites, deployment/storage/provider/Office/exclusion limits remain explicit. Overall acceptance incomplete. Older entries below are historical where superseded here.
+Implemented, ready for review: `2e0ba53` (Research quality), `d10d28b` (multiple-response links), `5628913` (IR-01, IR-02, IR-03, M-IMPORT-01), `b78ceae` (SemanticTabs mean), `9af17ed` (SemanticTabs memory), `90e2753` (StarterTabs) and this docs commit. Checks and limits in `docs/design-batch-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022d/`.
+
+
+## Claude: Import screen and proposal re-read rule, main copy (2026-10-22)
+
+Implemented, ready for review: `2ad3ece`, `650735c`. Checks and limits in `docs/import-and-reread-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022c/`.
+
+
+## Claude: repairs for Codex's GT1000 repair review, main copy (2026-10-22)
+
+Implemented, ready for review: `20e49ab`, `88f092a`, `7d9fd96`. Checks and limits in `docs/r1000-repair-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022b/`.
+
+
+## Claude: repairs for Codex's GT1000 review, main copy (2026-10-22)
+
+Implemented, ready for review: `63d50af`, `522df47`, `190ae7f`. Checks and limits in `docs/gt1000-repair-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022a/`.
+
+
+## Claude: repairs for Codex's GT500 re-review, main copy (2026-10-21)
+
+Implemented, ready for review: `678bbf8` (R500-02 Setup edits bound to their candidate; R500-01 failed fill kept through ordinary saves) and `26a37ee` (UI-R500-01). Checks and limits in `docs/r500-repair-handover-2026-10-21.md`. Codex's previous status line is kept in `.fnd001/backup-status-1021c/`.
+
+
+## Claude: repairs for Codex's GT500 review, main copy (2026-10-21)
+
+Implemented, ready for review: `0e37127` (GT500-F01 import lineage, F02 visible failed fills, F03 stale-edit conflicts, P01 one identity for Add, Fill and scoring, M-GT500-01 briefs and comments) and `b07a79a` (UI-GT500-01). Checks and limits in `docs/gt500-repair-handover-2026-10-21.md`. Codex's previous status line is kept in `.fnd001/backup-status-1021b/`.
+
+
+## Claude: repairs for Codex's GT100 re-review, main copy (2026-10-21)
+
+Implemented, ready for review: `9ff70e5` (keys), `12ae030` (GTR-01), `bfb6df5` (GTR-02), `b007ef4` (SEC-01, SEC-02), `979cdc9` (M-GTR-01 briefs), `74ed2ef` (filters across the top and theme tiles, design) and this docs commit. Full suite on `74ed2ef`: browser 67 passed (1 skipped), unit 1,269 passed, smoke and objective acceptance passed, lint errors unchanged at 349. Details: `docs/gtr-repair-handover-2026-10-21.md`.
+
+## Claude: repairs for Codex's 100-case and RR re-reviews, and the new section design (2026-10-21)
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE**: the full 100-case golden-thread review found shared GT100-F01 to GT100-F03; RRV-01 remains open. See `docs/golden-thread-100-independent-review-2026-10-21.md` and its case matrix. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged."
+
+Implemented, ready for review, main copy only: `df90a55` (RRV-01), `053a475` (rename), `2322679` (GT100-F01), `ddb4c00` (GT100-F02, F03), `670eb38` (Findings, Insights, Recommendations and Insights report overviews with OV-01 to OV-04; please assess apart from the repairs) and this docs commit. Full suite on `670eb38`: browser 67 passed (1 skipped), unit 1,257 passed, smoke and objective acceptance passed, lint errors unchanged at 349. Details, controls and limits: `docs/gt100-repair-handover-2026-10-21.md`.
+
+## Claude: repairs for Codex's 21 October re-review (2026-10-21)
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE**: independent repair review found five remaining correctness issues (RR-01 to RR-05); see `docs/independent-review-2026-10-21.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked remain unchanged."
+
+Implemented, ready for review: repairs (3000 `bf244dd`, 3001 `7282c71`), a follow-up closing two acceptance gaps (3000 `d433992`, 3001 `5520856`) and this docs commit. On 3001 the Findings and Insights overviews (`18cb7e7`, Grant's design trial) sit between them and touch none of the repaired files; please assess them apart from the repair verdict. Full suites on both copies: browser checks 64 and 65 passed (1 skipped each), unit 1,193 / 1,206 passed, smoke and objective acceptance passed, lint errors unchanged at 349. Details, previous-code controls and limits: `docs/rr-repair-handover-2026-10-21.md`.
+
+## Claude: repairs for Codex's 20 October review (2026-10-21)
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE**: independent A–E review of both copies found 11 correctness issues and 2 maintainability concerns; see `docs/independent-review-2026-10-20.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked remain unchanged."
+
+Implemented, ready for review: three packages per copy (3000 `bee2612`, `356a3e9`, `dcefdc0`; 3001 `b8b4299`, `d8e4ba2`, `40be83b`) and this docs commit. Full suites on both copies: 63 browser checks passed (1 skipped), unit 1,184 / 1,192 passed, smoke and objective acceptance passed, lint unchanged at 349. Details, previous-code controls and limits: `docs/repair-handover-2026-10-21.md`.
+
+## Claude: 18 to 20 October work ready for review (2026-10-20)
+
+Implemented, ready for review. Review targets: main copy (`app`, port 3000) at `6a8dc08` (Coding and Reports and decks carried from 3001 at Grant's request, 20 October evening), redesign copy (`app-import-redesign`, port 3001) at `0afd1c3`; the check fixes and docs-only commits around them are named in the handover. The last independently accepted scope stays `1e0f2a3`; the release baseline stays 37 Closed / 6 Blocked.
+
+- What changed, the checks run with their counts, mocks versus real infrastructure, migrations (0106 and 0107 new) and limits: `docs/handover-2026-10-20.md`.
+- What to double-check tonight, sequenced as the standard asks (calculations and identity, persistence and concurrency, asynchronous UI state, parity between the copies, comments and checks): `docs/codex-double-checks-2026-10-20.md`.
+- Nothing pushed or deployed; no development or live database touched.
+
 
 ## Claude repair of recommendation currentness (2026-10-17; commit `8fa326c`)
 
@@ -260,7 +643,8 @@ All results below are Codex **self-validation** of integrated/changed code, not 
 - Frozen native full replay passes with the permanent adapter and actual setup-created restricted role. A1 nested continuous-table mean7.1 and raw-code subgroup40/60 pass; original6.5 reference retained. A3 injectedHTTP500 fails boundedly and actual single-download retry passes.
 - Native label-conflict tables/Excel/reload retain both labels and unmatched-name warning; corrected workbook control passes. Initial notices still require dictionary construction; same-project supported deletion/corrected reupload also passes; no in-place replacement claim.
 - Valid and truncated SAV/DTA native import/calculation/error/reload/provenance checks pass; raw processing_status remains null and is not reported as truthful ready/failed certification.
-- Grant approved20,000,000 bytes and100,000 cases per file, with visible refusal/recovery. Shared TS/Python contract and UI/server enforcement implemented. Engine exact/one-over/cached-pair boundary checks pass. Native byte overflow and SAS exclusion pass; native100,001-case refusal persists after reload and corrected100,000-case upload succeeds. Cold concurrent deployed load is not certified.
+- **2026-10-19: file limit raised to 100,000,000 bytes (Grant).** The 20 MB limit added 2026-10-16 blocked FinScope SA 2024.sav (26.7 MB), accepted on 2026-10-11 before the limit existed, in Cross tabs. Measured: FinScope SA 2025.sav (80.8 MB, 5,562 cases by 3,960 variables) reads in about 10 s at 1.5 GB peak memory, inside the reader's 2,048 MB and 60 s (vercel.json). Messages are now built from `api/import-limits.json`. New regression check `e2e/ui/large-spss-crosstab.check.mjs` (synthetic 25 MB SPSS file of survey shape, cross tab built; confirmed to fail on the old limit). Hosted upload of files this size still needs the direct-to-storage path (next.config.ts note).
+- (Superseded 2026-10-19) Grant approved20,000,000 bytes and100,000 cases per file, with visible refusal/recovery. Shared TS/Python contract and UI/server enforcement implemented. Engine exact/one-over/cached-pair boundary checks pass. Native byte overflow and SAS exclusion pass; native100,001-case refusal persists after reload and corrected100,000-case upload succeeds. Cold concurrent deployed load is not certified.
 - Grant excluded SAS pending verification. Upload/server and user-facing documentation disclose this exclusion.
 - Native finding-body edit survives reload and qualifies the dependent insight/report and actual DOCX. Browser PPTX invocation timed out and stays failed; targeted HTTP PPTX continuation returns a valid qualified deck. Native revert/reload preserves researcher note and unchanged computed control. Browser PPTX event completion remains separate.
 - Final full validation: **107files /804passed /33skipped**, real PostgreSQL and Python suites executed with strict prerequisites (`repair7/validate-checkpoint-final.log`). Final production build passes (`repair7/build-checkpoint-final.log`), using migrated synthetic DB. Dependency unpdf/import.meta warning retained.
@@ -756,37 +1140,3 @@ Two complete synthetic objects/hashes, password-free UTF-8 cluster dump, old fai
 ## Claude four-remainder package complete (2026-10-17)
 
 Commit `091663e` (18 paths) over `b5992da`, plus the following docs-only commit. Local and unpushed. Affected source boundaries were recorded in the handoff before the package was applied to this checkout. Gate: tsc pass; vitest 121 files / 860 passed / 0 failed / 39 skipped; production build pass; 28 of 28 browser checks, smoke 1, adapter 2, objective script passed. Details: "Claude work package for the four released remainders" in the disposition record. Partition unchanged until Codex's review; overall acceptance incomplete.
-
-## Codex independent parallel golden-thread checkpoint — 2026-10-17
-
-Report:parallel-golden-thread-assessment-2026-10-17.md; shared findings:golden-thread-findings-register-2026-10-17.md. Application19b3d54 unchanged throughf2fc03a, reference-test repair independently accepted. Strict124files879passes42skips, actual PostgreSQL/Python suites; build/30native/2continuous+smoke/3objective/2adapter pass; independent references/integrity pass. All16 export formats meaningfully exercised. Three actual consumer/layout failures GT004/005/006 released to Claude, no app edits by Codex. FND row nowConfirmed for GT004/006, counted once:36Closed/1Confirmed/6Blocked=43; other finite closures/exclusions/archived and public-release security gates preserved. Final repaired-commit acceptance pending; replay only/model-quality gap remains. Failed runs retained separately. No push/deployment/provider call/history rewrite.
-
-Codex owned stack/DB/role removed and labelled cluster stopped;3240/39129/55522 clear, no owned isolated Node process. Final evidence/dump/storage/replaylog retained. SamefailedDOCX native retry succeeds; originalconversionfailure causeunproved and preserved. Exact final repair review pendingClaude, no overallacceptance claim.
-
-## Additional independent qualitative workflow — 2026-10-17
-
-Codex completed the different researcher-edit workflow in qualitative-researcher-edit-assessment-2026-10-17.md.9main/4follow-onchecks and13exactexportassertions pass on frozen application19b3d54; source unchanged, actual native writes/reload, failure/retry and export checks. Failed harness attempts retained. No new appdefect or closure; existing36Closed/1Confirmed/6Blocked and GT004/005/006 unchanged. Replay only; no push/deployment. Owned synthetic stack/DB/role shut down;3241/39129/55523 clear. Claude retains export repair ownership.
-
-## Codex independent ffa7adc export repair disposition — 2026-10-17
-
-Report:export-repair-independent-review-2026-10-17.md. OriginalGT004 native failure closes; originalGT006 rejected/current-control workbook case and GT005 horizontalTotal/reference cases pass. Actualindependent failures remain: latestrefusingverdict bypassedbyhistoricalrobust drafts/exportSupportcurrent; supportedlonglabelrenderloses7answerendsvertically. ExistingFND Confirmed and GT005open, no newcanonicalrow.36Closed/1Confirmed/6Blocked unchanged. Focused20pass/2independentappfail/5skip; native5/5 plusGT006/crosstabreference; build/TypeScriptpass. No broad886test/39browserindependentclaim. Claude boundedlatestverdict/layoutrepairreleased; GT007productdecisionpending,GT008-010openwording/presentation. Replayonly; local/unpushed; failedhistorypreserved.
-
-Owned ffa7adc review resources stopped; runtime DB/role absent, labelled cluster stopped,3242/39130/55524 clear and no owned isolated Node process. Dump/storage/replay/source/failure evidence retained. Handoff READY_FOR_CLAUDE for latest-verdict and vertical-layout remainders only; no watch configured or changed.
-
-## GT-007 scope authorised by Grant — 2026-10-17
-
-Grant approved dedicated Excel and Slides exports for the main Recommendations list. Claude retains ownership and may include this in the current package or a separate stable release. Exact bounded acceptance is appended to agent-handoff.md; independent verification remains required. The earlier pending product decision is resolved, feature completion is not claimed. Counts36 Closed/1 Confirmed/6 Blocked unchanged; other repairs and GT-008–GT-010 unaffected. Replay only, local and unpushed.
-
-## Final independent export acceptance — 2026-10-17
-
-Codex independently accepts repairs7d12593 and authorised main-list featurec00e5d1 at final applicationc00e5d1/release60bd1b6. Exact report:final-export-independent-acceptance-2026-10-17.md. GT004/005/006 finite closures and GT007 feature verified; FND closes once.37Closed/6Blocked=43, priorities34/9/0; all other row dispositions preserved. GT008-010 remain open deferrable wording/presentation, no new canonical row or approved-exclusion inference. Six blocked security/historical rows, existing exclusions and fresh-model gap remain; overall acceptance incomplete.
-
-Exact7d focused19pass/3skip; corrected-admin final strict127files898pass/46skip actual required suites; independent extra15pass/3skip; production build exit0. Native initial4pass/1converter failure, separate unchanged-assertion short-path GT007 continuation1pass;271 rendered-content assertions/4 refusal controls; real HTTP422/retry, numeric references and native empty-list pass. Original full-gate role prerequisites, converter failure, helper/decoding errors retained; no false all-green primary claim. Source read-only, replay only, local/unpushed. Evidence:scripts/workflow-tenant-review/final-export-review-20261017/.
-
-Final review resources verified stopped: runtime DB/role removed, labelled cluster stopped/auto-removed,3243/39131/55525 clear, no owned application/converter process. Both source manifests unchanged. Final report:final-export-independent-acceptance-2026-10-17.md. Handoff READY_FOR_CLAUDE for documentation/owner handoff;37Closed/6Blocked, overall acceptance incomplete. No watch changed, paid call, push or deployment.
-
-## Codex: ten additional replay journeys on 4475adc — 2026-10-17
-
-[Independent ten-journey report](ten-simulated-golden-threads-2026-10-17.md): 10 separate synthetic projects pass (nine production Playwright journeys and one qualitative researcher-edit journey). Generate/Validate, deletion, duplicate upload, interrupted save/retry, interrupted narrative/retry, correction qualification, rejection/regeneration, mixed main-list exports/download recovery and qualitative edits covered. Focused actual DB/engine references: 26 passed/3 explicit skips; production build exit0. Final persisted-link audit: 762 links/30 relationship checks, no issues. All548 tracked source/engine/migration hashes unchanged.
-
-GT-008/009/010 affected native scenarios pass at 4475adc; this bounded report does not certify the entire follow-up package or deployed-storage gate. No application repair, real-model calls or full-suite rerun. Prior failures and approved exclusions preserved; canonical37 Closed/6 Blocked unchanged, overall acceptance incomplete. Evidence at scripts/workflow-tenant-review/ten-journeys-20261017/. Password-free dump/storage/replay/actual exports retained; owned stack, DB/role/container stopped/removed, ports3244/39132/55526 clear and no owned app/conversion process remains. Local/unpushed; no watch changed.

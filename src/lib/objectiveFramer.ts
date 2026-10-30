@@ -1,7 +1,8 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolInput } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
-import { syncResearchObjective } from "./runSync";
+import { lockRunForContextChange, syncResearchObjective } from "./runSync";
 import { parseObjectiveLines } from "./objectiveLines";
 import { suggestionsNotAlreadyOnRun } from "./candidateSuggestionFilter";
 
@@ -199,12 +200,8 @@ export async function generateObjectiveCandidates(
 
   await logApiUsage(tenantId, runId, "objective_framer", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
-    throw new Error("Did not return a structured objective candidate list");
-  }
-
-  const rawInput = toolUse.input as { candidates?: unknown };
+  // EC10K-F02: a cut-off, refused or other-tool answer throws (nothing is saved), as a missing one did.
+  const rawInput = finishedToolInput(response, "record_objective_candidates", "The objective suggestions") as { candidates?: unknown };
   const rawCandidates = Array.isArray(rawInput.candidates) ? rawInput.candidates : [];
 
   const validCandidates = rawCandidates.filter(
@@ -230,6 +227,9 @@ export async function generateObjectiveCandidates(
 
     try {
       await client.query("begin");
+      // Codex OBJ500-F01: the run row first, as every candidate change does (runSync.ts), so a
+      // regeneration and a researcher's accept, reject or delete are serialized.
+      await lockRunForContextChange(client, runId, tenantId);
 
       // Re-running the framer replaces its previous AI-suggested
       // candidates rather than piling up duplicates, but only the ones a

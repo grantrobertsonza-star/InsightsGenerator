@@ -9,6 +9,7 @@
 //   4. After reload, Setup and Review both show exactly "Beta revised" and "Gamma revised"; the
 //      candidates are those two rows, with their original ids; the brief equals the saved text.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -28,7 +29,7 @@ test("numbered, hyphenated and bulleted objectives stay one each and consistent 
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
     const run = await ui.createRun({ name: `marker-variants-${Date.now()}` });
-    const section = (name) => page.getByRole("button", { name, exact: true }).first().click();
+    const section = (name) => openSection(page, name);
     const candidates = async () => (await db.query("select id, candidate_text from objective_candidates where run_id=$1 order by candidate_text", [run.id])).rows;
     const reopen = async (name) => {
       await page.goto(run.url, { waitUntil: "networkidle" });
@@ -49,12 +50,12 @@ test("numbered, hyphenated and bulleted objectives stay one each and consistent 
     const brief = (await db.query("select initial_research_objective from runs where id=$1", [run.id])).rows[0].initial_research_objective;
     for (const w of ["Alpha", "Beta", "Gamma"]) await expect(page.getByText(`Marker objective ${w}`, { exact: true }).first()).toBeVisible();
     await reopen("Review Objectives");
-    for (const w of ["Alpha", "Beta", "Gamma"]) await expect(page.locator("tr", { hasText: `Marker objective ${w}` }).first()).toBeVisible({ timeout: 60_000 });
+    for (const w of ["Alpha", "Beta", "Gamma"]) await expect(page.locator("tbody[data-objective-row]", { hasText: `Marker objective ${w}` }).first()).toBeVisible({ timeout: 60_000 });
 
     // 2a. Review: Beta to "Beta revised".
-    const betaRow = page.locator("tr", { hasText: "Marker objective Beta" }).first();
+    const betaRow = page.locator("tbody[data-objective-row]", { hasText: "Marker objective Beta" }).first();
     await betaRow.getByRole("button", { name: "Edit", exact: true }).click();
-    const editingRow = page.locator("tr", { has: page.locator("textarea") }).first();
+    const editingRow = page.locator("tbody[data-objective-row]", { has: page.locator("textarea") }).first();
     await editingRow.locator("textarea").fill("Marker objective Beta revised");
     await editingRow.getByRole("button", { name: "Save", exact: true }).click();
     await expect.poll(async () => (await db.query("select candidate_text from objective_candidates where id=$1", [ids.Beta])).rows[0]?.candidate_text, { timeout: 30_000 }).toBe("Marker objective Beta revised");
@@ -70,7 +71,7 @@ test("numbered, hyphenated and bulleted objectives stay one each and consistent 
 
     // 3. Review: delete Alpha.
     await reopen("Review Objectives");
-    const alphaRow = page.locator("tr", { hasText: "Marker objective Alpha" }).first();
+    const alphaRow = page.locator("tbody[data-objective-row]", { hasText: "Marker objective Alpha" }).first();
     await alphaRow.getByRole("button", { name: "Delete objective" }).click();
     await expect.poll(async () => (await candidates()).length, { timeout: 30_000 }).toBe(2);
 
@@ -84,8 +85,8 @@ test("numbered, hyphenated and bulleted objectives stay one each and consistent 
     for (const t of expected) await expect(page.getByText(t, { exact: true }).first()).toBeVisible({ timeout: 60_000 });
     for (const gone of ["Marker objective Alpha", "Marker objective Beta", "Marker objective Gamma"]) await expect(page.getByText(gone, { exact: true })).toHaveCount(0);
     await reopen("Review Objectives");
-    for (const t of expected) await expect(page.locator("tr", { hasText: t }).first()).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator("tr", { hasText: "Marker objective Alpha" })).toHaveCount(0);
+    for (const t of expected) await expect(page.locator("tbody[data-objective-row]", { hasText: t }).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator("tbody[data-objective-row]", { hasText: "Marker objective Alpha" })).toHaveCount(0);
     expect((await db.query("select initial_research_objective from runs where id=$1", [run.id])).rows[0].initial_research_objective).toBe(brief);
   } finally {
     await db.end();

@@ -1,4 +1,5 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolInput } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { mapWithConcurrency } from "./concurrency";
 import { withTenant } from "./db";
@@ -157,11 +158,10 @@ export async function scoreRecommendationQuality(
           "recommendation_quality_scorer",
           response.usage,
         );
-        const toolUse = response.content.find((b) => b.type === "tool_use");
+        // EC10K-F02: only a finished record_scores call is used; an unfinished one throws into the
+        // batch's existing failure path below (no scores written for it).
         const scores = parseRecommendationScores(
-          toolUse && toolUse.type === "tool_use"
-            ? (toolUse.input as { scores?: unknown }).scores
-            : undefined,
+          finishedToolInput(response, "record_scores", "The recommendation quality scoring").scores,
           batch.length,
         );
         return scores.map((s) => ({ id: batch[s.index].id, ...s }));

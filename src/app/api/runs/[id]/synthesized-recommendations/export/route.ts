@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { safeFileStem } from "@/lib/deckSlides";
 import { exportFields, loadMainRecommendations, parseScope, scopeLabel } from "@/lib/mainRecommendationExport";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
 
 /**
  * GT-007: the main Recommendations list (recommendations on synthesized insights, AI-suggested and
@@ -16,6 +16,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (context instanceof Response) return context;
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(TENANT_ID, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
   const scope = parseScope(new URL(request.url).searchParams.get("scope"));
   const data = await loadMainRecommendations(TENANT_ID, runId, scope);
   if (!data) return NextResponse.json({ error: "Project not found" }, { status: 404 });

@@ -1,0 +1,7 @@
+"id","region","score","visits","joined","member","comment"
+1,"North",7.5,2,2024-01-15,TRUE,"good"
+2,"South",8,0,2023-06-30,FALSE,""
+3,"South",,5,,TRUE,
+4,,6.25,1,2025-02-28,,"late"
+5,"East",9,,2024-12-31,FALSE,"ok"
+6,"North",5,3,2020-02-29,TRUE,"fine"

@@ -1,4 +1,5 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolResult } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { mapWithConcurrency } from "./concurrency";
 import { withTenant } from "./db";
@@ -193,14 +194,11 @@ export async function checkMeaningSaturation(
           "coding_meaning_check",
           response.usage,
         );
-        const toolUse = response.content.find((b) => b.type === "tool_use");
-        if (
-          !toolUse ||
-          toolUse.type !== "tool_use" ||
-          response.stop_reason === "max_tokens"
-        )
-          return null;
-        let raw: unknown = (toolUse.input as { dimensions?: unknown })
+        // EC10K-F02 (batch 64): only a finished record_meaning_check call is a check; anything else is
+        // "not checked" (null), like a cut-off or missing answer before.
+        const result = finishedToolResult(response, "record_meaning_check", "The meaning check");
+        if (!result.input) return null;
+        let raw: unknown = (result.input as { dimensions?: unknown })
           .dimensions;
         if (typeof raw === "string") {
           try {

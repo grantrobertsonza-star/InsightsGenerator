@@ -3,21 +3,43 @@
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { generateObjectiveCandidates } from "./objectiveFramer";
-import { syncResearchObjective } from "./runSync";
+import { lockRunForContextChange, syncResearchObjective } from "./runSync";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { refreshObjectiveValidationQuietly } from "./objectiveValidator";
-import { normalizeObjectiveLine, parseObjectiveLines } from "./objectiveLines";
+import { normalizeObjectiveLine, objectiveIdentityKey, parseObjectiveLines } from "./objectiveLines";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
-export async function acceptObjectiveCandidate(runId: string, candidateId: string, editedText?: string) {
+/** A refused objective action, returned rather than thrown so its wording reaches the researcher. */
+// On a conflict, `currentText` is the objective's wording as stored now (null when it was deleted),
+// read under the same lock as the refusal, so the editor can show it without waiting for a refresh.
+export type ObjectiveActionResult = { ok: true } | { ok: false; error: string; conflict: boolean; currentText?: string | null };
+
+const REVIEW_EDIT_CONFLICT =
+  "This objective was changed or removed after you opened it, so your edit was not saved. Your wording is still in the box: use the current wording, or replace it with yours.";
+
+/**
+ * Accepts a candidate, optionally with edited wording. `expectedText` is the wording the editor
+ * opened with (GT500-F03): when the candidate now says something else, or is gone, the edit is
+ * refused as a conflict instead of overwriting another editor's change. The run row is locked
+ * first, the same order editStatedObjective uses, so a Review edit and a Setup edit of the same
+ * objective are serialized and the second one sees the first.
+ */
+export async function acceptObjectiveCandidate(runId: string, candidateId: string, editedText?: string, expectedText?: string): Promise<ObjectiveActionResult> {
   const TENANT_ID = await requireTenantId();
-  await withTenant(TENANT_ID, async (client) => {
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE, conflict: false };
+  const refused = await withTenant(TENANT_ID, async (client): Promise<ObjectiveActionResult | null> => {
+    const owned = await client.query("select id from runs where id = $1 and tenant_id = $2 for update", [runId, TENANT_ID]);
+    if (!owned.rowCount) return { ok: false, error: "This project was not found.", conflict: false };
     const result = await client.query<{ candidate_text: string; source: string }>(
-      "select candidate_text, source from objective_candidates where id = $1 and run_id = $2",
+      "select candidate_text, source from objective_candidates where id = $1 and run_id = $2 for update",
       [candidateId, runId]
     );
     const candidate = result.rows[0];
-    if (!candidate) return;
+    if (!candidate) return { ok: false, error: "This objective is no longer in the project; it may have been deleted. Reload to see the current list.", conflict: true, currentText: null };
+    if (expectedText !== undefined && normalizeObjectiveLine(candidate.candidate_text) !== normalizeObjectiveLine(expectedText)) {
+      return { ok: false, error: REVIEW_EDIT_CONFLICT, conflict: true, currentText: candidate.candidate_text };
+    }
 
     // OBJ-SET-001/M02: this used to only trim the edit, while Setup's own edit path
     // (editStatedObjective in runContextActions.ts) strips a leading bullet/number/hyphen
@@ -43,8 +65,8 @@ export async function acceptObjectiveCandidate(runId: string, candidateId: strin
     // wording can only move further from the original suggestion over time, never back, so
     // edited has no legitimate path from true to false.
     await client.query(
-      "update objective_candidates set status = 'accepted', candidate_text = $1, edited = edited or $2 where id = $3",
-      [finalText, wasEdited, candidateId]
+      "update objective_candidates set status = 'accepted', candidate_text = $1, edited = edited or $2 where id = $3 and run_id = $4",
+      [finalText, wasEdited, candidateId, runId]
     );
 
     // runs.stated_objectives_text (OBJ-SET-M01's "current mutable list") is otherwise only
@@ -74,11 +96,14 @@ export async function acceptObjectiveCandidate(runId: string, candidateId: strin
     }
 
     await syncResearchObjective(client, runId);
+    return null;
   });
+  if (refused) return refused;
 
   await refreshObjectiveQuality(TENANT_ID, runId);
   await refreshObjectiveValidationQuietly(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
+  return { ok: true };
 }
 
 /**
@@ -89,6 +114,7 @@ export async function acceptObjectiveCandidate(runId: string, candidateId: strin
 export async function acceptAllObjectiveCandidates(runId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("update objective_candidates set status = 'accepted' where run_id = $1 and status = 'pending'", [
       runId,
     ]);
@@ -107,6 +133,7 @@ export async function acceptAllObjectiveCandidates(runId: string) {
 export async function deleteAllObjectiveCandidates(runId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("delete from objective_candidates where run_id = $1 and status = 'pending'", [runId]);
   });
   revalidatePath(`/runs/${runId}`);
@@ -125,6 +152,7 @@ export async function deleteAllObjectiveCandidates(runId: string) {
 export async function unacceptObjectiveCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query(
       "update objective_candidates set status = 'pending' where id = $1 and run_id = $2 and status = 'accepted'",
       [candidateId, runId]
@@ -139,6 +167,7 @@ export async function unacceptObjectiveCandidate(runId: string, candidateId: str
 export async function rejectObjectiveCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("update objective_candidates set status = 'rejected' where id = $1 and run_id = $2", [
       candidateId,
       runId,
@@ -167,6 +196,7 @@ export async function rejectObjectiveCandidate(runId: string, candidateId: strin
 export async function restoreObjectiveCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("update objective_candidates set status = 'accepted' where id = $1 and run_id = $2", [
       candidateId,
       runId,
@@ -183,76 +213,54 @@ export async function restoreObjectiveCandidate(runId: string, candidateId: stri
  * typing this in is the deliberate act of adding it to the run, so there's
  * no separate accept click to make the researcher do afterward. They can
  * still reject it like anything else if they change their mind.
+ *
+ * Identity (GT500-P01): the same objectiveIdentityKey Set objectives' fill and the quality
+ * scorer use, so "Measure rural demand." and "measure rural demand" are one objective at every
+ * entry point. Adding one whose key matches a pending or accepted objective, of any source, is
+ * refused with a message naming it, and nothing is added (a repeated request after a first that
+ * succeeded gets the same message). Matching a rejected objective does not block the add:
+ * typing it in again is the researcher's deliberate re-add, a new accepted candidate beside the
+ * rejected one (Restore on Review brings the original back instead).
  */
-export async function addOwnObjectiveCandidate(runId: string, candidateText: string) {
+export async function addOwnObjectiveCandidate(runId: string, candidateText: string): Promise<ObjectiveActionResult> {
   const TENANT_ID = await requireTenantId();
-  const text = candidateText.trim();
-  if (!text) return;
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE, conflict: false };
+  const text = normalizeObjectiveLine(candidateText);
+  const key = objectiveIdentityKey(text);
+  if (!key) return { ok: false, error: "Type an objective to add.", conflict: false };
 
-  await withTenant(TENANT_ID, async (client) => {
-    // Serialize additions for this owned run even before migration 0083, where the fallback
-    // lacks a unique index. The lock covers its duplicate check, insert and wording sync.
+  const refused = await withTenant(TENANT_ID, async (client): Promise<ObjectiveActionResult | null> => {
+    // The owned run row is locked, so the duplicate check, the insert and the wording sync are one
+    // step for concurrent requests too (migration 0083's index only covers exact trimmed text).
     const owned = await client.query("select id from runs where id=$1 and tenant_id=$2 for update", [runId, TENANT_ID]);
     if (!owned.rowCount) throw new Error("This project is not available for adding objectives.");
-    // Idempotent on the exact same text (OBJ-SET-002: "repeated add requests create
-    // duplicates"). A rejected candidate with the same text does not block a fresh add:
-    // rejecting it was its own decision, not a reason to refuse the researcher adding it
-    // again deliberately - migration 0083's partial unique index is scoped the same way.
-    //
-    // Migration 0083 additionally enforces this identity in PostgreSQL, including writers
-    // outside this action. Before it is available, this action's owned-run lock prevents
-    // concurrent requests from both passing the fallback duplicate check.
-    // OBJ-SET-002: withTenant runs this whole callback in one transaction on one client.
-    // The ON CONFLICT insert below fails outright (not merely "no match") when migration
-    // 0083 hasn't applied, because there is no such partial unique index for it to target -
-    // and once ANY query errors inside a Postgres transaction, that transaction is aborted:
-    // every further query on the same client fails with "current transaction is aborted,
-    // commands ignored until end of transaction block" until a ROLLBACK happens. The
-    // fallback's own SELECT/INSERT used to run straight into that aborted state (the catch
-    // below only inspected the JS error, never rolled anything back), so a pre-migration
-    // database didn't get a working check-then-insert fallback - it got a guaranteed second
-    // failure on the fallback's first query, surfacing as an unhandled error instead of the
-    // documented "not race-safe, but it works" degradation. A SAVEPOINT around the risky
-    // insert gives the fallback a clean transaction to run its own queries in.
-    await client.query("savepoint obj_cand_insert");
-    try {
-      const inserted = await client.query(
-        `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-         values ($1, $2, $3, 'Written directly by the researcher.', 'researcher_authored', 'accepted')
-         on conflict (run_id, (trim(candidate_text))) where source = 'researcher_authored' and status <> 'rejected'
-         do nothing`,
-        [TENANT_ID, runId, text]
-      );
-      await client.query("release savepoint obj_cand_insert");
-      if ((inserted.rowCount ?? 0) === 0) return; // a matching candidate already exists; nothing new to sync
-    } catch (error) {
-      // Migration 0083 not applied yet: no such partial unique index for ON CONFLICT to
-      // target. Rolling back to the savepoint undoes just the failed insert attempt,
-      // leaving the surrounding transaction (and this client) usable again, so the fallback
-      // below runs in a valid transaction boundary instead of an aborted one. The owned-run
-      // lock above serializes this check-then-insert path until migration 0083 is available.
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/no unique or exclusion constraint matching/.test(message)) throw error;
-      await client.query("rollback to savepoint obj_cand_insert");
-      const existing = await client.query(
-        `select 1 from objective_candidates
-         where run_id = $1 and source = 'researcher_authored' and status != 'rejected' and trim(candidate_text) = $2
-         limit 1`,
-        [runId, text],
-      );
-      if ((existing.rowCount ?? 0) > 0) return;
-      await client.query(
-        `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-         values ($1, $2, $3, 'Written directly by the researcher.', 'researcher_authored', 'accepted')`,
-        [TENANT_ID, runId, text]
-      );
+    const existing = await client.query<{ candidate_text: string; status: string; source: string }>(
+      `select candidate_text, status, source from objective_candidates where run_id = $1 and status <> 'rejected' order by created_at, id`,
+      [runId],
+    );
+    const same = existing.rows.find((r) => objectiveIdentityKey(r.candidate_text) === key);
+    if (same) {
+      const where = same.status === "pending" ? (same.source === "ai_suggested" ? "a suggestion waiting for review" : "waiting for review") : "already accepted";
+      return {
+        ok: false,
+        error: `Not added: "${same.candidate_text}" is already in this project (${where}). Edit that one if the wording should change.`,
+        conflict: false,
+      };
     }
+    await client.query(
+      `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
+       values ($1, $2, $3, 'Written directly by the researcher.', 'researcher_authored', 'accepted')`,
+      [TENANT_ID, runId, text],
+    );
     await syncResearchObjective(client, runId);
+    return null;
   });
+  if (refused) return refused;
 
   await refreshObjectiveQuality(TENANT_ID, runId);
   await refreshObjectiveValidationQuietly(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
+  return { ok: true };
 }
 
 /**
@@ -272,6 +280,7 @@ export async function addOwnObjectiveCandidate(runId: string, candidateText: str
 export async function deleteObjectiveCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     const result = await client.query<{ candidate_text: string; source: string }>(
       "select candidate_text, source from objective_candidates where id = $1 and run_id = $2",
       [candidateId, runId]
@@ -307,6 +316,7 @@ export async function regenerateObjectiveCandidates(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await generateObjectiveCandidates(TENANT_ID, runId);
     await refreshObjectiveQuality(TENANT_ID, runId);
@@ -317,7 +327,7 @@ export async function regenerateObjectiveCandidates(
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_framer_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'objective_framer_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, message]
       );
     }).catch(() => {});
@@ -333,6 +343,7 @@ export async function regenerateObjectiveCandidates(
 export async function deleteSuggestedObjectives(runId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query(
       `delete from objective_candidates
        where run_id = $1 and source = 'ai_suggested' and status != 'rejected' and edited = false`,

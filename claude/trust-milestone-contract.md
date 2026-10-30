@@ -55,9 +55,9 @@ undecided suggestions are not replaced by nothing. Wording identity is candidate
 no-break spaces) is ignored, applied in the app to both stored and new wording. Inner wording, case
 and punctuation stay distinct; no semantic matching. An earlier version compared SQL trim() of
 stored text (spaces only) with a JavaScript trim of new text, so rejected wording ending in a tab or
-line break came back. Concurrent regenerations of one run are not serialised. The own-add
-duplicate guards and the 0083 unique index still use SQL trim() (spaces only); that separate rule
-for researcher-authored additions is unchanged here. Covered by
+line break came back. Concurrent regenerations of one run are not serialised. The 0083 unique
+index still uses SQL trim() (spaces only). Manual objective Add now uses objectiveIdentityKey
+(GT500-P01, see objective-identity-and-import-lineage.md); the decision own-add guard is unchanged. Covered by
 src/lib/__tests__/objectiveDecisionClosure.db.test.ts.
 Run `node scripts/e2e/objective-review-acceptance.mjs` against an explicitly disposable manifest
 from the local stack; no real model key is used.
@@ -90,12 +90,6 @@ Evaluator continuation (OBJ-REV-M04): the reading loop stops at 60 rounds (GUARD
 nothing shows the persistence-stall message; a round whose evaluate action failed shows its error.
 In all three cases Continue reading stays offered while the server reports unread questions (it used
 to be hidden after a failed round, leaving only Gather again, which regenerates the questions). A
-failed panel load shows its error and keeps the previous items. The named branches are exercised by evidence-round-failures.check.mjs: a returned failure after
-one successful round, a rejected evaluate request, the exactly-60-round cap, and an initial load
-refused by the disposable app role. Failed rounds return to idle with Continue reading; healthy
-retry finishes. The evaluate responses/connection and planner are controlled test boundaries;
-load refusal is an actual permission revoke. Codex independently re-executed these in a production
-build on 2026-10-17. Rejected panel actions are mapped to the existing failure result through
-settled and the shared actionFailureMessage rule; a dropped request is not a completed evaluation.
-The guard check rewrites action responses and does not claim 60 rounds of real model computation.
+failed panel load shows its error and keeps the previous items. Not natively exercised: the 60-round
+cap itself and the failed-round case (code review only).
 

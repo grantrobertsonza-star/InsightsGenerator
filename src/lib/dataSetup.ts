@@ -1,36 +1,49 @@
 import { withTenant, withTenantRead } from "./db";
-import { normaliseDataSetup, DEFAULT_DATA_SETUP, type DataSetup } from "./dataSetupShared";
+import { isPlainTableFileName, normaliseDataSetup, DEFAULT_DATA_SETUP, type DataSetup } from "./dataSetupShared";
+import { cellValue, setCell, type TableCell } from "./rowCells";
 
-type Cell = string | number | null;
+type Cell = TableCell;
 
-/** Flips a table whose rows are variables and columns are cases. */
-export function transposeTable(headers: string[], rows: Record<string, Cell>[]) {
-  if (headers.length < 2) return { headers, rows };
-  const key = headers[0];
-  const baseNames = rows.map((r, i) => String(r[key] ?? "").trim() || `Variable ${i + 1}`);
-  // IMP-003: de-duplication used to be decided per literal base name ("q" -> "q", the
-  // next "q" -> "q (2)"), which collides whenever one of the ORIGINAL rows already carries
-  // that generated-looking name - e.g. rows named "q", "q", "q (2)" produced "q", "q (2)",
-  // then "q (2)" again for the third row, silently overwriting the second row's value in
-  // `out` because both ended up keyed by the same string. Uniqueness is now decided
-  // against the full set of names already assigned so far (literal or generated), so a
-  // genuine "q (2)" row claims that name first if it comes first, and any later collision
-  // (generated or literal) is pushed to the next untaken suffix instead of overwriting it.
-  const used = new Set<string>();
-  const names = baseNames.map((base) => {
-    let candidate = base;
-    let suffix = 2;
+/**
+ * Unique variable names for a list of literal names, by the engine's rule (_dedupe_header_names in
+ * api/parse-stats-file.py, TP500-F02): every literal name is reserved first, the first occurrence keeps
+ * it, and each later repeat takes the next "name (n)" that no literal name or earlier allocation holds.
+ * So "q", "q", "q (2)" become "q", "q (3)", "q (2)": the row literally named "q (2)" keeps its name and
+ * values, and nothing is overwritten. Must stay statement-for-statement with the engine's function.
+ */
+export function allocateVariableNames(names: string[]): string[] {
+  if (new Set(names).size === names.length) return [...names];
+  const used = new Set(names);
+  const counts = new Map<string, number>();
+  return names.map((name) => {
+    const count = (counts.get(name) ?? 0) + 1;
+    counts.set(name, count);
+    if (count === 1) return name;
+    let n = count;
+    let candidate = `${name} (${n})`;
     while (used.has(candidate)) {
-      candidate = `${base} (${suffix})`;
-      suffix += 1;
+      n += 1;
+      candidate = `${name} (${n})`;
     }
+    counts.set(name, n);
     used.add(candidate);
     return candidate;
   });
+}
+
+/**
+ * Flips a table whose rows are variables and columns are cases. Used only for a table found in a
+ * document's text (Word, PDF): CSV, TSV and Excel files are flipped by the engine's own reader. A row's
+ * name is its first cell's literal text ("Variable n" when blank), allocated by allocateVariableNames.
+ */
+export function transposeTable(headers: string[], rows: Record<string, Cell>[]) {
+  if (headers.length < 2) return { headers, rows };
+  const key = headers[0];
+  const names = allocateVariableNames(rows.map((r, i) => String(cellValue(r, key) ?? "").trim() || `Variable ${i + 1}`));
   const out = headers.slice(1).map((h) => {
     const o: Record<string, Cell> = {};
     rows.forEach((r, i) => {
-      o[names[i]] = r[h] ?? null;
+      setCell(o, names[i], cellValue(r, h) ?? null);
     });
     return o;
   });
@@ -77,7 +90,7 @@ export async function loadDataSetupWithStatus(
 ): Promise<{ setup: DataSetup; ok: true } | { setup: DataSetup; ok: false; error: string }> {
   try {
     const setup = await withTenantRead(tenantId, async (client) => {
-      const r = await client.query<{ data_setup: unknown }>("select data_setup from documents where id = $1", [documentId]);
+      const r = await client.query<{ data_setup: unknown }>("select data_setup from documents where id = $1 and tenant_id = $2", [documentId, tenantId]);
       return normaliseDataSetup(r.rows[0]?.data_setup);
     });
     return { setup, ok: true };
@@ -111,8 +124,25 @@ export async function saveDataSetup(
   documentId: string,
   setup: DataSetup,
   expected?: ExpectedPreviousSetup,
-): Promise<{ saved: true } | { saved: false; current: DataSetup | null; notFound?: boolean }> {
+): Promise<{ saved: true } | { saved: false; current: DataSetup | null; notFound?: boolean; refused?: string }> {
   return withTenant(tenantId, async (client) => {
+    // A header row choice (decision 9) only applies to a CSV, TSV, text or Excel file; every reader refuses it for any
+    // other format, so it is refused here rather than saved where nothing could read the file. Read in this
+    // transaction, scoped to the run, before the write below.
+    if (normaliseDataSetup(setup).headerRowsSkipped !== null) {
+      const f = await client.query<{ source_filename: string }>(
+        "select source_filename from documents where id = $1 and run_id = $2",
+        [documentId, runId],
+      );
+      if (f.rowCount === 0) return { saved: false, current: null, notFound: true };
+      if (!isPlainTableFileName(f.rows[0].source_filename)) {
+        return {
+          saved: false,
+          current: null,
+          refused: "Only CSV, TSV, text and Excel files have a header row to choose; this file names its variables itself.",
+        };
+      }
+    }
     if (expected) {
       const r = await client.query<{ data_setup: unknown }>(
         "select data_setup from documents where id = $1 and run_id = $2 for update",

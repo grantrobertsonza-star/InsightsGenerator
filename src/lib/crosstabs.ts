@@ -1,11 +1,15 @@
 import { levelFindings, noDifferenceFindings } from "./descriptiveFindings";
+import { earlierMethodText, tableMethodStatus, type TableMethodStatus } from "./tableMethod";
+import { exactPct, exactTotalPct } from "./crosstabExact";
 import { withTenant, withTenantRead } from "./db";
+import { hasRepeatedSetKeys } from "./variableSetKeys";
 import { assertImportCaseCount } from "./importLimits";
 import { loadDataSetup, loadDataSetupWithStatus } from "./dataSetup";
 import type { DataSetup } from "./dataSetupShared";
 import { resolveSurveyDesign, effectiveDesignChoice } from "./surveyDesign";
 import { enrichDictionary } from "./labelOverlay";
 import { loadVariableOverrides, applyQuestionTypeOverrides, type VariableOverrides } from "./variableOverrides";
+import { applyReversals, reversalsOf } from "./reverseCoding";
 import { archiveAndReplaceFindings } from "./findingArchive";
 import {
   runStatsTool,
@@ -16,6 +20,9 @@ import {
   type CrosstabRow,
   type VariableDictionary,
 } from "./parseStatsFile";
+import { setCell } from "./rowCells";
+import { CURRENT_DICTIONARY_VERSION } from "./dictionaryVersion";
+export { CURRENT_DICTIONARY_VERSION };
 
 const MAX_FINDINGS_PER_QUESTION = 3;
 const MAX_FINDINGS_PER_TABLE = 40;
@@ -41,7 +48,7 @@ export type CrosstabListItem = {
   status: "draft" | "committed";
   findings: number;
   legacy: boolean;
-  source: "workspace" | "ask" | "window" | "starter";
+  source: "workspace" | "ask" | "window" | "starter" | "assistant";
   /** Set on every table of a layered set: one subtable per category of a layer variable, SPSS-style.
    * Shared across the set so the UI can group them; layerCategory/layerLabel describe this one panel. */
   layerGroup?: string | null;
@@ -67,6 +74,11 @@ export type CrosstabListItem = {
    * swallowed lookup failure can produce designStale: false... the actual findings loader also
    * returned false for a legacy null snapshot"). */
   designFreshness: DesignFreshness;
+  /** Batch 47: whether this table was built with the current table method (tableMethod.ts); a workbook table read
+   * before the label reader repair is "earlier" too (R1-F01). */
+  methodFreshness: TableMethodStatus;
+  /** Why an "earlier" table is earlier, in words (tableMethod.ts earlierMethodText). */
+  methodReason: string;
 };
 
 /** Brief 37 repair: distinct current/stale/unknown states for a table's or finding's design
@@ -136,14 +148,25 @@ export async function resolveAuthoritativeSheet(
   });
 }
 
-/** Confirmed questionnaire wording for a data file. Loaded lazily: instruments.ts imports this module. */
+/**
+ * Confirmed questionnaire wording for a data file, or null when it has none (including a database
+ * without the questionnaire tables, which getConfirmedItemsForData treats as no links). Loaded
+ * lazily: instruments.ts imports this module.
+ *
+ * GT100-F01: a failed read is not caught here. It used to become null, the same as "no confirmed
+ * links", so the dictionary, categories, cross tabs, scatter plots and driver analysis computed
+ * with the file's own labels and missing codes. InstrumentMeaningUnavailableError now propagates
+ * and each of those refuses before the engine is called.
+ */
 export async function overlayFor(tenantId: string, runId: string, documentId: string) {
-  try {
-    const { getLabelOverlay } = await import("./instruments");
-    return await getLabelOverlay(tenantId, runId, documentId);
-  } catch {
-    return null; // instrument tables not migrated yet: the file's own labels stand
-  }
+  const { getLabelOverlay } = await import("./instruments");
+  // Import step 3: confirmed reverse-coded items travel with the overlay, which every calculation that
+  // reads the file already sends, so the engine derives them wherever the file is read. A failed read
+  // of the corrections propagates (IMP-005), never "no reversals".
+  const [overlay, overrides] = await Promise.all([getLabelOverlay(tenantId, runId, documentId), loadVariableOverrides(tenantId, runId, documentId)]);
+  const reversals = reversalsOf(overrides);
+  if (reversals.length === 0) return overlay;
+  return { ...(overlay ?? { variableLabels: {}, valueLabels: {}, questions: {} }), reversals };
 }
 
 /** The variable list for a data file, read once and kept on the document. */
@@ -181,6 +204,17 @@ export async function loadVariableDictionaryWithStatus(
   return { ok: true, dictionary };
 }
 
+/**
+ * The data file's own dictionary: no codebook or questionnaire labels, no researcher corrections.
+ * The Labels and documentation tab (labelDocumentation.ts) compares it with each linked document,
+ * so it must not already carry their labels. A failed setup read refuses rather than defaulting.
+ */
+export async function loadFileOwnVariableDictionary(tenantId: string, runId: string, documentId: string): Promise<VariableDictionary> {
+  const status = await loadDataSetupWithStatus(tenantId, documentId);
+  if (!status.ok) throw new Error(status.error);
+  return buildVariableDictionaryForSetup(tenantId, runId, documentId, status.setup, false, false);
+}
+
 // Import must know the underlying definition when a researcher clears a correction. Reading an
 // already-corrected dictionary here would make the old correction look like the imported default.
 export async function loadImportedVariableDictionary(tenantId: string, runId: string, documentId: string): Promise<VariableDictionary> {
@@ -198,11 +232,22 @@ export async function loadImportedVariableDictionary(tenantId: string, runId: st
  * valid except for SAV/ZSAV: version 9 preserves their user-missing declarations in the audit.
  * Version10 rechecks flipped workbooks for unsupported separate-Codebook weight/MR definitions,
  * so an older dictionary cannot bypass the refusal by serving already-cached variable metadata.
+ * Version 11 is the one reader for CSV, TSV and Excel (Codex TP500/IP1000): names and codes are read
+ * as written, dates as ISO dates, and repeated names allocated by one rule, so every older cache of
+ * such a file, in either layout, may name or type variables differently and is rebuilt. Versions 12 and
+ * 13 changed which decimal spellings stay text; version 14 reads Excel logical cells apart from 1 and 0
+ * (CAL-R1-F03), so an Excel file needs 14 and a CSV/TSV file 13. Version 15 reads a label sheet headed
+ * "value_label" by that column (it used to give every code the variable's label), so an Excel file needs 15.
+ * Version 16 lists each coded variable's observed codes (CB1: a codebook entry's answer codes are checked against
+ * them before its link is confirmed automatically). A CSV, TSV or Excel file, which usually carries no labels of its
+ * own and gets them from a codebook, needs 16; other formats keep their older minimum, and a codebook link to a
+ * variable whose codes are not listed is left for the researcher to confirm.
  * Rebuilding only replaces documents.variable_dictionary: the
  * researcher's own corrections live in documents.variable_overrides and are applied on top, so a
  * rebuild cannot lose them.
  */
 export function minimumDictionaryVersion(layout: DataSetup["layout"], sourceFilename = ""): number {
+  if (/\.(?:xlsx|xls|csv|tsv|txt)$/i.test(sourceFilename)) return CURRENT_DICTIONARY_VERSION;
   if (/\.(?:sav|zsav)$/i.test(sourceFilename)) return 9;
   return layout === "columns_are_cases" ? 10 : 7;
 }
@@ -213,6 +258,7 @@ async function buildVariableDictionaryForSetup(
   documentId: string,
   setup: DataSetup,
   applyCorrections = true,
+  applyLabelOverlay = true,
 ): Promise<VariableDictionary> {
   // Hoisted ahead of the cache check (previously loaded only on a cache miss): IMP-SHIP-001
   // (Codex round 2, "bind dictionary caches ... to selected-sheet identity") needs the
@@ -235,6 +281,9 @@ async function buildVariableDictionaryForSetup(
     // reused; a dictionary cached before layout was tracked (layout undefined) is treated
     // as matching only the default orientation, same as a file whose setup was never touched.
     const cachedLayout = cached?.layout ?? "rows_are_cases";
+    // The same for the header row choice (decision 9): another header row names other variables. A dictionary cached
+    // before the choice existed was read with the header detected automatically, so it matches only that.
+    const cachedHeaderRowsSkipped = cached?.headerRowsSkipped ?? null;
     // IMP-SHIP-001 (Codex round 2): a cache entry is only safe to reuse when it was built
     // against the sheet that is CURRENTLY authoritative. If something IS persisted, the
     // cache must name that exact sheet - including a cache entry from before sheet
@@ -260,7 +309,8 @@ async function buildVariableDictionaryForSetup(
     const sheetMatches = !doc.selected_sheet || cachedSheet === doc.selected_sheet;
     // IMP-015: version 7 shows conflicting label definitions as conflicts; an older cache may
     // carry a silently chosen label, so it is recomputed.
-    if (cached && cached.sets && (cached.version ?? 0) >= minimumDictionaryVersion(setup.layout, doc.source_filename) && cachedLayout === setup.layout && sheetMatches) {
+    // A cache that gives two question sets one key predates unique set keys: rebuilt (variableSetKeys.ts).
+    if (cached && cached.sets && !hasRepeatedSetKeys(cached.sets) && (cached.version ?? 0) >= minimumDictionaryVersion(setup.layout, doc.source_filename) && cachedLayout === setup.layout && cachedHeaderRowsSkipped === setup.headerRowsSkipped && sheetMatches) {
       dictionary = cached;
     }
   } catch {
@@ -270,9 +320,11 @@ async function buildVariableDictionaryForSetup(
   if (!dictionary) {
     dictionary = await runStatsTool<VariableDictionary>("dictionary", doc.storage_path, doc.source_filename, {
       layout: setup.layout,
+      headerRowsSkipped: setup.headerRowsSkipped,
       selectedSheet: doc.selected_sheet,
     });
     dictionary.layout = setup.layout;
+    dictionary.headerRowsSkipped = setup.headerRowsSkipped;
     // IMP-SHIP-001 (Codex round 2): this may be the first read to ever touch this document (a
     // Table document whose findings were never extracted, only used for Cross tabs) - if so,
     // find out which sheet actually became authoritative, which may not be the one this call
@@ -285,9 +337,11 @@ async function buildVariableDictionaryForSetup(
       if (authoritative !== resolvedSheet) {
         dictionary = await runStatsTool<VariableDictionary>("dictionary", doc.storage_path, doc.source_filename, {
           layout: setup.layout,
+          headerRowsSkipped: setup.headerRowsSkipped,
           selectedSheet: authoritative,
         });
         dictionary.layout = setup.layout;
+        dictionary.headerRowsSkipped = setup.headerRowsSkipped;
       }
     }
     assertImportCaseCount(dictionary.nCases);
@@ -304,6 +358,7 @@ async function buildVariableDictionaryForSetup(
       // allowed to fail silently (see resolveAuthoritativeSheet's own comment).
     }
   }
+  if (!applyLabelOverlay) return dictionary;
   const overlay = await overlayFor(tenantId, runId, documentId);
   const withOverlay = overlay ? enrichDictionary(dictionary, overlay) : dictionary;
   if (!applyCorrections) return withOverlay;
@@ -322,7 +377,8 @@ async function buildVariableDictionaryForSetup(
   // genuinely has no corrections" - so a transient failure silently discarded every saved
   // correction instead of stopping the calculation that depends on them.
   const overrides = await loadVariableOverrides(tenantId, runId, documentId);
-  return applyQuestionTypeOverrides(withOverlay, overrides);
+  // Reversed items first, so the derived variable is the battery member a question-type correction sees.
+  return applyQuestionTypeOverrides(applyReversals(withOverlay, reversalsOf(overrides)), overrides);
 }
 
 // ANA-NPS-003: the same PSU/strata name-pattern heuristic CrosstabWorkspace.tsx has used for
@@ -360,6 +416,7 @@ export async function loadCategories(
     variable,
     overlay,
     layout: setup.layout,
+    headerRowsSkipped: setup.headerRowsSkipped,
     selectedSheet: doc.selected_sheet,
   });
 }
@@ -408,6 +465,11 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
   // false discovery rate correction (5%) become findings.
   const fdr = result.starter ? fdrQValues(result) : null;
   const weighted = result.weightVar ? "weighted" : "unweighted";
+  // The test and its caveat follow the design the engine APPLIED (notes.designApplied), not the one
+  // requested: designUsed is also filled when a design was asked for but every case lacked design data,
+  // and then the standard errors are plain Kish ones tested against the normal (ANA-NPS-003 did the same
+  // for NPS). stats.design below still records the request, with casesMissingDesign.
+  const designApplied = result.notes?.designApplied === true;
   for (const q of result.questions) {
     const candidates: (CrosstabFinding & { gap: number })[] = [];
     for (const row of q.rows) {
@@ -429,13 +491,16 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
             ? `${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (average ${value}) than overall (${total})`
             : q.kind === "grid"
               ? `"${row.label}" on ${q.label} averages ${dir} for ${col.blockLabel} "${col.name}" (${value}) than overall (${total})`
+              : row.autoMean
+                ? `The mean of ${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (${value}) than overall (${total})`
               : isScore
                 ? `"${row.label}" on ${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (${value}${row.isMean ? "" : " points"}) than overall (${total}${row.isMean ? "" : " points"})`
                 : `"${row.label}" on ${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (${value}${unit}) than overall (${total}${unit})`;
         candidates.push({
-          text: `${subject}, ${weighted}, based on ${base.n} cases (effective base ${Math.round(base.nEff)}); ${result.notes?.designUsed ? "t-test with design degrees of freedom, Taylor series variance" : "z-test"} of this group against all other cases in the same banner variable (not against the overall figure), ${row.pAdj?.[k] != null || qv !== null ? "unadjusted " : ""}p=${fmtP(row.p[k])}${row.pAdj?.[k] != null ? `, adjusted p=${fmtP(row.pAdj[k])} (corrected across the banner columns of this row)` : ""}${qv !== null ? `, false discovery rate q=${fmtP(qv)} (across every cell tested in this table; inclusion was decided on q, not on p)` : ""}.`,
+          text: `${subject}, ${weighted}, based on ${base.n} cases (effective base ${Math.round(base.nEff)}); ${designApplied ? "t-test with design degrees of freedom, Taylor series variance" : "z-test"} of this group against all other cases in the same banner variable (not against the overall figure), ${row.pAdj?.[k] != null || qv !== null ? "unadjusted " : ""}p=${fmtP(row.p[k])}${row.pAdj?.[k] != null ? `, adjusted p=${fmtP(row.pAdj[k])} (corrected across the banner columns of this row)` : ""}${qv !== null ? `, false discovery rate q=${fmtP(qv)} (across every cell tested in this table; inclusion was decided on q, not on p)` : ""}.`,
           theme: `${q.label} by ${col.blockLabel}`,
-          gap: Math.abs(value - total),
+          // Ranking only; from the unrounded figures (CT5K-F01) so a tie is not decided by display rounding.
+          gap: Math.abs((exactPct(row, k) ?? value) - (exactTotalPct(row) ?? total)),
           stats: {
             testType: isMean || row.isMean ? "column_mean_vs_rest" : isScore ? "column_score_vs_rest" : "column_proportion_vs_rest",
             question: q.label,
@@ -464,13 +529,21 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
                     ? []
                     : ["uncorrected_multiple_comparisons"]),
               "weighted_effective_base",
-              ...(result.notes?.designUsed ? ["survey_design_modelled"] : ["survey_design_not_modelled", "sampling_assumed_random"]),
+              ...(designApplied ? ["survey_design_modelled"] : ["survey_design_not_modelled", "sampling_assumed_random"]),
             ],
           },
         });
       });
     }
-    candidates.sort((a, b) => b.gap - a.gap);
+    // A mean or score row summarises the whole question, and its gap is in points of the scale while an
+    // answer's is in percentage points, so the two gaps cannot be ranked against each other (batch 48: a
+    // tested 2-point mean difference lost every place to 5-point share gaps and never became a finding).
+    // Summary rows come first, then answers; each by its own gap.
+    const isSummary = (c: CrosstabFinding) => {
+      const t = (c.stats as { testType?: string }).testType;
+      return t === "column_mean_vs_rest" || t === "column_score_vs_rest";
+    };
+    candidates.sort((a, b) => Number(isSummary(b)) - Number(isSummary(a)) || b.gap - a.gap);
     out.push(...candidates.slice(0, MAX_FINDINGS_PER_QUESTION));
   }
   if (out.length <= MAX_FINDINGS_PER_TABLE) return out;
@@ -489,17 +562,15 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
     .map((x) => x.f);
 }
 
-/** Adds one table to the draft set. No findings are made until the set is committed. */
-export async function buildCrosstab(
-  tenantId: string,
-  runId: string,
-  documentId: string,
-  request: CrosstabRequest,
-  /** "evidence": built only to answer an objective evidence question, kept out of the draft set so it cannot be committed into findings. */
-  options: { status?: "draft" | "evidence" } = {},
-): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[] }> {
-  // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
+/**
+ * One Cross tab computed by the engine, exactly as buildCrosstab computes it (the file's set-up, the researcher's
+ * type corrections, the questionnaire overlay and the authoritative sheet), without saving a table. D3's tracker
+ * dashboard reads its figures this way so that opening a dashboard does not add a table to the file every time;
+ * buildCrosstab calls this and then saves.
+ */
+export async function computeCrosstab(tenantId: string, runId: string, documentId: string, request: CrosstabRequest) {
   if (request.rowItems.length === 0) throw new Error("Choose at least one row variable.");
+  if (request.meanRows !== undefined && typeof request.meanRows !== "boolean") throw new Error("The Mean setting must be on or off.");
   // ANA-NPS-003 (Brief 38 repair): this was the exact remaining gap Codex found after Brief 37
   // fixed every CALLER's own lookups - buildCrosstab itself still independently called the
   // tolerant loadDataSetup() to read `layout` for the engine request, so a lookup failure here
@@ -530,16 +601,22 @@ export async function buildCrosstab(
   // (see the `type_overrides` handling in crosstab(), api/parse-stats-file.py). Only the `type`
   // field is relevant here; `questionType` corrections are already folded into the dictionary
   // itself (applyQuestionTypeOverrides) before a request is ever built from it.
-  const typeOverrides = Object.fromEntries(
+  const typeOverrides: Record<string, string> = Object.fromEntries(
     Object.entries(overrides)
       .filter(([, o]) => o.type !== undefined)
-      .map(([name, o]) => [name, o.type]),
+      .map(([name, o]) => [name, o.type as string]),
   );
+  // A reversed item's derived variable is the same measure turned around, so it takes the original's
+  // data-type correction (a scale read as a mean stays a mean); its own, if ever set, wins.
+  for (const r of reversalsOf(overrides)) {
+    if (typeOverrides[r.variable] !== undefined && typeOverrides[r.derived] === undefined) typeOverrides[r.derived] = typeOverrides[r.variable];
+  }
   let result = await runStatsTool<CrosstabResult>("crosstab", doc.storage_path, doc.source_filename, {
     ...request,
     correction: request.correction ?? "fdr",
     overlay,
     layout: setup.layout,
+    headerRowsSkipped: setup.headerRowsSkipped,
     typeOverrides,
     selectedSheet: doc.selected_sheet,
   });
@@ -564,6 +641,7 @@ export async function buildCrosstab(
         correction: request.correction ?? "fdr",
         overlay,
         layout: setup.layout,
+        headerRowsSkipped: setup.headerRowsSkipped,
         typeOverrides,
         selectedSheet: authoritativeSheet,
       });
@@ -574,6 +652,34 @@ export async function buildCrosstab(
       "None of the chosen rows could be tabulated. " + result.skipped.map((s) => `${s.variable}: ${s.reason}`).join(" "),
     );
   }
+
+  return { result, doc, overlay, overrides, authoritativeSheet, headerRowsSkipped: setup.headerRowsSkipped };
+}
+
+/** Adds one table to the draft set (computeCrosstab, then saved). No findings are made until the set is committed. */
+export async function buildCrosstab(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  request: CrosstabRequest,
+  /** "evidence": built only to answer an objective evidence question, kept out of the draft set so it cannot be committed into findings. */
+  options: {
+    status?: "draft" | "evidence";
+    /** The Research assistant question this table was built for and the exact request's key, so a retry of that question reuses it. */
+    assistantRequest?: { id: string; key: string };
+    /** "Copy here": the other wave's table this one rebuilds. A file holds one copy of a table: a second copy
+     * (a repeated click, a retried request) returns the copy already saved. */
+    copiedFrom?: string;
+    /** "Update table" on an edited copy: the replacement keeps its original's copiedFrom, so Copy here still sees the
+     * table as copied. No check for an existing copy (the copy being replaced is still there until it is retired). */
+    keepCopiedFrom?: string;
+    /** "Update table": the draft this table replaces (replaceDraftCrosstab). The new table and the removal of that
+     * draft are one transaction, and the new table records the draft it replaced, so a retry finds it. */
+    replacesDraft?: string;
+  } = {},
+): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[]; alreadyCopied?: true; replaced?: boolean; alreadyReplaced?: true }> {
+  // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
+  const { result, doc, overlay, overrides, authoritativeSheet, headerRowsSkipped } = await computeCrosstab(tenantId, runId, documentId, request);
 
   // IMP-003 / ANA-BRAND-002: this flat `headers`/`rows` projection (the saved table's plain
   // SQL-friendly columns, used for CSV/export and simple table rendering - separate from the
@@ -603,7 +709,7 @@ export async function buildCrosstab(
     q.rows.filter((r) => !r.isEffBase && (!r.isBase || q.kind === "multi")).map((r) => {
       const row: Record<string, string | number | null> = { Question: q.label, Answer: r.label };
       colNames.forEach((c, k) => {
-        row[c] = r.isBase ? (r.count[k] ?? null) : (r.pct[k] ?? null);
+        setCell(row, c, r.isBase ? (r.count[k] ?? null) : (r.pct[k] ?? null));
       });
       row.Total = r.isBase ? (r.total.count ?? null) : (r.total.pct ?? null);
       return row;
@@ -631,6 +737,7 @@ export async function buildCrosstab(
     rowKeys: request.rowItems.map((i) => i.key),
     rowItems: request.rowItems.map((i) => ({ key: i.key, label: i.label ?? null, kind: i.kind, vars: i.vars })),
     excludeDk: request.excludeDk !== false,
+    meanRows: request.meanRows === true,
     filters: request.filters ?? [],
     columnGroups: Object.fromEntries(Object.entries(request.columnGroups ?? {}).map(([k, g]) => [k, g.map((x) => x.label)])),
     questionnaireLabels: Boolean(overlay),
@@ -639,6 +746,7 @@ export async function buildCrosstab(
     // against, confirmed/published above - null for a CSV/stats file, which has no sheet
     // concept.
     selectedSheet: authoritativeSheet,
+    headerRowsSkipped,
   };
   const source = request.starter ? "starter" : (request.source ?? "workspace");
   const stored = {
@@ -652,9 +760,53 @@ export async function buildCrosstab(
     // The exact request that built this table, kept verbatim (not just the summarised provenance
     // above) so the same definition can be replayed on another wave's file later.
     savedRequest: request,
+    ...(options.assistantRequest ? { assistantRequest: options.assistantRequest } : {}),
+    ...(options.copiedFrom || options.keepCopiedFrom ? { copiedFrom: options.copiedFrom ?? options.keepCopiedFrom } : {}),
+    ...(options.replacesDraft ? { replacedDraft: options.replacesDraft } : {}),
   };
+  let alreadyCopied = false;
+  let replaced: boolean | undefined;
+  let alreadyReplaced = false;
 
   const tableId = await withTenant(tenantId, async (client) => {
+    // Table numbers are per file, taken as the highest so far plus one. Two tables saved at once
+    // for one file (the CSM dashboard builds a variable's overall and segmented distributions
+    // together, so this happens whenever Segment by is set; Codex CT500-F02) used to read the same
+    // highest number and both insert it, and the second failed on document_tables' unique
+    // (document_id, table_index) with the database's own message. Locking the file's row first
+    // makes saves for one file take turns for the length of this transaction; the lock query also
+    // confirms the file still exists in this run before anything is written.
+    const owner = await client.query("select id from documents where id = $1 and run_id = $2 and tenant_id = $3 for update", [documentId, runId, tenantId]);
+    if (owner.rows.length === 0) throw new Error("That data file was not found in this project, so the table was not saved.");
+    if (options.copiedFrom) {
+      // Under the file's lock, so two copies started at once save one table.
+      const copy = await client.query<{ id: string }>(
+        "select id from document_tables where document_id = $1 and run_id = $2 and crosstab->>'copiedFrom' = $3 limit 1",
+        [documentId, runId, options.copiedFrom],
+      );
+      if (copy.rows[0]) {
+        alreadyCopied = true;
+        return copy.rows[0].id;
+      }
+    }
+    if (options.replacesDraft) {
+      // Under the file's lock, so a retry and a second Update of the same draft take turns (Codex E1-F03). A table
+      // already recorded as this draft's replacement means the update was saved before: the same edit (a retry after
+      // a failure or a lost answer) gets that table, never a second one; a different edit is refused, because the
+      // draft it was made from has already been updated.
+      const earlier = await client.query<{ id: string; request: unknown }>(
+        "select id, crosstab->'savedRequest' as request from document_tables where document_id = $1 and run_id = $2 and tenant_id = $3 and crosstab->>'replacedDraft' = $4 limit 1",
+        [documentId, runId, tenantId, options.replacesDraft],
+      );
+      if (earlier.rows[0]) {
+        if (canonicalJson(earlier.rows[0].request) !== canonicalJson(request)) {
+          throw new Error("This draft was already updated with another edit (in another tab, or a moment ago). Reload Cross tabs to see the updated table, and edit that one.");
+        }
+        alreadyReplaced = true;
+        replaced = true;
+        return earlier.rows[0].id;
+      }
+    }
     const next = await client.query<{ next: number }>(
       "select coalesce(max(table_index) + 1, $2)::int as next from document_tables where document_id = $1 and table_index >= $2",
       [documentId, FIRST_CROSSTAB_INDEX],
@@ -695,6 +847,15 @@ export async function buildCrosstab(
           JSON.stringify({ design: request.design ?? null }),
         ],
       );
+      if (options.replacesDraft) {
+        // In the same transaction as the new table: the old draft goes only if it is still a draft of this file
+        // (nothing committed from it), and if this fails the new table is not kept either.
+        const removed = await client.query(
+          "delete from document_tables where id = $1 and run_id = $2 and tenant_id = $3 and document_id = $4 and crosstab_status = 'draft' and crosstab is not null",
+          [options.replacesDraft, runId, tenantId, documentId],
+        );
+        replaced = (removed.rowCount ?? 0) === 1;
+      }
       return inserted.rows[0].id;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -704,10 +865,24 @@ export async function buildCrosstab(
       if (/design_snapshot/.test(message)) {
         throw new Error("Building crosstabs needs migration 0091 applied first (npx.cmd supabase migration up).");
       }
+      // The lock above should make this impossible; if it still happens, say what it means
+      // instead of showing the constraint's name. Nothing was saved, so trying again is safe.
+      if ((error as { code?: string }).code === "23505" && /document_tables_document_id_table_index_key/.test(message)) {
+        throw new Error(
+          "Another table for this file was being saved at the same moment, so this one was not saved. Nothing was lost: try again.",
+        );
+      }
       throw error;
     }
   });
-  return { tableId, questions: result.questions.length, skipped: result.skipped };
+  return {
+    tableId,
+    questions: result.questions.length,
+    skipped: result.skipped,
+    ...(alreadyCopied ? { alreadyCopied: true as const } : {}),
+    ...(replaced !== undefined ? { replaced } : {}),
+    ...(alreadyReplaced ? { alreadyReplaced: true as const } : {}),
+  };
 }
 
 /**
@@ -718,48 +893,118 @@ export async function buildCrosstab(
  * analysis already recompute live across every wave file, but a crosstab is a stored table tied
  * to one document, so a new wave needs its own copy built from the same definition. Skips a table
  * with no saved request (built before this existed) or whose variables are not all present in the
- * new file, and reports why.
+ * new file, and reports why. A table already copied to that file (by its original's id, kept as
+ * crosstab.copiedFrom) is counted, not built again, so a repeated click or a retried request adds nothing
+ * (Grant, 29 October 2026). tables: how many the source file holds, so "nothing to copy" can be said.
  */
 export async function replicateCrosstabsToWave(
   tenantId: string,
   runId: string,
   sourceDocumentId: string,
   targetDocumentId: string,
-): Promise<{ built: number; skipped: { label: string; reason: string }[] }> {
+): Promise<{ tables: number; built: number; alreadyCopied: number; skipped: { label: string; reason: string }[] }> {
+  if (sourceDocumentId === targetDocumentId) throw new Error("Choose another wave to copy tables from.");
   const rows = await withTenant(tenantId, async (client) => {
-    const r = await client.query<{ id: string; label: string | null; saved_request: CrosstabRequest | null }>(
-      `select id, label, crosstab->'savedRequest' as saved_request
-       from document_tables
-       where run_id = $1 and document_id = $2 and crosstab is not null
-         and (crosstab->>'version')::int = 2
-         and coalesce(crosstab_status, 'committed') <> 'evidence'
-       order by table_index`,
-      [runId, sourceDocumentId],
+    // A table's original is itself, or the table it was copied from: copying a copy back to the original's wave, or
+    // on to a third wave, is recognised as the same table.
+    const r = await client.query<{ id: string; original: string; label: string | null; saved_request: CrosstabRequest | null; copied: boolean }>(
+      `select t.id, o.original, t.label, t.crosstab->'savedRequest' as saved_request,
+              exists (select 1 from document_tables c
+                       where c.document_id = $3 and c.run_id = $1 and (c.id::text = o.original or c.crosstab->>'copiedFrom' = o.original)) as copied
+       from document_tables t cross join lateral (select coalesce(t.crosstab->>'copiedFrom', t.id::text) as original) o
+       where t.run_id = $1 and t.document_id = $2 and t.crosstab is not null
+         and (t.crosstab->>'version')::int = 2
+         and coalesce(t.crosstab_status, 'committed') <> 'evidence'
+       order by t.table_index`,
+      [runId, sourceDocumentId, targetDocumentId],
     );
     return r.rows;
   });
   let built = 0;
+  let alreadyCopied = 0;
   const skipped: { label: string; reason: string }[] = [];
   for (const row of rows) {
     const label = row.label ?? "Crosstab";
+    if (row.copied) {
+      alreadyCopied += 1;
+      continue;
+    }
     if (!row.saved_request) {
       skipped.push({ label, reason: "Built before tables could be replayed on another wave; rebuild it here first." });
       continue;
     }
     try {
-      await buildCrosstab(
+      const r = await buildCrosstab(
         tenantId,
         runId,
         targetDocumentId,
         { ...row.saved_request, source: row.saved_request.source ?? "workspace" },
-        { status: "draft" },
+        { status: "draft", copiedFrom: row.original },
       );
-      built += 1;
+      if (r.alreadyCopied) alreadyCopied += 1;
+      else built += 1;
     } catch (error) {
       skipped.push({ label, reason: error instanceof Error ? error.message : String(error) });
     }
   }
-  return { built, skipped };
+  return { tables: rows.length, built, alreadyCopied, skipped };
+}
+
+/** A saved table's definition, to be edited in Build table (Grant, 29 October 2026: change what is needed for this
+ * wave instead of building from scratch). request is null for a table saved before requests were kept. */
+export type TableDefinition = { id: string; documentId: string; label: string; status: string; request: CrosstabRequest | null; copiedFrom: string | null };
+
+export async function loadTableDefinition(tenantId: string, runId: string, tableId: string): Promise<TableDefinition> {
+  return withTenantRead(tenantId, async (client) => {
+    const r = await client.query<{ id: string; document_id: string; label: string | null; status: string | null; request: CrosstabRequest | null; copied_from: string | null }>(
+      `select id, document_id, label, crosstab_status as status, crosstab->'savedRequest' as request, crosstab->>'copiedFrom' as copied_from
+       from document_tables where id = $1 and run_id = $2 and tenant_id = $3 and crosstab is not null`,
+      [tableId, runId, tenantId],
+    );
+    const row = r.rows[0];
+    if (!row) throw new Error("That table is not in this project (it may have been deleted), so it cannot be edited.");
+    return { id: row.id, documentId: row.document_id, label: row.label ?? "Crosstab", status: row.status ?? "committed", request: row.request, copiedFrom: row.copied_from };
+  });
+}
+
+/**
+ * "Update table": an edited draft is replaced by the table its edited definition builds. The new table is built, then
+ * saved and the old draft removed in one transaction (buildCrosstab's replacesDraft), so a failure leaves the old
+ * draft alone and no new table (Codex E1-F03). The old draft is removed only if it is still a draft of this file
+ * (nothing committed from it); if it was committed or deleted meanwhile it is left as it is and the result says so,
+ * so a reviewed table is never removed by an edit. The new table keeps the old one's copiedFrom and records the draft
+ * it replaced: retrying the same edit, after a failure or a lost answer, returns that table rather than a second one.
+ */
+export async function replaceDraftCrosstab(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  oldTableId: string,
+  request: CrosstabRequest,
+): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[]; replaced: boolean }> {
+  let old: TableDefinition | null = null;
+  try {
+    old = await loadTableDefinition(tenantId, runId, oldTableId);
+  } catch (error) {
+    // The draft is gone. When it went because this edit replaced it (a retry whose first answer was lost), the build
+    // below finds that replacement under the file's lock and returns it; otherwise it is a real "not found".
+    if (!(await hasRecordedReplacement(tenantId, runId, documentId, oldTableId))) throw error;
+  }
+  if (old && old.documentId !== documentId) throw new Error("That table belongs to another data file, so it was not replaced. Add the edited table instead.");
+  if (old && old.status !== "draft") throw new Error("Only a draft can be replaced. This table is committed: add the edited table as a new one.");
+  const keepCopiedFrom = old?.copiedFrom ?? undefined;
+  const built = await buildCrosstab(tenantId, runId, documentId, request, { status: "draft", replacesDraft: oldTableId, ...(keepCopiedFrom ? { keepCopiedFrom } : {}) });
+  return { tableId: built.tableId, questions: built.questions, skipped: built.skipped, replaced: built.replaced ?? false };
+}
+
+async function hasRecordedReplacement(tenantId: string, runId: string, documentId: string, oldTableId: string): Promise<boolean> {
+  return withTenantRead(tenantId, async (client) => {
+    const r = await client.query(
+      "select 1 from document_tables where document_id = $1 and run_id = $2 and tenant_id = $3 and crosstab->>'replacedDraft' = $4 limit 1",
+      [documentId, runId, tenantId, oldTableId],
+    );
+    return r.rows.length > 0;
+  });
 }
 
 /** Sets the title (stored as the table label) and the caption (stored in the table JSON) the researcher wrote. */
@@ -787,6 +1032,9 @@ type CrosstabListRow = {
   layer_group: string | null;
   layer_category: string | null;
   layer_label: string | null;
+  method_version: string | null;
+  source_file: string | null;
+  label_reader: string | null;
   overrides_snapshot?: VariableOverrides | null;
   design_snapshot?: { design: { psu: string | null; strata: string | null } | null } | null;
 };
@@ -805,7 +1053,10 @@ async function queryCrosstabList(
               dt.crosstab->>'source' as source,
               dt.crosstab->>'layerGroup' as layer_group,
               dt.crosstab->>'layerCategory' as layer_category,
-              dt.crosstab->>'layerLabel' as layer_label
+              dt.crosstab->>'layerLabel' as layer_label,
+              dt.crosstab->'notes'->>'methodVersion' as method_version,
+              dt.crosstab->'provenance'->>'sourceFile' as source_file,
+              dt.crosstab->'notes'->>'labelReader' as label_reader
               ${includeSnapshot ? ", dt.overrides_snapshot, dt.design_snapshot" : ""}
        from document_tables dt
        where dt.run_id = $1 and dt.document_id = $2 and dt.table_index >= $3 and dt.crosstab is not null
@@ -870,6 +1121,37 @@ export function designFreshnessStatus(
   return canonicalJson(designSnapshot.design) === currentDesignSnapshot.snapshot ? "current" : "stale";
 }
 
+/** A table built from this file, with the exact request that built it (`crosstab.savedRequest`). */
+export type RecentTableDefinition = { id: string; label: string; status: string; request: CrosstabRequest };
+
+/**
+ * The newest tables built from this data file, newest first, with their saved requests, so a
+ * plain-English request can refer to one ("the table just produced", Grant 2026-10-22). Evidence
+ * tables (built by Objectives) and tables saved before requests were kept are left out. A failed
+ * read throws: the caller says the earlier tables could not be read rather than treating it as none.
+ */
+export async function loadRecentTableDefinitions(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  limit = 5,
+): Promise<RecentTableDefinition[]> {
+  return withTenantRead(tenantId, async (client) => {
+    const r = await client.query<{ id: string; label: string | null; status: string | null; request: CrosstabRequest }>(
+      `select id, label, crosstab_status as status, crosstab->'savedRequest' as request
+       from document_tables
+       where run_id = $1 and document_id = $2 and table_index >= $3 and crosstab is not null
+         and (crosstab->>'version')::int = 2
+         and coalesce(crosstab_status, 'committed') <> 'evidence'
+         and crosstab ? 'savedRequest'
+       order by table_index desc
+       limit $4`,
+      [runId, documentId, FIRST_CROSSTAB_INDEX, limit],
+    );
+    return r.rows.map((row) => ({ id: row.id, label: row.label ?? "Crosstab", status: row.status ?? "committed", request: row.request }));
+  });
+}
+
 export async function listCrosstabs(tenantId: string, runId: string, documentId: string): Promise<CrosstabListItem[]> {
   // IMP-005: not `.catch(() => ({}))` - see loadVariableDictionary above. `currentOverrides`
   // feeds the `stale` flag below by comparison against each table's saved snapshot; silently
@@ -900,7 +1182,7 @@ export async function listCrosstabs(tenantId: string, runId: string, documentId:
     status: row.crosstab_status ?? "committed",
     findings: Number(row.findings),
     legacy: row.version !== 2,
-    source: (["workspace", "ask", "window", "starter"] as const).find((x) => x === row.source) ?? (String(row.label ?? "").startsWith("Starter:") ? "starter" : "workspace"),
+    source: (["workspace", "ask", "window", "starter", "assistant"] as const).find((x) => x === row.source) ?? (String(row.label ?? "").startsWith("Starter:") ? "starter" : "workspace"),
     layerGroup: row.layer_group,
     layerCategory: row.layer_category,
     layerLabel: row.layer_label,
@@ -909,24 +1191,54 @@ export async function listCrosstabs(tenantId: string, runId: string, documentId:
         ? canonicalJson(row.overrides_snapshot) !== currentSnapshot
         : false,
     designFreshness: designFreshnessStatus(row.design_snapshot, currentDesignSnapshotStatus),
+    methodFreshness: tableMethodStatus(row.method_version, { sourceFile: row.source_file, labelReader: row.label_reader }),
+    methodReason: earlierMethodText(row.method_version, { sourceFile: row.source_file, labelReader: row.label_reader }),
   }));
 }
 
-/** Turns every draft table in the set into findings and marks the set committed. */
+/**
+ * Turns every draft table in the set into findings and marks the set committed.
+ *
+ * EF-FND-F05 (batch 62): two commits of the same set (a double click, two tabs, a retry while the first
+ * is still running) used to read the same drafts before either marked them committed, and both inserted
+ * the findings. Each draft is now claimed inside the write transaction: the drafts are selected
+ * `for update` (in table order, so two commits lock in the same order and cannot deadlock), and under
+ * READ COMMITTED a commit that waited on the lock re-reads the row and finds it no longer a draft, so it
+ * commits nothing more. Every write is scoped to this tenant, project and data file. A draft that
+ * already has findings from its own table id (which only an earlier interrupted path could leave) gets
+ * no second set: the duplicate check is by the table's own identity (source_table_id), never by text
+ * across different tables. Any failure rolls the whole commit back, drafts and findings together, so a
+ * retry starts from the same drafts. A retry or second commit returns { tables: 0, findings: 0 }.
+ */
 export async function commitCrosstabs(
   tenantId: string,
   runId: string,
   documentId: string,
 ): Promise<{ tables: number; findings: number }> {
   return withTenant(tenantId, async (client) => {
+    const owner = await client.query(
+      "select id from documents where id = $1 and run_id = $2 and tenant_id = $3",
+      [documentId, runId, tenantId],
+    );
+    if (owner.rowCount !== 1) throw new Error("That data file is not in this project, so nothing was committed.");
     const drafts = await client.query<{ id: string; crosstab: CrosstabResult }>(
       `select id, crosstab from document_tables
-       where run_id = $1 and document_id = $2 and crosstab_status = 'draft' and crosstab is not null
-       order by table_index`,
-      [runId, documentId],
+       where run_id = $1 and document_id = $2 and tenant_id = $3 and crosstab_status = 'draft' and crosstab is not null
+       order by table_index, id
+       for update`,
+      [runId, documentId, tenantId],
     );
     let findings = 0;
+    let tables = 0;
     for (const draft of drafts.rows) {
+      const claimed = await client.query(
+        "update document_tables set crosstab_status = 'committed' where id = $1 and run_id = $2 and tenant_id = $3 and crosstab_status = 'draft'",
+        [draft.id, runId, tenantId],
+      );
+      if (claimed.rowCount !== 1) continue;
+      tables++;
+      const existing = await client.query("select 1 from findings where source_table_id = $1 and run_id = $2 limit 1", [draft.id, runId]);
+      if (existing.rows.length > 0) continue;
       for (const f of crosstabFindings(draft.crosstab)) {
         await client.query(
           `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, source_table_id, data_type, status)
@@ -947,9 +1259,8 @@ export async function commitCrosstabs(
         );
         findings++;
       }
-      await client.query("update document_tables set crosstab_status = 'committed' where id = $1", [draft.id]);
     }
-    return { tables: drafts.rows.length, findings };
+    return { tables, findings };
   });
 }
 
@@ -996,13 +1307,26 @@ export async function deleteDraftCrosstabs(tenantId: string, runId: string, docu
 /** Removes a crosstab (draft or committed) and any findings built from it. */
 export async function deleteCrosstab(tenantId: string, runId: string, tableId: string): Promise<void> {
   await withTenant(tenantId, async (client) => {
+    // Codex CT500-F01: the table is found and locked by its own id AND this project's before any of
+    // its findings are archived. The archive below selects findings by table id only, so a table of
+    // another project of the same organisation used to lose its findings while the delete (scoped by
+    // run) matched nothing and the action reported success. A missing or mismatched table now stops
+    // here with nothing changed; archive and delete stay in one transaction.
+    const owned = await client.query(
+      "select id from document_tables where id = $1 and run_id = $2 and tenant_id = $3 and crosstab is not null for update",
+      [tableId, runId, tenantId],
+    );
+    if (owned.rowCount !== 1) throw new Error("That table is not in this project (it may have been deleted already), so nothing was deleted.");
     await archiveAndReplaceFindings(client, {
       documentColumn: "source_table_id",
       documentId: tableId,
       onlyRejected: false,
       archiveReason: "manual_reextract",
     });
-    await client.query("delete from document_tables where id = $1 and run_id = $2 and crosstab is not null", [tableId, runId]);
+    const deleted = await client.query("delete from document_tables where id = $1 and run_id = $2 and crosstab is not null", [tableId, runId]);
+    // Held by the lock above, so this always deletes the one row; checked so the archive above can
+    // never commit without its table being deleted with it.
+    if (deleted.rowCount !== 1) throw new Error("The table could not be deleted, so nothing was changed. Try again.");
   });
 }
 

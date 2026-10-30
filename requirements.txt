@@ -1,3 +1,10 @@
+# pandas is declared, not left to pyreadstat's resolution: the engine names its workbook readers
+# (WORKBOOK_ENGINES in api/parse-stats-file.py: openpyxl for .xlsx/.xlsm, xlrd for .xls), and this range
+# is the one exercised (2.3.3 and 3.1.0 by the batch 36 review, 3.0.5 and 3.1.0 here). pandas 3.1 needs
+# xlrd 2.0.2 or newer for .xls.
+pandas>=2.3,<3.2
 pyreadstat==1.2.8
 openpyxl==3.1.5
-xlrd==2.0.1
+xlrd==2.0.2
+pyreadr==0.5.8
+fastparquet==2026.9.0

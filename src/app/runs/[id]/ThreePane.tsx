@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -27,6 +29,16 @@ import {
  *
  * Collapsing hides the left pane's content but keeps it mounted, so filters or a half-typed entry in it
  * are not lost.
+ *
+ * `leftOnTop` (Grant, 2026-10-21) puts the left pane above the other two as a full-width band, for
+ * sections that open on an overview and whose list and detail need the width: its blocks flow into
+ * columns, it can be folded to its header (kept mounted), and the middle and right panes keep their
+ * resizable split below it.
+ *
+ * `band` (Grant, 2026-10-22, the one-page Objectives prototype) is the same foldable band above a
+ * full three-pane layout: the band holds content that is not one of the three panes (the objectives'
+ * context form), and left, middle and right stay columns below it. Its fold is remembered under
+ * `three-pane-top:<storageKey>`, the columns under `<storageKey>:below-band`, as for `leftOnTop`.
  */
 
 const DEFAULT_LEFT_PX = 352; // 22rem, the original fixed width
@@ -91,28 +103,70 @@ function subscribe(onChange: () => void) {
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
-function panelBounds(side: "left" | "right", total: number) {
-  const max = Math.max(0, Math.min(MAX_SIDE_PX, Math.round(total * (side === "left" ? 0.35 : 0.5))));
+function panelBounds(side: "left" | "right", total: number, leftShare = 0.35) {
+  const max = Math.max(0, Math.min(MAX_SIDE_PX, Math.round(total * (side === "left" ? leftShare : 0.5))));
   return { min: Math.min(side === "left" ? MIN_LEFT_PX : MIN_RIGHT_PX, max), max };
 }
 
-export function ThreePane({
-  left,
-  middle,
-  right,
-  wideRight = false,
-  storageKey,
-}: {
-  left: ReactNode;
+type ThreePaneProps = {
+  /** Optional: without it the layout is the working list and a resizable detail pane (Import data). */
+  left?: ReactNode;
   middle: ReactNode;
   right?: ReactNode;
   /** A roomier right pane for dense content such as data quality tables. */
   wideRight?: boolean;
   /** Remember this screen's layout separately; by default screens with the same shape share one. */
   storageKey?: string;
-}) {
+  /** The left pane's starting width, for a screen whose list needs more room (Cross tabs' variable table). */
+  leftDefaultPx?: number;
+  /** The largest share of the layout the left pane may take (default 35%). */
+  leftMaxShare?: number;
+  /** Put the left pane above the other two as a foldable full-width band. */
+  leftOnTop?: boolean;
+  /** A foldable full-width band above all three panes (its own content, not one of the panes). */
+  band?: ReactNode;
+};
+
+/** How a left pane is placed, so Pane can lay its blocks out across a top band and add the fold control. */
+const TopBandContext = createContext<{ folded: boolean; setFolded: (folded: boolean) => void } | null>(null);
+
+export function ThreePane(props: ThreePaneProps) {
+  const { left, leftOnTop, band, ...rest } = props;
+  if (band !== undefined && band !== null && band !== false) return <TopBandLayout top={band} {...rest} left={left} />;
+  const hasLeft = left !== undefined && left !== null && left !== false;
+  if (!leftOnTop || !hasLeft) return <ThreePaneColumns {...rest} left={left} />;
+  return <TopBandLayout top={left} {...rest} />;
+}
+
+/** `top` is the band; the panes in `rest` (with or without a left pane) are the columns below it. */
+function TopBandLayout({ top, storageKey, ...rest }: Omit<ThreePaneProps, "leftOnTop" | "band"> & { top: ReactNode }) {
+  const key = `three-pane-top:${storageKey ?? "band"}`;
+  const raw = useSyncExternalStore(subscribe, () => readStored(key), () => null);
+  const folded = parseLayout(raw).leftCollapsed;
+  const setFolded = useCallback((next: boolean) => writeStored(key, { ...DEFAULT_LAYOUT, leftCollapsed: next }), [key]);
+  const band = useMemo(() => ({ folded, setFolded }), [folded, setFolded]);
+  return (
+    <div className="flex flex-col gap-4" data-testid="three-pane-top-layout">
+      <div className="min-w-0" data-testid="three-pane-left" data-left-placement="top" data-left-collapsed={folded ? "true" : "false"}>
+        <TopBandContext.Provider value={band}>{top}</TopBandContext.Provider>
+      </div>
+      <ThreePaneColumns {...rest} storageKey={storageKey ? `${storageKey}:below-band` : "below-band"} />
+    </div>
+  );
+}
+
+function ThreePaneColumns({
+  left,
+  middle,
+  right,
+  wideRight = false,
+  storageKey,
+  leftDefaultPx = DEFAULT_LEFT_PX,
+  leftMaxShare = 0.35,
+}: Omit<ThreePaneProps, "leftOnTop" | "band">) {
   const hasRight = right !== undefined && right !== null && right !== false;
-  const key = `three-pane:${storageKey ?? (hasRight ? (wideRight ? "wide" : "three") : "two")}`;
+  const hasLeft = left !== undefined && left !== null && left !== false;
+  const key = `three-pane:${storageKey ?? (!hasLeft ? "list-detail" : hasRight ? (wideRight ? "wide" : "three") : "two")}`;
   const raw = useSyncExternalStore(
     subscribe,
     () => readStored(key),
@@ -143,7 +197,7 @@ export function ThreePane({
   }, [hasRight]);
 
   // CSS min() keeps the middle pane usable even when a stored width came from a wider window.
-  const leftCol = layout.leftCollapsed ? "2.75rem" : `min(${layout.left ?? DEFAULT_LEFT_PX}px, 35%)`;
+  const leftCol = layout.leftCollapsed ? "2.75rem" : `min(${layout.left ?? leftDefaultPx}px, ${Math.round(leftMaxShare * 100)}%)`;
   const rightCol = hasRight
     ? layout.right !== null
       ? `min(${layout.right}px, 50%)`
@@ -151,16 +205,16 @@ export function ThreePane({
         ? "minmax(min(24rem,50%),34%)"
         : `min(${DEFAULT_RIGHT_PX}px,50%)`
     : null;
-  const cols = [leftCol, "1rem", "minmax(0,1fr)", ...(rightCol ? ["1rem", rightCol] : [])].join(" ");
+  const cols = [...(hasLeft ? [leftCol, "1rem"] : []), "minmax(0,1fr)", ...(rightCol ? ["1rem", rightCol] : [])].join(" ");
 
   const widthOf = (el: HTMLDivElement | null, fallback: number) => (el ? el.getBoundingClientRect().width : fallback);
 
   const limits = useCallback(
     (side: "left" | "right") => {
       const total = gridRef.current?.getBoundingClientRect().width ?? 1200;
-      return panelBounds(side, total);
+      return panelBounds(side, total, leftMaxShare);
     },
-    [],
+    [leftMaxShare],
   );
 
   const commit = useCallback((next: Layout) => writeStored(key, next), [key]);
@@ -171,7 +225,7 @@ export function ThreePane({
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
     const startX = e.clientX;
-    const start = side === "left" ? widthOf(leftRef.current, DEFAULT_LEFT_PX) : widthOf(rightRef.current, DEFAULT_RIGHT_PX);
+    const start = side === "left" ? widthOf(leftRef.current, leftDefaultPx) : widthOf(rightRef.current, DEFAULT_RIGHT_PX);
     const { min, max } = limits(side);
     let current: Layout = layout;
     const move = (ev: globalThis.PointerEvent) => {
@@ -194,7 +248,7 @@ export function ThreePane({
 
   function onHandleKey(side: "left" | "right", e: KeyboardEvent<HTMLDivElement>) {
     const { min, max } = limits(side);
-    const now = side === "left" ? widthOf(leftRef.current, DEFAULT_LEFT_PX) : widthOf(rightRef.current, DEFAULT_RIGHT_PX);
+    const now = side === "left" ? widthOf(leftRef.current, leftDefaultPx) : widthOf(rightRef.current, DEFAULT_RIGHT_PX);
     const step = e.shiftKey ? KEY_STEP_LARGE_PX : KEY_STEP_PX;
     // The handle sits on the pane's inner edge, so an arrow moves the edge: right widens the left pane
     // and narrows the right pane.
@@ -214,10 +268,10 @@ export function ThreePane({
   const reset = (side: "left" | "right") => commit(side === "left" ? { ...layout, left: null } : { ...layout, right: null });
   const setCollapsed = (leftCollapsed: boolean) => commit({ ...layout, leftCollapsed });
 
-  const leftNow = measured?.left ?? layout.left ?? DEFAULT_LEFT_PX;
+  const leftNow = measured?.left ?? layout.left ?? leftDefaultPx;
   const rightNow = measured?.right ?? layout.right ?? DEFAULT_RIGHT_PX;
   const total = measured?.total ?? 1200;
-  const leftBounds = panelBounds("left", total);
+  const leftBounds = panelBounds("left", total, leftMaxShare);
   const rightBounds = panelBounds("right", total);
 
   return (
@@ -228,6 +282,8 @@ export function ThreePane({
       data-testid="three-pane"
       data-left-collapsed={layout.leftCollapsed ? "true" : "false"}
     >
+      {hasLeft && (
+      <>
       <div ref={leftRef} className="min-w-0" data-testid="three-pane-left">
         <div className={layout.leftCollapsed ? "lg:hidden" : undefined}>{left}</div>
         {layout.leftCollapsed && (
@@ -269,6 +325,8 @@ export function ThreePane({
           </>
         )}
       </div>
+      </>
+      )}
       <div className="min-w-0">{middle}</div>
       {hasRight && (
         <>
@@ -284,7 +342,8 @@ export function ThreePane({
               testId="three-pane-handle-right"
             />
           </div>
-          <div ref={rightRef} className="min-w-0" data-testid="three-pane-right">
+          {/* Stretched to the row's height so a right pane can stay in view (sticky) beside a long middle. */}
+          <div ref={rightRef} className="min-w-0 lg:self-stretch" data-testid="three-pane-right">
             {right}
           </div>
         </>
@@ -344,16 +403,26 @@ function Chevron({ direction }: { direction: "left" | "right" }) {
   );
 }
 
+// Border width is part of each style: the workspace style is the only one with a thin border.
 const SIDES = {
-  left: "bg-sky-50 border-sky-200",
-  middle: "bg-slate-50 border-slate-300",
-  right: "bg-white border-slate-300",
+  left: "border-2 bg-sky-50 border-sky-200",
+  middle: "border-2 bg-slate-50 border-slate-300",
+  right: "border-2 bg-white border-slate-300",
+  /** White with a grey border on every side: Import, Research quality, Objectives and Business decisions (Grant, 2026-10-20). */
+  plain: "border-2 bg-white border-border",
+  /**
+   * A white surface on a pale grey workspace, with a thin neutral border, so blue is left for
+   * selection and actions (Grant's visual review, 2026-10-20): Coding and Secondary analysis.
+   */
+  workspace: "border bg-white border-slate-200 shadow-sm",
 } as const;
 
 const HEADERS = {
-  left: "bg-sky-100 border-sky-200",
-  middle: "bg-white border-slate-300",
-  right: "bg-white border-slate-300",
+  left: "border-b-2 bg-sky-100 border-sky-200",
+  middle: "border-b-2 bg-white border-slate-300",
+  right: "border-b-2 bg-white border-slate-300",
+  plain: "border-b-2 bg-white border-border",
+  workspace: "border-b bg-white border-slate-200",
 } as const;
 
 /** One pane: a header row (title, optional count and actions) over a body that scrolls on wide screens. */
@@ -370,11 +439,44 @@ export function Pane({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const band = useContext(TopBandContext);
+  if (band) {
+    // A left pane laid across the top: its blocks flow into columns, and it folds to its header.
+    return (
+      <section className={`flex min-h-0 flex-col overflow-hidden rounded-xl ${SIDES[side]}`}>
+        <header className={`flex shrink-0 flex-wrap items-center gap-2 ${band.folded ? "" : HEADERS[side]} px-4 py-3`}>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          {badge}
+          <div className="ml-auto flex items-center gap-2">
+            {actions}
+            <button
+              type="button"
+              onClick={() => band.setFolded(!band.folded)}
+              aria-expanded={!band.folded}
+              data-testid="three-pane-top-toggle"
+              className="rounded-md border border-sky-300 bg-white px-2.5 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {band.folded ? `Show ${title.toLowerCase()}` : `Hide ${title.toLowerCase()}`}
+            </button>
+          </div>
+        </header>
+        <div
+          className={
+            band.folded
+              ? "hidden"
+              : "grid min-h-0 items-start gap-4 overflow-y-auto p-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,18rem),1fr))] lg:max-h-[45vh]"
+          }
+        >
+          {children}
+        </div>
+      </section>
+    );
+  }
   return (
     <section
-      className={`flex min-h-0 flex-col overflow-hidden rounded-xl border-2 lg:max-h-[calc(100vh-10rem)] ${SIDES[side]}`}
+      className={`flex min-h-0 flex-col overflow-hidden rounded-xl lg:max-h-[calc(100vh-10rem)] ${SIDES[side]}`}
     >
-      <header className={`flex shrink-0 items-center gap-2 border-b-2 ${HEADERS[side]} px-4 py-3`}>
+      <header className={`flex shrink-0 items-center gap-2 ${HEADERS[side]} px-4 py-3`}>
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         {badge}
         <div className="ml-auto flex items-center gap-2">{actions}</div>

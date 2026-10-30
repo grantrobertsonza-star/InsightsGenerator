@@ -147,7 +147,7 @@ export async function reuseCodebook(
     const m = meta.get(codeKey(c.name));
     return { name: c.name, theme: m?.theme, note: m?.note, keywords: m?.keywords };
   });
-  await saveCodeMeta(tenantId, targetDocumentId, entries);
+  await saveCodeMeta(tenantId, runId, targetDocumentId, entries);
   try {
     await addMemo(tenantId, runId, {
       documentId: targetDocumentId,

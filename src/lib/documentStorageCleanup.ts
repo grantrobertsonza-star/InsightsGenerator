@@ -2,6 +2,16 @@ import type { PoolClient } from "pg";
 import { withTenant, withTenantRead } from "./db";
 import { supabaseAdmin } from "./supabaseAdmin";
 
+/**
+ * The converted copy the remote statistics parser writes next to a data file
+ * (api/parse-stats-file.py: `<storage path>.converted.json`), respondent-level data. One rule for
+ * where it lives, used by the parser's in-flight record (projectStorageCleanup.beginConvertedCopy) and by document
+ * and project deletion (Codex RR-F03), so a copy whose removal failed is still removed with its file.
+ */
+export function convertedCopyPath(storagePath: string): string {
+  return `${storagePath}.converted.json`;
+}
+
 // Record intent before removing the last document reference: a later storage or trace outage
 // must leave either the evidence row or an independently retryable list of orphan paths.
 export async function queueDocumentStorageCleanup(client: PoolClient, tenantId: string, runId: string, documentId: string, storagePaths: string[]) {

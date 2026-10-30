@@ -1,4 +1,5 @@
 import { extractText as extractPdfText, getDocumentProxy } from "unpdf";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import {
   archiveAndReplaceFindings,
@@ -10,11 +11,19 @@ import { withTenant } from "./db";
 import type { PoolClient } from "pg";
 import { findingProvenanceAvailable } from "./findingProvenance";
 import { findingOriginalAvailable } from "./findingWording";
+import { MIN_READABLE_SOURCE_CHARS, quoteAppearsIn } from "./quoteMatch";
+import { citedIds, claimIdentityKey, normaliseQuote, planReplacement, type CurrentFinding } from "./findingReplacement";
+// Re-exported for existing callers and tests; the replacement policy lives in findingReplacement.ts,
+// shared with the table generators (EF-FND-F03).
+export { claimIdentityKey, planReplacement, type CurrentFinding };
+// Re-exported for existing callers; the rule itself lives in quoteMatch.ts.
+export { quoteAppearsIn };
 import mammoth from "mammoth";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { convertOfficeDocToPdf } from "./convertToPdf";
 import { mapWithConcurrency } from "./concurrency";
+import { splitSentences } from "./sentences";
 import { beginCodingWork, endCodingWork, tickCodingWork } from "./codingProgress";
 import {
   getTableGroundingDigest,
@@ -153,33 +162,6 @@ export async function readContextDocument(tenantId: string, runId: string, docum
   return { length: extracted.fullText.length };
 }
 
-/**
- * Loose match used to check whether a claimed quote really appears in the
- * source text. Normalizes away things that are extraction artifacts, not
- * real differences: curly quotes vs straight ones, en/em dashes, ligatures,
- * non-breaking spaces, and words hyphenated across a line break.
- */
-function normalizeForMatch(text: string): string {
-  return text
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[–—]/g, "-")
-    .replace(/ /g, " ")
-    .replace(/­/g, "")
-    .replace(/ﬁ/g, "fi")
-    .replace(/ﬂ/g, "fl")
-    .replace(/-\s*\n\s*/g, "")
-    .replace(/\s+/g, " ")
-    .toLowerCase()
-    .trim();
-}
-
-export function quoteAppearsIn(quote: string, sourceText: string): boolean {
-  const normalizedQuote = normalizeForMatch(quote);
-  if (normalizedQuote.length === 0) return false;
-  return normalizeForMatch(sourceText).includes(normalizedQuote);
-}
-
 // How much text goes to Claude in one extraction call. This used to be a
 // hard ceiling on the whole document -- anything past it was silently
 // never sent at all, which on a 100-page thesis meant the model only ever
@@ -214,7 +196,90 @@ type DocumentChunk = {
   total: number;
   excerpt: string;
   hasPages: boolean;
+  /**
+   * The text at the start of this chunk that the previous chunk also contains (EF-SEC-F01): the
+   * sentences repeated so that a claim near a cut, its qualification or the support it cites is seen
+   * whole by at least one call. Empty for the first chunk. Findings quoting it are deduplicated at
+   * publication (see publishReplacement).
+   */
+  overlapText: string;
 };
+
+// EF-SEC-F01 (batch 62): how much of the end of one part is repeated at the start of the next, cut
+// back to a sentence start. Enough for a claim's preceding sentences (its qualification, the figures a
+// stated insight cites); small next to CHUNK_CHARS, so it adds at most about 6% to the text sent.
+const CHUNK_OVERLAP_CHARS = 1500;
+
+/**
+ * Start offsets of the sentences of `text`, by the shared sentence rule (sentences.ts), in order.
+ * The first is always 0. Pieces are located one after another, so a sentence repeated word for word
+ * resolves to the right occurrence.
+ */
+function sentenceStarts(text: string): number[] {
+  const starts: number[] = [];
+  let cursor = 0;
+  for (const piece of splitSentences(text)) {
+    const at = text.indexOf(piece, cursor);
+    if (at < 0) break;
+    starts.push(at);
+    cursor = at + piece.length;
+  }
+  return starts.length > 0 ? starts : [0];
+}
+
+/**
+ * Where a part may end within text[lo, hi): the last paragraph break, else the last line break, else
+ * the start of the last (possibly unfinished) sentence, else the last space; `hi` only when the window
+ * is one unbroken run of characters. Never at or before `lo`, so every part makes progress.
+ */
+function partEnd(text: string, lo: number, hi: number): number {
+  const window = text.slice(lo, hi);
+  for (const brk of ["\n\n", "\n"]) {
+    const at = window.lastIndexOf(brk);
+    if (at > 0) return lo + at + brk.length;
+  }
+  const starts = sentenceStarts(window);
+  const last = starts[starts.length - 1];
+  if (last > 0) return lo + last;
+  const space = window.lastIndexOf(" ");
+  return space > 0 ? lo + space + 1 : hi;
+}
+
+/** Where the repeated context before `cut` begins: the first sentence start within CHUNK_OVERLAP_CHARS of it. */
+function overlapStart(text: string, floor: number, cut: number): number {
+  const from = Math.max(floor, cut - CHUNK_OVERLAP_CHARS);
+  if (from >= cut) return cut;
+  const window = text.slice(from, cut);
+  const starts = sentenceStarts(window);
+  // starts[0] is 0, which is a known sentence start only when `from` is the floor (the start of the
+  // text, or the previous cut, which is itself a boundary); otherwise it may be mid-sentence.
+  const first = from === floor ? 0 : (starts[1] ?? null);
+  return first === null ? cut : from + first;
+}
+
+/**
+ * EF-SEC-F01: splits unpaginated text into parts of at most `budget` characters, cut at a paragraph,
+ * line or sentence boundary rather than at a fixed offset, each part after the first beginning with up
+ * to CHUNK_OVERLAP_CHARS repeated from the end of the previous one. A single sentence longer than
+ * half the budget is the only thing that can still be cut inside; the overlap then repeats its start.
+ */
+export function splitTextIntoParts(text: string, budget: number): { excerpt: string; overlapText: string }[] {
+  if (text.length <= budget) return [{ excerpt: text, overlapText: "" }];
+  const parts: { excerpt: string; overlapText: string }[] = [];
+  let start = 0;
+  let ownStart = 0;
+  for (;;) {
+    if (text.length - start <= budget) {
+      parts.push({ excerpt: text.slice(start), overlapText: text.slice(start, ownStart) });
+      return parts;
+    }
+    const lo = Math.max(ownStart + 1, start + Math.floor(budget / 2));
+    const cut = partEnd(text, lo, start + budget);
+    parts.push({ excerpt: text.slice(start, cut), overlapText: text.slice(start, ownStart) });
+    start = overlapStart(text, ownStart, cut);
+    ownStart = cut;
+  }
+}
 
 /**
  * Splits a document's text into one or more chunks, each within
@@ -226,45 +291,52 @@ type DocumentChunk = {
  * fit it). The common case, a document that fits in CHUNK_CHARS outright,
  * returns exactly one chunk containing the whole thing, identical to the
  * single-call behavior this replaces.
+ *
+ * EF-SEC-F01 (batch 62): every chunk after the first repeats the end of the previous one (the last
+ * page's closing sentences under its own page marker, or the closing sentences of an unpaginated
+ * part), so a claim whose sentence or context crosses a cut is seen whole by one call; text without
+ * pages is cut at a paragraph, line or sentence boundary (splitTextIntoParts). Sent in full is not the
+ * same as read in full: whether the model extracted every claim it was shown is a recall question the
+ * transport cannot answer, and nothing here reports a reading as semantically complete.
  */
-function buildChunks(extracted: ExtractedDocument): DocumentChunk[] {
+export function buildChunks(extracted: ExtractedDocument): DocumentChunk[] {
   const hasPages = extracted.pages.length > 0;
 
   if (hasPages) {
-    const chunkTexts: string[] = [];
+    const chunkTexts: { excerpt: string; overlapText: string }[] = [];
     let current = "";
+    let currentOverlap = "";
+    let hasOwnPage = false;
+    let lastPage: PageText | null = null;
     for (const page of extracted.pages) {
       const block = `\n\n[[PAGE ${page.pageNumber}]]\n${page.text}`;
-      if (current.length > 0 && current.length + block.length > CHUNK_CHARS) {
-        chunkTexts.push(current);
-        current = block;
-      } else {
-        current += block;
+      if (hasOwnPage && current.length + block.length > CHUNK_CHARS) {
+        chunkTexts.push({ excerpt: current, overlapText: currentOverlap });
+        const tailFrom = lastPage ? overlapStart(lastPage.text, 0, lastPage.text.length) : 0;
+        currentOverlap = lastPage ? lastPage.text.slice(tailFrom) : "";
+        current = currentOverlap ? `\n\n[[PAGE ${lastPage!.pageNumber}]]\n${currentOverlap}` : "";
       }
+      current += block;
+      hasOwnPage = true;
+      lastPage = page;
     }
-    if (current.length > 0) chunkTexts.push(current);
-    return chunkTexts.map((excerpt, index) => ({
+    if (hasOwnPage) chunkTexts.push({ excerpt: current, overlapText: currentOverlap });
+    return chunkTexts.map((c, index) => ({
       index,
       total: chunkTexts.length,
-      excerpt,
+      excerpt: c.excerpt,
+      overlapText: c.overlapText,
       hasPages: true,
     }));
   }
 
-  // No page structure (the plain-text fallback for .txt/.csv): slice
-  // straight by character budget instead.
-  const text = extracted.fullText;
-  if (text.length <= CHUNK_CHARS) {
-    return [{ index: 0, total: 1, excerpt: text, hasPages: false }];
-  }
-  const chunkTexts: string[] = [];
-  for (let offset = 0; offset < text.length; offset += CHUNK_CHARS) {
-    chunkTexts.push(text.slice(offset, offset + CHUNK_CHARS));
-  }
-  return chunkTexts.map((excerpt, index) => ({
+  // No page structure (the plain-text fallback for .txt/.csv): cut at text boundaries with overlap.
+  const parts = splitTextIntoParts(extracted.fullText, CHUNK_CHARS);
+  return parts.map((c, index) => ({
     index,
-    total: chunkTexts.length,
-    excerpt,
+    total: parts.length,
+    excerpt: c.excerpt,
+    overlapText: c.overlapText,
     hasPages: false,
   }));
 }
@@ -343,7 +415,12 @@ type StagedFinding = {
   supportRawIndices: number[];
 };
 
-type StagedChunk = { chunkIndex: number; findings: StagedFinding[] };
+/**
+ * `discarded`: how many records the model returned for this chunk that failed validation and were left
+ * out (SEC500-F01). A chunk with some left out is read only in part, and the document is treated as
+ * partly read (see extractFindingsFromDocument), never as a complete reading.
+ */
+type StagedChunk = { chunkIndex: number; findings: StagedFinding[]; discarded: number; overlapText: string };
 
 /**
  * Runs one chunk of a document's text through the extraction call: builds
@@ -353,10 +430,6 @@ type StagedChunk = { chunkIndex: number; findings: StagedFinding[] };
  * positions and resolved against this chunk's own rows at publication: the
  * model never saw other chunks, so it cannot have cited anything in them.
  */
-function normaliseQuote(q: string): string {
-  return q.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
 async function extractFindingsFromChunk(
   tenantId: string,
   runId: string,
@@ -376,7 +449,12 @@ async function extractFindingsFromChunk(
       ? `This is an excerpt, part ${chunk.index + 1} of ${chunk.total}, of a longer document. Only extract ` +
         "findings that are actually present in this excerpt; do not guess at what earlier or later parts " +
         "of the document might say. A stated_insight's supporting_indices can only point at other findings " +
-        "in this SAME excerpt, since those are the only ones you can see right now.\n\n"
+        "in this SAME excerpt, since those are the only ones you can see right now." +
+        (chunk.overlapText
+          ? " The excerpt begins with a few sentences repeated from the end of the previous part, so that a " +
+            "sentence and its context are never cut in two; extract findings from them as usual."
+          : "") +
+        "\n\n"
       : "";
 
   // Cross-document grounding: real, code-computed facts from table
@@ -566,8 +644,7 @@ async function extractFindingsFromChunk(
       `${response.usage.output_tokens} output tokens, stop: ${response.stop_reason}`,
   );
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
+  if (!response.content.some((block) => block.type === "tool_use")) {
     throw new Error(
       chunk.total > 1
         ? `Claude did not return a structured findings list for part ${chunk.index + 1} of ${chunk.total} of "${document.source_filename}".`
@@ -576,7 +653,7 @@ async function extractFindingsFromChunk(
   }
 
   if (response.stop_reason === "max_tokens") {
-    // The response was cut off mid-generation, so whatever is in toolUse.input
+    // The response was cut off mid-generation, so whatever is in the tool block's input
     // is an incomplete, unusable fragment rather than a real (if short) answer.
     // This happens on long, finding-dense documents; raising max_tokens further
     // or extracting in smaller sections are the two ways out of it (a document
@@ -589,16 +666,24 @@ async function extractFindingsFromChunk(
     );
   }
 
-  const rawInput = toolUse.input as { findings?: unknown };
-  let findings: RawFinding[];
-
-  if (Array.isArray(rawInput.findings)) {
-    findings = rawInput.findings;
-  } else {
-    // Rather than crashing the whole run when the model returns nothing
-    // usable, record it for diagnosis and treat it as "no findings found".
-    findings = [];
-    await withTenant(tenantId, async (client) => {
+  const partLabel = chunk.total > 1 ? ` (part ${chunk.index + 1} of ${chunk.total})` : "";
+  // EC10K-F02 (batch 64): besides the cut-off and missing answers above, a refused or other-stop answer,
+  // another tool's block or a non-object input fails this part too (modelToolResult.ts), so the previous
+  // reading stays.
+  let finished: Record<string, unknown>;
+  try {
+    finished = finishedToolInput(response, "record_findings", "The findings reading");
+  } catch (error) {
+    if (!(error instanceof UnfinishedModelResultError)) throw error;
+    throw new Error(`Claude's answer for "${document.source_filename}"${partLabel} could not be used (${error.message}) Nothing was replaced. Run Extract findings again.`);
+  }
+  const rawInput = finished as { findings?: unknown };
+  // SEC500-F01 (Codex, 2026-10-24): an answer with no findings list used to be treated as "this part
+  // has no findings", so a complete, empty reading was published and replaced the document's previous
+  // findings. Only an explicit list says what the part contains: a missing or malformed one is recorded
+  // for diagnosis and fails this part, so the previous reading stays (the same as a cut-off answer).
+  const recordBadResponse = (reason: string) =>
+    withTenant(tenantId, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'extract_findings_bad_response', $3)`,
         [
@@ -611,12 +696,20 @@ async function extractFindingsFromChunk(
             totalChunks: chunk.total,
             textLength: chunk.excerpt.length,
             stopReason: response.stop_reason,
+            reason,
             rawInput: JSON.stringify(rawInput).slice(0, 1000),
           }),
         ],
       );
     });
+  if (!Array.isArray(rawInput.findings)) {
+    await recordBadResponse("no_findings_list");
+    throw new Error(
+      `Claude's answer for "${document.source_filename}"${partLabel} had no findings list, so it could not be used ` +
+        `and nothing was replaced. Run Extract findings again.`,
+    );
   }
+  const findings: RawFinding[] = rawInput.findings;
 
   // Claude occasionally proposes something with no real text attached, or an
   // unrecognized classification; per the extraction rules, that should be
@@ -646,6 +739,17 @@ async function extractFindingsFromChunk(
         typeof finding.source_quote === "string" &&
         finding.source_quote.trim().length > 0,
     );
+  const discarded = findings.length - validFindings.length;
+  // Records were returned but none is usable: that is a failed reading of this part, not an empty one.
+  // Some usable and some not: the usable ones are kept and the part counts as read only in part.
+  if (findings.length > 0 && validFindings.length === 0) {
+    await recordBadResponse("no_usable_findings");
+    throw new Error(
+      `None of the ${findings.length} finding${findings.length === 1 ? "" : "s"} Claude returned for "${document.source_filename}"${partLabel} ` +
+        `could be used (each needs its text, a quote, a theme and a recognised kind), so nothing was replaced. Run Extract findings again.`,
+    );
+  }
+  if (discarded > 0) await recordBadResponse("some_findings_unusable");
 
   // Build a lookup so a finding's quote can be checked against the specific
   // page it says it came from, falling back to the whole document text.
@@ -674,10 +778,13 @@ async function extractFindingsFromChunk(
     // A quoted sentence can start near the bottom of one page and finish
     // on the next, or Claude can be off by one page in its own count.
     // Before concluding a quote really isn't there, also check the pages
-    // either side of the one it was attributed to.
+    // either side of the one it was attributed to, read continuously with
+    // it (EF-SEC-F01: a sentence crossing a page break is only whole when
+    // the end of one page and the start of the next are read together).
     if (!quoteVerified && pageNumber) {
       const neighboringText = [
         pageTextByNumber.get(pageNumber - 1),
+        pageTextByNumber.get(pageNumber),
         pageTextByNumber.get(pageNumber + 1),
       ]
         .filter((t): t is string => Boolean(t))
@@ -725,7 +832,7 @@ async function extractFindingsFromChunk(
     });
   }
 
-  return { chunkIndex: chunk.index, findings: staged };
+  return { chunkIndex: chunk.index, findings: staged, discarded, overlapText: chunk.overlapText };
 }
 
 /**
@@ -763,6 +870,11 @@ async function extractFindingsFromChunk(
  * - Some chunks failed and there is nothing prior to protect (a first read, or
  *   regenerate-rejected with no rejected rows): the partial set is published
  *   and `failedParts > 0` keeps the document "incomplete" (IMP-006 criterion 2).
+ * - A part whose answer had no findings list, or none of whose returned
+ *   findings was usable, is a failed part (SEC500-F01): only an explicit list
+ *   says a part has no findings. A part with some unusable findings left out
+ *   counts as read in part: it is in `failedParts` and the reading is partial,
+ *   as above. An explicit, empty list is a genuine empty reading.
  * - Publication itself fails: the transaction rolls back to the prior state,
  *   the staged rows are discarded, a trace event records why, and the result
  *   says `published: false` with a retry message. This is a deliberate,
@@ -838,7 +950,7 @@ export async function extractFindingsFromDocument(
 
   // If almost nothing came out of the file, calling Claude is pointless and
   // the resulting error is confusing. Record why and stop here instead.
-  if (extracted.fullText.trim().length < 50) {
+  if (extracted.fullText.trim().length < MIN_READABLE_SOURCE_CHARS) {
     await withTenant(tenantId, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'extract_findings_empty_text', $3)`,
@@ -917,10 +1029,19 @@ export async function extractFindingsFromDocument(
   } finally {
     endCodingWork(documentId);
   }
+  // Parts read only in part (SEC500-F01): some of the model's records were unusable and left out. They
+  // count with the failed parts, so the reading is partial: it cannot replace findings it would retire,
+  // and a first reading that publishes is marked incomplete.
+  const partlyRead: string[] = [];
   for (const r of chunkResults) {
     if (r.staged) stagedChunks.push(r.staged);
     if (r.error) chunkErrors.push(r.error);
+    if (r.staged && r.staged.discarded > 0) {
+      const part = chunks.length > 1 ? `part ${r.staged.chunkIndex + 1} of ${chunks.length}` : `"${document.source_filename}"`;
+      partlyRead.push(`${r.staged.discarded} of the findings Claude returned for ${part} could not be used and were left out`);
+    }
   }
+  const incomplete = [...chunkErrors, ...partlyRead];
   const stagedCount = stagedChunks.reduce((n, c) => n + c.findings.length, 0);
 
   // What was read, for the report card on the run page. Best effort: never blocks extraction.
@@ -935,7 +1056,7 @@ export async function extractFindingsFromDocument(
           pages: extracted.pages.length,
           characters: extracted.fullText.length,
           parts: chunks.length,
-          failedParts: chunkErrors.length,
+          failedParts: incomplete.length,
           findings: stagedCount,
         }),
       ],
@@ -964,7 +1085,7 @@ export async function extractFindingsFromDocument(
         runId,
         documentId,
         stagedChunks,
-        partial: chunkErrors.length > 0,
+        partial: incomplete.length > 0,
         onlyReplacePending,
         archiveReason,
         confirmedLegacyIds: new Set(confirmLegacyReplacement?.findingIds ?? []),
@@ -977,12 +1098,12 @@ export async function extractFindingsFromDocument(
     const message = error instanceof Error ? error.message : String(error);
     await recordWithheldReplacement(tenantId, runId, documentId, "publish_failed", {
       message,
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       stagedFindings: stagedCount,
     });
     return {
       rows: [],
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       totalParts: chunks.length,
       published: false,
       notPublishedReason:
@@ -994,20 +1115,20 @@ export async function extractFindingsFromDocument(
 
   if (!outcome.published && outcome.reason === "partial_read") {
     await recordWithheldReplacement(tenantId, runId, documentId, "partial_read", {
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       totalParts: chunks.length,
       stagedFindings: stagedCount,
       retainedFindings: outcome.retainedCount,
     });
     return {
       rows: [],
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       totalParts: chunks.length,
       published: false,
       notPublishedReason:
-        `${chunkErrors.length} of ${chunks.length} parts of "${document.source_filename}" could not be read, so the new ` +
-        `reading was not applied and the previous ${outcome.retainedCount} finding${outcome.retainedCount === 1 ? "" : "s"} ` +
-        `are unchanged. Retry extraction for this document to replace them. First error: ${chunkErrors[0]}`,
+        `${incomplete.length} of ${chunks.length} parts of "${document.source_filename}" could not be read in full, so the new ` +
+        `reading was not applied and the previous ${outcome.retainedCount} finding${outcome.retainedCount === 1 ? " is" : "s are"} ` +
+        `unchanged. Retry extraction for this document to replace them. First problem: ${incomplete[0]}`,
       legacyConfirmation: null,
     };
   }
@@ -1020,7 +1141,7 @@ export async function extractFindingsFromDocument(
     });
     return {
       rows: [],
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       totalParts: chunks.length,
       published: false,
       notPublishedReason:
@@ -1041,7 +1162,7 @@ export async function extractFindingsFromDocument(
     });
     return {
       rows: [],
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       totalParts: chunks.length,
       published: false,
       notPublishedReason:
@@ -1065,6 +1186,7 @@ export async function extractFindingsFromDocument(
           retired: outcome.retiredCount,
           retained: outcome.retainedCount,
           duplicatesResolved: outcome.duplicateCount,
+          overlapDuplicatesResolved: outcome.overlapDuplicateCount,
           legacyConfirmed: confirmLegacyReplacement?.findingIds.length ?? 0,
         }),
       ],
@@ -1073,7 +1195,7 @@ export async function extractFindingsFromDocument(
 
   return {
     rows: outcome.rows,
-    failedParts: chunkErrors.length,
+    failedParts: incomplete.length,
     totalParts: chunks.length,
     published: true,
     notPublishedReason: null,
@@ -1105,127 +1227,12 @@ type PublishOutcome =
       retainedCount: number;
       retiredCount: number;
       duplicateCount: number;
+      /** Findings read twice in the repeated sentences between two parts and published once (EF-SEC-F01). */
+      overlapDuplicateCount: number;
     }
   | { published: false; reason: "partial_read"; retainedCount: number }
   | { published: false; reason: "legacy_unconfirmed"; retainedCount: number; legacyFindingIds: string[] }
   | { published: false; reason: "provenance_unavailable"; retainedCount: number; blockedCount: number };
-
-export type CurrentFinding = {
-  id: string;
-  status: string;
-  researcher_note: string | null;
-  source_quote: string | null;
-  source_page: number | null;
-  finding_text: string;
-  cited_support_finding_ids: unknown;
-  /** Null when no explicit researcher review is recorded (or before migration 0094). */
-  human_reviewed_at: string | Date | null;
-  /** Fields a researcher has explicitly edited; empty when none recorded (or before 0094). */
-  human_edited_fields: string[];
-  /** False when this row's researcher actions were never recorded (it predates 0094, or 0094 is not applied). */
-  provenance_tracked: boolean;
-  /** FND-001 probe B: the extracted wording when a researcher has since edited it (migration 0100);
-   * null when never edited, or before 0100. Absent in callers that predate it. */
-  original_finding_text?: string | null;
-};
-
-function citedIds(f: CurrentFinding): string[] {
-  return Array.isArray(f.cited_support_finding_ids)
-    ? f.cited_support_finding_ids.filter((x): x is string => typeof x === "string")
-    : [];
-}
-
-/**
- * REP-IN-002: which of a document's current findings a complete replacement keeps live and which
- * it retires to history, and whether a PARTIAL read may be published at all. Exported for direct
- * testing; the decision is pure.
- *
- * Regenerate rejected (`onlyReplacePending`): rejected findings are retired, everything else is
- * kept (unchanged contract).
- *
- * Full replace: a finding is PROTECTED (kept live with its id, wording, review state, note and
- * dependents) when it has any explicit researcher action or dependent work:
- *   - a recorded researcher review (`human_reviewed_at`, single or bulk, accept or otherwise),
- *   - a recorded researcher edit (`human_edited_fields`: theme, kind or note),
- *   - a status other than `accepted` (no insert writes another status, so it was a decision),
- *   - a non-blank researcher note, or at least one insight built on it,
- *   - or it is cited as support by another protected finding (dependency closure, so a kept
- *     stated insight never points at a retired finding).
- * An unprotected finding with recorded provenance (`provenance_tracked`) is retired. An unprotected
- * finding with UNKNOWN provenance is never retired on its own: it is retired only when its id is in
- * `confirmedLegacyIds`, the explicit, document-scoped confirmation for exactly those findings. If
- * any unknown-provenance finding is not confirmed, `legacyUnconfirmedIds` lists them and the caller
- * withholds the whole replacement. A confirmation can never retire a protected finding.
- */
-export function planReplacement(
-  current: CurrentFinding[],
-  findingIdsWithInsights: ReadonlySet<string>,
-  onlyReplacePending: boolean,
-  confirmedLegacyIds: ReadonlySet<string> = new Set(),
-): { retireIds: string[]; keep: CurrentFinding[]; partialPublishable: boolean; legacyUnconfirmedIds: string[] } {
-  if (onlyReplacePending) {
-    const retire = current.filter((f) => f.status === "rejected");
-    return {
-      retireIds: retire.map((f) => f.id),
-      keep: current.filter((f) => f.status !== "rejected"),
-      // Regenerate-rejected is additive by design: with nothing rejected to
-      // retire, a partial read only adds findings next to kept ones.
-      partialPublishable: retire.length === 0,
-      legacyUnconfirmedIds: [],
-    };
-  }
-  const directlyProtected = (f: CurrentFinding) =>
-    f.human_reviewed_at !== null ||
-    f.human_edited_fields.length > 0 ||
-    f.status !== "accepted" ||
-    (f.researcher_note !== null && f.researcher_note.trim() !== "") ||
-    findingIdsWithInsights.has(f.id);
-
-  const byId = new Map(current.map((f) => [f.id, f]));
-  const protectedIds = new Set(current.filter(directlyProtected).map((f) => f.id));
-  let frontier = [...protectedIds];
-  while (frontier.length > 0) {
-    const next: string[] = [];
-    for (const id of frontier) {
-      for (const cited of citedIds(byId.get(id)!)) {
-        if (byId.has(cited) && !protectedIds.has(cited)) {
-          protectedIds.add(cited);
-          next.push(cited);
-        }
-      }
-    }
-    frontier = next;
-  }
-
-  const unprotected = current.filter((f) => !protectedIds.has(f.id));
-  const retire = unprotected.filter((f) => f.provenance_tracked || confirmedLegacyIds.has(f.id));
-  const retireSet = new Set(retire.map((f) => f.id));
-  return {
-    retireIds: retire.map((f) => f.id),
-    keep: current.filter((f) => !retireSet.has(f.id)),
-    partialPublishable: current.length === 0,
-    legacyUnconfirmedIds: unprotected
-      .filter((f) => !f.provenance_tracked && !confirmedLegacyIds.has(f.id))
-      .map((f) => f.id),
-  };
-}
-
-function normaliseClaim(text: string): string {
-  return text.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim().replace(/[.!;:]+$/, "").trim();
-}
-
-/**
- * REP-IN-002: the deterministic identity of a claim for duplicate resolution. Two findings are
- * the same claim only when they say the same thing (normalised claim text) about the same
- * passage (normalised source quote) on the same page of the same document. A shared quote alone
- * never makes two findings duplicates: "Satisfaction is 80%" and "Loyalty is 40%" from one
- * sentence are two claims. No model or semantic similarity is involved; differently worded
- * restatements are kept as separate findings (conservative: nothing distinct is lost).
- * Normalisation only folds case, Unicode form, whitespace and trailing sentence punctuation.
- */
-export function claimIdentityKey(text: string, quote: string | null, page: number | null): string {
-  return JSON.stringify([normaliseClaim(text), quote ? normaliseQuote(quote) : "", page ?? null]);
-}
 
 /**
  * The single publication transaction. Must run inside withTenant: its
@@ -1356,14 +1363,32 @@ async function publishReplacement(
     }
     return entry;
   };
+  // EF-SEC-F01: the sentences repeated at the start of a part (its overlapText) are also read by the
+  // previous part. A finding quoting them whose exact quote (normalised: case and whitespace) the
+  // previous part already produced is the same reading of the same sentence: it is not inserted, and
+  // anything in its part that cites it resolves to the earlier finding. Deterministic: decided by the
+  // quote and the part order only. A quote the previous part did not produce (it missed it, or that
+  // part failed) is kept, so the overlap can only add a reading, never remove one.
+  const quoteOwners = new Map<string, { chunkIndex: number; id: string }>();
+  let overlapDuplicateCount = 0;
   for (const chunk of [...stagedChunks].sort((x, y) => x.chunkIndex - y.chunkIndex)) {
     const idByRawIndex = new Map<number, string>();
     const pendingSupport: { findingId: string; rawIndices: number[]; retained: CurrentFinding | null }[] = [];
+    const ownedHere: [string, string][] = [];
     for (const f of chunk.findings) {
+      const quoteKey = normaliseQuote(f.source_quote);
+      const owner = quoteOwners.get(quoteKey);
+      if (owner && owner.chunkIndex === chunk.chunkIndex - 1 && chunk.overlapText && quoteAppearsIn(f.source_quote, chunk.overlapText)) {
+        overlapDuplicateCount += 1;
+        idByRawIndex.set(f.rawIndex, owner.id);
+        ownedHere.push([quoteKey, owner.id]);
+        continue;
+      }
       const kept = keptByClaim.get(claimIdentityKey(f.finding_text, f.source_quote, f.pageNumber));
       if (kept) {
         duplicateCount += 1;
         idByRawIndex.set(f.rawIndex, kept.id);
+        ownedHere.push([quoteKey, kept.id]);
         if (f.supportRawIndices.length > 0) {
           pendingSupport.push({ findingId: kept.id, rawIndices: f.supportRawIndices, retained: kept });
         }
@@ -1397,6 +1422,7 @@ async function publishReplacement(
       const row = result.rows[0];
       rows.push(row);
       idByRawIndex.set(f.rawIndex, row.id);
+      ownedHere.push([quoteKey, row.id]);
       if (f.supportRawIndices.length > 0) {
         pendingSupport.push({ findingId: row.id, rawIndices: f.supportRawIndices, retained: null });
       }
@@ -1422,6 +1448,14 @@ async function publishReplacement(
         [JSON.stringify(ids), findingId],
       );
     }
+    // The first finding of this part with a quote owns it for the next part's overlap (a duplicate
+    // carries its owner's id forward, so a quote repeated through several parts keeps one finding).
+    const ownedInThisPart = new Set<string>();
+    for (const [quoteKey, id] of ownedHere) {
+      if (ownedInThisPart.has(quoteKey)) continue;
+      ownedInThisPart.add(quoteKey);
+      quoteOwners.set(quoteKey, { chunkIndex: chunk.chunkIndex, id });
+    }
   }
   for (const [findingId, entry] of retainedSupport) {
     if (!entry.union.some((id) => !entry.original.has(id))) continue;
@@ -1437,6 +1471,7 @@ async function publishReplacement(
     retainedCount: plan.keep.length,
     retiredCount: plan.retireIds.length,
     duplicateCount,
+    overlapDuplicateCount,
   };
 }
 

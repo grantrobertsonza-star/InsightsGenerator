@@ -4,9 +4,12 @@
 // wording survives"). Change, delete and rejection are covered elsewhere; this adds:
 //   replacement  a full re-read of the report (ACTUAL extractFindingsFromDocument) that no longer
 //                extracts a finding an accepted insight is built on: the finding is kept live with
-//                its id and wording (REP-IN-002 protection), so the insight's support is still
-//                current in the insight CSV and deck; an unprotected finding with no dependants is
-//                retired; the re-read's new claim is added once.
+//                its id and wording (REP-IN-002 protection); an unprotected finding with no
+//                dependants is retired; the re-read's new claim is added once. Support follows the
+//                report's new text, not the protection (Codex GT100-F02): while the kept finding's
+//                quote is still in the text its insight stays current (control); once the quote is
+//                gone from the text, its evidence is gone from its source, so the insight's support
+//                is no longer valid in the CSV and it is left out of the Accepted deck, wording kept.
 //   duplicates   an accepted insight built on the same claim from two reports: deleting one report
 //                (the app's deleteDocument) leaves the insight with fewer sources than it was built from, so
 //                the CSV says its support is no longer valid and the accepted-scope deck leaves it
@@ -70,8 +73,9 @@ describe.skipIf(!TEST_DATABASE_URL)("replacement and duplicate support reach the
   let run = "";
   const one = async (sql: string, p: unknown[]) => (await db.pool.query(sql, p)).rows[0].id as string;
   const rows = async (sql: string, p: unknown[]) => (await db.pool.query(sql, p)).rows;
-  const report = (name: string) =>
-    one(`insert into documents (tenant_id, run_id, kind, source_filename, storage_path) values ($1, $2, 'report', $3, $3) returning id`, [TENANT, run, name]);
+  // A report as its first read leaves it: its text stored (GT100-F02 checks quotes against it).
+  const report = (name: string, text: string) =>
+    one(`insert into documents (tenant_id, run_id, kind, source_filename, storage_path, extracted_text) values ($1, $2, 'report', $3, $3, $4) returning id`, [TENANT, run, name, text]);
   const statedFinding = (doc: string, text: string, quote: string) =>
     one(
       `insert into findings (tenant_id, run_id, origin, finding_text, finding_kind, status, theme, source_document_id, source_quote) values ($1, $2, 'stated', $3, 'fact', 'accepted', 'T', $4, $5) returning id`,
@@ -121,11 +125,11 @@ describe.skipIf(!TEST_DATABASE_URL)("replacement and duplicate support reach the
     process.env.DEFAULT_TENANT_ID = TENANT;
     await db.pool.query(`insert into tenants (id, name) values ($1, 'T')`, [TENANT]);
     run = await one(`insert into runs (tenant_id, project_name, entry_point) values ($1, 'Support handover', 'generate') returning id`, [TENANT]);
-    ids.main = await report("main-report.txt");
+    ids.main = await report("main-report.txt", `Annual report for the customer programme. ${SAT_Q} ${UNUSED_Q}`);
     ids.sat = await statedFinding(ids.main, SAT, SAT_Q);
     ids.unused = await statedFinding(ids.main, "Churn is 5% a year.", UNUSED_Q);
-    ids.reportA = await report("wave-a.txt");
-    ids.reportB = await report("wave-b.txt");
+    ids.reportA = await report("wave-a.txt", `Wave A results for the membership programme. ${LOY_Q} Awareness stands at 60 percent.`);
+    ids.reportB = await report("wave-b.txt", `Wave B results for the membership programme. ${LOY_Q}`);
     const loyA = await statedFinding(ids.reportA, LOY, LOY_Q);
     const loyB = await statedFinding(ids.reportB, LOY, LOY_Q);
     const group = (await rows("select gen_random_uuid() as g", []))[0].g;
@@ -145,8 +149,8 @@ describe.skipIf(!TEST_DATABASE_URL)("replacement and duplicate support reach the
     expect(await csvSupport()).toEqual({ "Satisfaction insight": "Support current", "Loyalty insight": "Support current", "Control insight": "Support current" });
   });
 
-  it("replacement: a re-read that drops a supporting claim keeps that finding and its insight's support current", async () => {
-    hooks.storageText = `Annual report. ${NEW_Q} Nothing else of note.`;
+  it("replacement control: a re-read that drops a supporting claim whose quote is still in the text keeps the finding and its support current", async () => {
+    hooks.storageText = `Annual report for the customer programme. ${SAT_Q} ${NEW_Q}`;
     hooks.extraction = [{ finding_text: "NPS is 30 this year.", finding_kind: "fact", theme: "Advocacy", data_type: "quantitative", source_quote: NEW_Q }];
     const { extractFindingsFromDocument } = await import("../extractFindings");
     await extractFindingsFromDocument(TENANT, run, ids.main);
@@ -159,15 +163,33 @@ describe.skipIf(!TEST_DATABASE_URL)("replacement and duplicate support reach the
     expect(support["Control insight"]).toBe("Support current");
   });
 
+  it("replacement: once the kept finding's quote is gone from the report's text, its insight's support is no longer valid; the finding and wording are kept", async () => {
+    hooks.storageText = `Annual report. ${NEW_Q} Nothing else of note.`;
+    hooks.extraction = [{ finding_text: "NPS is 30 this year.", finding_kind: "fact", theme: "Advocacy", data_type: "quantitative", source_quote: NEW_Q }];
+    const { extractFindingsFromDocument } = await import("../extractFindings");
+    await extractFindingsFromDocument(TENANT, run, ids.main);
+    const live = await rows("select id, finding_text from findings where source_document_id = $1 order by finding_text", [ids.main]);
+    expect(live.map((r) => r.finding_text)).toEqual(["NPS is 30 this year.", SAT]);
+    expect(live.find((r) => r.finding_text === SAT)!.id).toBe(ids.sat);
+    const support = await csvSupport();
+    expect(support["Satisfaction insight"]).toMatch(/^Support no longer valid: the quote behind .* no longer appears in its report/);
+    expect(support["Control insight"]).toBe("Support current");
+    expect(await rows("select observation, review_status from synthesized_insights where id = $1", [ids.satInsight])).toEqual([
+      { observation: "Researcher wording kept", review_status: "accepted" },
+    ]);
+    expect(await deckText("accepted")).toMatch(/Left out: support no longer valid/);
+  });
+
   it("duplicates: removing one of two duplicate sources marks the insight no longer valid; wording survives; control unaffected", async () => {
-    // The app's own delete (findings first, then the document, then storage cleanup).
+    // The app's own removal (findings archived, the file moved to the project's bin).
     const { deleteDocument } = await import("../documentActions");
     await deleteDocument(run, ids.reportB);
-    expect(await rows("select id from documents where id = $1", [ids.reportB])).toEqual([]);
+    expect(await rows("select id from documents where id = $1 and run_id = $2", [ids.reportB, run])).toEqual([]);
     const support = await csvSupport();
     expect(support["Loyalty insight"]).toMatch(/^Support no longer valid/);
     expect(support["Control insight"]).toBe("Support current");
-    expect(support["Satisfaction insight"]).toBe("Support current");
+    // Still no longer valid from the replacement case above: its quote is not back in the report.
+    expect(support["Satisfaction insight"]).toMatch(/^Support no longer valid/);
     const kept = await rows("select headline, observation, review_status from synthesized_insights where id = $1", [ids.loyInsight]);
     expect(kept).toEqual([{ headline: "Loyalty insight", observation: "Researcher wording kept", review_status: "accepted" }]);
     const accepted = await deckText("accepted");

@@ -20,6 +20,33 @@ if (process.env.NODE_ENV !== "production") {
   globalForDb.pgPool = pool;
 }
 
+const globalForClaims = globalThis as unknown as { pgClaimPool?: Pool };
+
+/**
+ * A small pool used only to hold Research assistant request claims (session advisory locks,
+ * researchAssistant.ts), kept apart from `pool` (Codex B8-F01). A claim is held for a whole
+ * answer while the answer's own reads and writes use `pool`; if both came from one pool, enough
+ * concurrent answers would hold every connection as claims and wait for one more for their work,
+ * and none could finish. With claims here, `pool` always has connections for the work, and this
+ * pool's size is how many answers run at once (3, or ASSISTANT_CLAIM_POOL_MAX; with `pool`'s 10 it
+ * stays under Supabase session mode's 15). A request that cannot get a claim connection in time is
+ * refused with a message, never left waiting without end.
+ */
+export const claimPool =
+  globalForClaims.pgClaimPool ??
+  new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: Number(process.env.ASSISTANT_CLAIM_POOL_MAX) || 3,
+    // A wait for a free claim connection is bounded; the caller retries until its own deadline.
+    connectionTimeoutMillis: 2000,
+    idleTimeoutMillis: 30000,
+    allowExitOnIdle: true,
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  globalForClaims.pgClaimPool = claimPool;
+}
+
 /**
  * Runs `callback` with a database client that has been scoped to a single
  * tenant for the duration of one transaction, per the engineering brief's

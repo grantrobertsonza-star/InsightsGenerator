@@ -24,6 +24,8 @@ export type DriverInput = {
 
 export type DriverRow = {
   name: string;
+  /** The predictor's code, added by drivers.ts (absent on reports saved before 24 October 2026). */
+  variable?: string;
   /** Share of explained variance, 0 to 1. Shares add to 1. */
   share: number;
   /** Bootstrap 95% interval for the share. */
@@ -467,6 +469,8 @@ function percentile(sorted: number[], q: number): number {
 export function driverAnalysis(input: DriverInput): DriverResult | { error: string } {
   const warnings: string[] = [];
   const { outcome } = input;
+  // GT1000-F02: an unsupported outcome type used to fall through to the logistic branch.
+  if (outcome !== "continuous" && outcome !== "binary") return { error: `Unsupported outcome type ${JSON.stringify(outcome)}: use continuous or binary.` };
   // Complete cases only. The caller reports how many were lost; here the count is kept in the result.
   const keep: number[] = [];
   for (let i = 0; i < input.y.length; i++) {
@@ -568,8 +572,30 @@ export function driverAnalysis(input: DriverInput): DriverResult | { error: stri
   if (base.method === "standardised_coefficients") warnings.push(`With ${p} predictors a full split of the fit is too slow, so the weights are the size of each standardised coefficient. They are less reliable when predictors overlap.`);
   if (base.method === "relative_weights") warnings.push(`With ${p} predictors the weights use Johnson's relative-weights method instead of enumerating every subset.`);
 
-  // Bootstrap.
-  const B = Math.max(0, Math.min(input.bootstrap ?? 200, outcome === "binary" && base.method === "shapley" ? 60 : 300));
+  // Bootstrap (GT1000-F02, M-R1000-01). Two layers, deliberately different:
+  //  - The server policy is driverRequest.ts: a request must ask for 0 (no ranges) or a whole
+  //    number from 20 to 300, or leave it out (200). Anything else is refused before this runs.
+  //  - This function, called directly, refuses only a value that is not a whole number from 0. A
+  //    value from 1 to 19 runs with no ranges and says so; a value above the cap is drawn at the
+  //    cap and says so. The cap is a run-time bound, not a statistical one: every resample refits
+  //    the whole split, so at most 300 resamples are drawn, and 60 for a binary outcome split
+  //    exactly (Shapley), where each resample refits a logistic model for every subset of
+  //    predictors. Whatever is drawn is said in the warnings, so the method described is the
+  //    method that ran.
+  const requested = input.bootstrap ?? 200;
+  if (!Number.isInteger(requested) || requested < 0) return { error: "The number of bootstrap resamples must be a whole number from 0." };
+  const exactBinary = outcome === "binary" && base.method === "shapley";
+  const cap = exactBinary ? 60 : 300;
+  const B = Math.min(requested, cap);
+  if (B === 0) warnings.push("No bootstrap ranges were drawn (resamples set to 0), so the shares and ranks have no intervals.");
+  else if (B < 20) warnings.push(`Only ${B} bootstrap resamples were asked for; at least 20 are needed for a range, so the shares and ranks have no intervals.`);
+  else if (B < requested) {
+    warnings.push(
+      exactBinary
+        ? `The bootstrap ranges use ${B} resamples, the most drawn for a binary outcome split exactly, because each resample refits a logistic model for every subset of predictors.`
+        : `The bootstrap ranges use ${B} resamples, the most drawn here, because each resample refits the whole split.`,
+    );
+  }
   let lows: (number | null)[] = Array(p).fill(null);
   let highs: (number | null)[] = Array(p).fill(null);
   let rankLows: (number | null)[] = Array(p).fill(null);

@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { attempt } from "./actionFailure";
+import { servedDecisionsText, servedKey, type DecisionOption, type ServedDecision } from "@/lib/recommendationDecisions";
+import { setServedDecisionsAction } from "@/lib/recommendationActions";
+import EvidenceTrailDialog from "./EvidenceTrailDialog";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { actionFailureMessage, attempt, CONNECTION_LOST_MESSAGE } from "./actionFailure";
+import { useRecommendationEdit } from "./recommendationEditing";
 import { Pane, ThreePane } from "./ThreePane";
 import {
   acceptRecommendation,
   rejectRecommendation,
   restoreRecommendation,
-  updateAndAcceptRecommendation,
   addOwnSynthesizedRecommendation,
   deleteRecommendation,
   regenerateSynthesizedRecommendations,
@@ -18,6 +21,15 @@ import { decisionsWrittenFor } from "@/lib/recommendationQualification";
 import { SupportStatusNotice } from "./SupportStatusNotice";
 import { scoreRecommendationsAction } from "@/lib/qualityActions";
 import { FigureCheckFor } from "./FigureCheckNotice";
+import {
+  insightsWithoutRecommendationCount,
+  recommendationMatches,
+  type RecommendationDecision,
+  type RecommendationFilter,
+  type RecommendationQuality,
+  type RecommendationReview,
+  type RecommendationSupport,
+} from "@/lib/recommendationOverview";
 
 type Priority = "high" | "medium" | "low";
 
@@ -48,6 +60,8 @@ type Recommendation = {
   /** GT-007: decisions it was written for (decisionContext.ts rule), as the main-list exports say it. */
   decision_context?: string | null;
   decision_state?: "earlier" | "unknown" | null;
+  /** CE-2: the decisions it serves (recommendationDecisions.ts); undefined before migration 0120. */
+  served_decisions?: ServedDecision[];
   // The recommendation's own quality scores (migration 0045). Impact is
   // shown beside the total, not in it.
   rec_actionability_score?: number | null;
@@ -287,7 +301,7 @@ type ParkedInsight = {
  * at all - what a partial or failed generation run leaves behind. Derived from the data on every
  * load, so it survives reloads; regenerating covers only these (nothing is duplicated). */
 export function missingRecommendationCount(parked: ParkedInsight[]): number {
-  return parked.filter((p) => p.action_plan_status === "has_action" && p.has_any_recommendation === false).length;
+  return insightsWithoutRecommendationCount(parked);
 }
 
 /** REC-002: the notice for insights left without a recommendation. Renders nothing when none are. */
@@ -450,13 +464,113 @@ function EditFields({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
   );
 }
 
-function RecommendationCard({ runId, recommendation }: { runId: string; recommendation: Recommendation }) {
+/**
+ * CE-2: the researcher chooses the decisions a recommendation serves, from the project's current
+ * decisions. Saved against what was shown (a change made meanwhile is refused, never overwritten);
+ * "Saved" only after the save succeeds; a refusal keeps the choice open with the reason.
+ */
+function ServedDecisionsChooser({
+  runId,
+  recommendationId,
+  served,
+  options,
+  onClose,
+}: {
+  runId: string;
+  recommendationId: string;
+  served: ServedDecision[];
+  options: DecisionOption[];
+  onClose: (saved: boolean) => void;
+}) {
+  // A decision since reworded is still the same accepted decision (by id), so it starts ticked; one that
+  // is gone is not offered at all.
+  const initial = served.filter((d) => d.state !== "gone").map((d) => d.candidateId ?? `text:${d.text}`);
+  const [chosen, setChosen] = useState<string[]>(initial.filter((k) => options.some((o) => o.key === k)));
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await setServedDecisionsAction(runId, recommendationId, chosen, servedKey(served.map((d) => ({ candidateId: d.candidateId, text: d.text }))));
+      if (r.ok) onClose(true);
+      else setError(r.error);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Not saved. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="rounded-md border border-border bg-slate-50 p-2 text-xs" data-testid="served-decisions-chooser">
+      <p className="mb-1 font-medium text-foreground">Which decisions does this recommendation serve?</p>
+      <ul className="space-y-1">
+        {options.map((o) => (
+          <li key={o.key}>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={chosen.includes(o.key)}
+                onChange={(e) => setChosen((c) => (e.target.checked ? [...c, o.key] : c.filter((k) => k !== o.key)))}
+              />
+              <span>{o.text}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex gap-2">
+        <button type="button" disabled={saving || chosen.length === 0} onClick={() => void save()} className="rounded-md bg-primary px-2 py-1 font-medium text-white disabled:opacity-50">
+          {saving ? "Saving..." : "Save"}
+        </button>
+        <button type="button" disabled={saving} onClick={() => onClose(false)} className="rounded-md border border-border px-2 py-1">
+          Cancel
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1 text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function RecommendationCard({
+  runId,
+  recommendation,
+  decisionOptions = null,
+  selected = false,
+  selectionKey = 0,
+}: {
+  runId: string;
+  recommendation: Recommendation;
+  /** The project's current decisions, for choosing what this serves; null when they could not be read. */
+  decisionOptions?: DecisionOption[] | null;
+  /** Opened from the overview's action plan: highlighted and brought into view. */
+  selected?: boolean;
+  /** Changes with each request, so choosing the same recommendation again scrolls to it again. */
+  selectionKey?: number;
+}) {
   const [isPending, startTransition] = useTransition();
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selected) cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [selected, selectionKey]);
   const [isEditing, setIsEditing] = useState(false);
+  const [choosingDecisions, setChoosingDecisions] = useState(false);
+  const [decisionsSaved, setDecisionsSaved] = useState(false);
   const [draft, setDraft] = useState<Draft>(draftFrom(recommendation));
   // Each action reports its failure here instead of throwing out of the transition, which
   // replaced the page and lost an open edit; a failed save keeps the editor and draft.
   const [error, setError] = useState<string | null>(null);
+  const edit = useRecommendationEdit({
+    runId,
+    recommendationId: recommendation.id,
+    setDraft,
+    setError,
+    close: () => setIsEditing(false),
+    startTransition,
+  });
   const run = (action: () => Promise<unknown>, after?: () => void) =>
     startTransition(async () => {
       setError(null);
@@ -465,6 +579,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
       else after?.();
     });
 
+  const [tracing, setTracing] = useState(false);
   const isAccepted = recommendation.status === "accepted";
   const isRejected = recommendation.status === "rejected";
 
@@ -475,8 +590,11 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
 
   return (
     <div
+      ref={cardRef}
       data-testid="recommendation-card"
       data-recommendation-id={recommendation.id}
+      data-priority={recommendation.priority}
+      data-selected={selected ? "true" : undefined}
       data-insight-id={recommendation.synthesized_insight_id}
       data-source={recommendation.source}
       data-status={recommendation.status}
@@ -484,7 +602,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
       data-decision-state={recommendation.decision_state ?? "current"}
       className={`card-surface flex flex-col gap-4 rounded-xl border bg-white p-5 ${
         isAccepted ? "border-success" : isRejected ? "border-border opacity-50" : "border-border"
-      }`}
+      } ${selected ? "ring-2 ring-primary ring-offset-2" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -550,6 +668,38 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
           <p className="-mt-2 text-xs text-muted">
             From insight: <span className="font-medium text-foreground">{recommendation.synthesized_insight_headline}</span>
           </p>
+          <div className="-mt-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted" data-testid="recommendation-serves">
+              Serves: <span className="font-medium text-foreground">{servedDecisionsText(recommendation.served_decisions, recommendation.served_decisions !== undefined)}</span>
+              {recommendation.served_decisions?.some((d) => d.origin === "researcher") && <span className="ml-1">(chosen by the researcher)</span>}
+              {recommendation.served_decisions !== undefined && decisionOptions && decisionOptions.length > 0 && !choosingDecisions && (
+                <button type="button" className="ml-2 underline" onClick={() => { setDecisionsSaved(false); setChoosingDecisions(true); }}>
+                  Change
+                </button>
+              )}
+              {decisionsSaved && <span className="ml-2 text-success" data-testid="served-decisions-saved">Saved</span>}
+            </p>
+            <button
+              type="button"
+              onClick={() => setTracing(true)}
+              className="rounded-md border border-primary/40 bg-primary-light/40 px-2 py-1 text-xs font-medium text-primary hover:bg-primary-light"
+            >
+              Trace the evidence
+            </button>
+          </div>
+          {choosingDecisions && decisionOptions && (
+            <ServedDecisionsChooser
+              runId={runId}
+              recommendationId={recommendation.id}
+              served={recommendation.served_decisions ?? []}
+              options={decisionOptions}
+              onClose={(saved) => {
+                setChoosingDecisions(false);
+                setDecisionsSaved(saved);
+              }}
+            />
+          )}
+          {tracing && <EvidenceTrailDialog runId={runId} from={{ kind: "recommendation", id: recommendation.id }} onClose={() => setTracing(false)} />}
           {recommendation.support && <SupportStatusNotice support={recommendation.support} subject="recommendation" />}
           {recommendation.decision_state && (
             <p data-testid="recommendation-decision-note" className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -609,9 +759,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
           <>
             <button
               disabled={isPending || !draftComplete(draft)}
-              onClick={() =>
-                run(() => updateAndAcceptRecommendation(runId, recommendation.id, draft), () => setIsEditing(false))
-              }
+              onClick={() => edit.save(draft)}
               className="rounded-lg border border-success bg-success px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
             >
               Save and accept
@@ -619,7 +767,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
             <button
               onClick={() => {
                 setDraft(draftFrom(recommendation));
-                setError(null);
+                edit.cancel();
                 setIsEditing(false);
               }}
               className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:text-foreground"
@@ -648,7 +796,10 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
             )}
             <button
               disabled={isPending}
-              onClick={() => setIsEditing(true)}
+              onClick={() => {
+                edit.begin(draftFrom(recommendation));
+                setIsEditing(true);
+              }}
               className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:border-slate-400 hover:text-foreground"
             >
               {isAccepted ? "Edit" : "Edit and accept"}
@@ -679,6 +830,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
           {error}
         </p>
       )}
+      {isEditing && edit.conflictPanel(draft, isPending)}
     </div>
   );
 }
@@ -708,6 +860,19 @@ const emptyDraft: Draft = {
  * framing -- minus the theme filter, since a synthesized insight doesn't
  * carry a single theme the way a pre-insight does.
  */
+/** Where the Recommendations overview sent the researcher (RecommendationsWorkspace): applied once, then editable here. */
+export type RecommendationsReviewStart = RecommendationFilter & { selectedId?: string };
+
+const REVIEW_FILTER_LABEL: Record<RecommendationReview, string> = { accepted: "Accepted", pending: "Not yet reviewed", rejected: "Rejected" };
+const QUALITY_FILTER_LABEL: Record<RecommendationQuality | "unscored", string> = { strong: "Strong", workable: "Workable", weak: "Needs work", unscored: "Not scored" };
+const SUPPORT_FILTER_LABEL: Record<RecommendationSupport, string> = { current: "Support current", stale: "Support changed", invalid: "Support no longer valid", unknown: "Support not checked" };
+const DECISION_FILTER_LABEL: Record<RecommendationDecision, string> = {
+  current: "Written for the current decisions",
+  earlier: "Written for earlier decisions",
+  unknown: "Decisions not recorded",
+  researcher: "Written by the researcher",
+};
+
 export default function SynthesizedRecommendationsReview({
   runId,
   recommendations,
@@ -715,9 +880,13 @@ export default function SynthesizedRecommendationsReview({
   parkedInsights,
   hasDecision,
   hasInsights,
+  request,
+  decisionOptions = null,
 }: {
   runId: string;
   recommendations: Recommendation[];
+  /** The project's current decisions (CE-2), for choosing what a recommendation serves. */
+  decisionOptions?: DecisionOption[] | null;
   // Every accepted synthesized insight this run has, for the "add your
   // own" picker. Only accepted ones: a rejected synthesized insight isn't
   // a real insight any more as far as the researcher is concerned.
@@ -727,6 +896,12 @@ export default function SynthesizedRecommendationsReview({
   parkedInsights: ParkedInsight[];
   hasDecision: boolean;
   hasInsights: boolean;
+  /**
+   * Where the overview sent the researcher. Each new request (a higher `n`) replaces the filters and
+   * the selection; between requests they are the researcher's own. Applied during render, without
+   * remounting, so a draft open in a card is not lost.
+   */
+  request?: { start: RecommendationsReviewStart; n: number };
 }) {
   const [isPending, startTransition] = useTransition();
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
@@ -736,20 +911,70 @@ export default function SynthesizedRecommendationsReview({
   const [reserveOpen, setReserveOpen] = useState(false);
   const [addInsightId, setAddInsightId] = useState(insightOptions[0]?.id ?? "");
   const [addDraft, setAddDraft] = useState<Draft>(emptyDraft);
+  // Codex REC500-F03: one identity per add, made when the form opens and sent again on every retry,
+  // so a resend after a lost reply finds the recommendation already saved instead of adding it twice.
+  // A new one is made only after a confirmed add.
+  const [addKey, setAddKey] = useState(() => crypto.randomUUID());
   const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all");
+  const [reviewFilter, setReviewFilter] = useState<"all" | RecommendationReview>("all");
+  const [qualityFilter, setQualityFilter] = useState<"all" | RecommendationQuality | "unscored">("all");
+  const [supportFilter, setSupportFilter] = useState<"all" | RecommendationSupport>("all");
+  const [decisionFilter, setDecisionFilter] = useState<"all" | RecommendationDecision>("all");
+  // "In use" (not rejected), which the overview's in-use figures carry so a drill-down never lists a
+  // rejected recommendation it did not count (Codex OV-01).
+  const [inUseOnly, setInUseOnly] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"recommendations" | "scores">("recommendations");
+  const [appliedRequest, setAppliedRequest] = useState<number | null>(null);
+  if (request && request.n !== appliedRequest) {
+    setAppliedRequest(request.n);
+    const st = request.start;
+    setPriorityFilter(st.priority ?? "all");
+    setReviewFilter(st.review ?? "all");
+    setQualityFilter(st.quality ?? "all");
+    setSupportFilter(st.support ?? "all");
+    setDecisionFilter(st.decision ?? "all");
+    setInUseOnly(st.inUse === true);
+    setSelectedId(st.selectedId ?? null);
+    setActiveTab("recommendations");
+    // A rejected recommendation is listed under the folded "Rejected" group: open it so the one asked for shows.
+    if (st.selectedId && recommendations.find((r) => r.id === st.selectedId)?.status === "rejected") setRejectedOpen(true);
+  }
 
   const live = recommendations.filter((r) => r.status !== "rejected");
   const highCount = live.filter((r) => r.priority === "high").length;
   const mediumCount = live.filter((r) => r.priority === "medium").length;
   const lowCount = live.filter((r) => r.priority === "low").length;
 
-  const filteredRecommendations = recommendations.filter((rec) => {
-    if (priorityFilter !== "all" && rec.priority !== priorityFilter) return false;
-    return true;
-  });
+  // The same matcher the overview counts with (lib/recommendationOverview), so a figure opens exactly
+  // the recommendations it counted.
+  const activeFilter: RecommendationFilter = {
+    ...(priorityFilter !== "all" ? { priority: priorityFilter } : {}),
+    ...(reviewFilter !== "all" ? { review: reviewFilter } : {}),
+    ...(qualityFilter !== "all" ? { quality: qualityFilter } : {}),
+    ...(supportFilter !== "all" ? { support: supportFilter } : {}),
+    ...(decisionFilter !== "all" ? { decision: decisionFilter } : {}),
+    ...(inUseOnly ? { inUse: true } : {}),
+  };
+  const filteredRecommendations = recommendations.filter((rec) => recommendationMatches(rec, activeFilter));
 
-  const isFiltering = priorityFilter !== "all";
+  const isFiltering = Object.keys(activeFilter).length > 0;
+  // The filters the overview can set that the left pane has no buttons for, shown as removable chips.
+  const activeChips: { key: string; label: string; clear: () => void }[] = [
+    ...(reviewFilter !== "all" ? [{ key: "review", label: REVIEW_FILTER_LABEL[reviewFilter], clear: () => setReviewFilter("all") }] : []),
+    ...(qualityFilter !== "all" ? [{ key: "quality", label: `Quality: ${QUALITY_FILTER_LABEL[qualityFilter]}`, clear: () => setQualityFilter("all") }] : []),
+    ...(supportFilter !== "all" ? [{ key: "support", label: SUPPORT_FILTER_LABEL[supportFilter], clear: () => setSupportFilter("all") }] : []),
+    ...(decisionFilter !== "all" ? [{ key: "decision", label: DECISION_FILTER_LABEL[decisionFilter], clear: () => setDecisionFilter("all") }] : []),
+    ...(inUseOnly ? [{ key: "in-use", label: "In use (not rejected)", clear: () => setInUseOnly(false) }] : []),
+  ];
+  const clearFilters = () => {
+    setPriorityFilter("all");
+    setReviewFilter("all");
+    setQualityFilter("all");
+    setSupportFilter("all");
+    setDecisionFilter("all");
+    setInUseOnly(false);
+  };
 
   const accepted = filteredRecommendations.filter((r) => r.status === "accepted");
   const pending = filteredRecommendations.filter((r) => r.status === "pending");
@@ -810,6 +1035,9 @@ export default function SynthesizedRecommendationsReview({
 
   return (
     <ThreePane
+        leftOnTop
+        // Its own key, so folding or resizing here leaves the other sections as they are (DESIGN-GTR-01).
+        storageKey="recommendations-review"
       left={
         <Pane side="left" title="Filters and actions">
         <p className="text-xs text-muted">
@@ -829,46 +1057,47 @@ export default function SynthesizedRecommendationsReview({
           </button>
         )}
       {live.length > 0 && (
-        <div className="grid grid-cols-2 gap-2">
+        // One compact row of priority filters (Grant, 2026-10-21): the count beside its label.
+        <div className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(7.5rem,1fr))]" data-testid="recommendation-priority-filters">
           <button
             type="button"
             onClick={() => setPriorityFilter("all")}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
+            className={`flex items-baseline gap-1.5 rounded-md border px-2.5 py-1.5 text-left transition ${
               priorityFilter === "all" ? "border-primary bg-primary-light" : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-foreground">{live.length}</div>
-            <div className="text-xs text-muted">Total</div>
+            <span className="text-base font-semibold text-foreground">{live.length}</span>
+            <span className="text-xs text-muted">Total</span>
           </button>
           <button
             type="button"
             onClick={() => setPriorityFilter((f) => (f === "high" ? "all" : "high"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
+            className={`flex items-baseline gap-1.5 rounded-md border px-2.5 py-1.5 text-left transition ${
               priorityFilter === "high" ? "border-danger bg-danger-light" : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-danger">{highCount}</div>
-            <div className="text-xs text-muted">High priority</div>
+            <span className="text-base font-semibold text-danger">{highCount}</span>
+            <span className="text-xs text-muted">High priority</span>
           </button>
           <button
             type="button"
             onClick={() => setPriorityFilter((f) => (f === "medium" ? "all" : "medium"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
+            className={`flex items-baseline gap-1.5 rounded-md border px-2.5 py-1.5 text-left transition ${
               priorityFilter === "medium" ? "border-amber-400 bg-amber-50" : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-amber-700">{mediumCount}</div>
-            <div className="text-xs text-muted">Medium priority</div>
+            <span className="text-base font-semibold text-amber-700">{mediumCount}</span>
+            <span className="text-xs text-muted">Medium priority</span>
           </button>
           <button
             type="button"
             onClick={() => setPriorityFilter((f) => (f === "low" ? "all" : "low"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
+            className={`flex items-baseline gap-1.5 rounded-md border px-2.5 py-1.5 text-left transition ${
               priorityFilter === "low" ? "border-slate-400 bg-slate-100" : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-slate-600">{lowCount}</div>
-            <div className="text-xs text-muted">Low priority</div>
+            <span className="text-base font-semibold text-slate-600">{lowCount}</span>
+            <span className="text-xs text-muted">Low priority</span>
           </button>
         </div>
       )}
@@ -880,10 +1109,19 @@ export default function SynthesizedRecommendationsReview({
             e.preventDefault();
             if (!addInsightId || !draftComplete(addDraft)) return;
             setAddError(null);
+            // Codex REC500-F04: a failed send (the server unreachable, the reply lost) is caught here, so
+            // the form, its fields and the chosen insight stay as they are, with the error beside them.
             startTransition(async () => {
-              const result = await addOwnSynthesizedRecommendation(runId, addInsightId, addDraft);
-              if (result.ok) setAddDraft(emptyDraft);
-              else setAddError(result.error);
+              try {
+                const result = await addOwnSynthesizedRecommendation(runId, addInsightId, addDraft, addKey);
+                if (result.ok) {
+                  setAddDraft(emptyDraft);
+                  setAddKey(crypto.randomUUID());
+                } else setAddError(result.error);
+              } catch (error) {
+                const message = actionFailureMessage(error);
+                setAddError(message === CONNECTION_LOST_MESSAGE ? message : `${message} Your recommendation is still in the form; press Add recommendation to try again.`);
+              }
             });
           }}
           className="rounded-lg border border-dashed border-border p-4"
@@ -903,7 +1141,7 @@ export default function SynthesizedRecommendationsReview({
           </select>
           <EditFields draft={addDraft} onChange={setAddDraft} />
           {addError && (
-            <p role="alert" className="mt-2 text-sm text-danger">
+            <p role="alert" className="mt-2 text-sm text-danger" data-testid="recommendation-add-error">
               {addError}
             </p>
           )}
@@ -930,6 +1168,27 @@ export default function SynthesizedRecommendationsReview({
           }
         >
           {tabsBar}
+      {isFiltering && (
+        <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="recommendations-filters">
+          <span className="font-medium text-slate-700" data-testid="recommendations-showing">
+            {`Showing ${filteredRecommendations.length} of ${recommendations.length}`}
+          </span>
+          {activeChips.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={c.clear}
+              className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700 hover:bg-slate-200"
+              aria-label={`Remove filter: ${c.label}`}
+            >
+              {c.label} ×
+            </button>
+          ))}
+          <button type="button" onClick={clearFilters} className="font-medium text-primary hover:underline">
+            Clear filters
+          </button>
+        </div>
+      )}
       <MissingRecommendationsNotice count={missingRecommendationCount(parkedInsights)} onRetry={handleRegenerate} busy={isPending} />
       {regenerateError && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
@@ -962,14 +1221,23 @@ export default function SynthesizedRecommendationsReview({
         </div>
       )}
 
-      {isFiltering && accepted.length === 0 && pending.length === 0 && (
+      {isFiltering && filteredRecommendations.length === 0 && (
         <p className="text-sm text-muted">No recommendations match this filter.</p>
+      )}
+
+      {/* Asked for by the overview: the rejected ones are listed here, and not again in the folded group on the right. */}
+      {reviewFilter === "rejected" && rejected.length > 0 && (
+        <div className="space-y-3">
+          {rejected.map((rec) => (
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} decisionOptions={decisionOptions} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
+          ))}
+        </div>
       )}
 
       {accepted.length > 0 && (
         <div className="space-y-3">
           {accepted.map((rec) => (
-            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} decisionOptions={decisionOptions} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
           ))}
         </div>
       )}
@@ -978,7 +1246,7 @@ export default function SynthesizedRecommendationsReview({
         <div className="space-y-3">
           {accepted.length > 0 && <div className="text-xs font-semibold uppercase tracking-wide text-muted">Other recommendations</div>}
           {pending.map((rec) => (
-            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} decisionOptions={decisionOptions} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
           ))}
         </div>
       )}
@@ -992,7 +1260,7 @@ export default function SynthesizedRecommendationsReview({
               Rejected recommendations and accepted insights still waiting for an action show here.
             </p>
           )}
-      {rejected.length > 0 && (
+      {rejected.length > 0 && reviewFilter !== "rejected" && (
         <div className="rounded-lg border border-dashed border-border p-3">
           <button
             type="button"
@@ -1005,7 +1273,7 @@ export default function SynthesizedRecommendationsReview({
           {rejectedOpen && (
             <div className="mt-3 space-y-2">
               {rejected.map((rec) => (
-                <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
+                <RecommendationCard key={rec.id} runId={runId} recommendation={rec} decisionOptions={decisionOptions} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
               ))}
             </div>
           )}

@@ -222,8 +222,11 @@ export function provenanceNotes(f: { origin: string; pattern_type?: string | nul
   if (caveats.includes("stage_ratio_population_comparability_unverified")) {
     notes.push("Stage-to-stage ratio: the two stages are not established as measuring an equivalent population.");
   }
+  if (caveats.includes("brand_groups_overlap")) {
+    notes.push("Brand groups come from a multiple-response question: a respondent in more than one brand's group is counted in each, so the groups overlap and do not sum to the total.");
+  }
   for (const c of caveats) {
-    if (_PROVENANCE_NOTES_HANDLED.has(c) || c === "stage_ratio_population_comparability_unverified" || c === "descriptive_reading") continue;
+    if (_PROVENANCE_NOTES_HANDLED.has(c) || c === "stage_ratio_population_comparability_unverified" || c === "brand_groups_overlap" || c === "descriptive_reading") continue;
     notes.push(`Additional caveat recorded: ${c.replace(/_/g, " ")}.`);
   }
   notes.push("Found by scanning the data, not tied to an objective.");

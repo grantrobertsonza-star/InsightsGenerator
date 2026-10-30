@@ -7,6 +7,7 @@
 // and they run after the response (next/server after) so the click returns at once.
 import { after } from "next/server";
 import { requireRequestContext } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 import { loadResearchQualityView, type ResearchQualityView } from "./researchQualityView";
 import { prepareReview, retryFailedTasks, runReview, validateStartInput } from "./researchQualityReview";
 import { purgeSourceText, recordResearcherEntry, replaceSourceDocument, saveSourceRoles } from "./researchQualityRepository";
@@ -26,6 +27,7 @@ function failure(error: unknown): { ok: false; error: string; conflict?: boolean
 
 export async function loadResearchQualityViewAction(runId: string, reviewId: string | null): Promise<Result<{ view: ResearchQualityView }>> {
   const ctx = await requireRequestContext();
+  if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, view: await loadResearchQualityView(ctx.tenantId, runId, reviewId) };
   } catch (error) {
@@ -35,6 +37,7 @@ export async function loadResearchQualityViewAction(runId: string, reviewId: str
 
 export async function saveResearchQualityRolesAction(runId: string, documentId: string, roles: string[], expectedRevision: number | null): Promise<Result<{ revision: number }>> {
   const ctx = await requireRequestContext();
+  if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const clean = [...new Set(roles)];
     if (clean.length === 0 || clean.some((r) => !SOURCE_ROLES.includes(r as SourceRole))) throw new ResearchQualityError("Choose at least one valid role.");
@@ -48,12 +51,14 @@ export async function saveResearchQualityRolesAction(runId: string, documentId: 
 /** The estimate shown before the explicit start; no write, no model call. */
 export async function estimateResearchQualityReviewAction(totalChars: number, documents: number): Promise<Result<{ estimateUsd: number }>> {
   await requireRequestContext();
-  const chars = Math.max(0, Math.min(Number(totalChars) || 0, 120_000));
+  // Up to KIND_LIMITS.maxCharsTotal: a brief or proposal review reads the whole document.
+  const chars = Math.max(0, Math.min(Number(totalChars) || 0, 300_000));
   return { ok: true, estimateUsd: estimateReviewCost(chars, 5, Math.max(1, Math.ceil(chars / 20_000)) + Math.max(0, Number(documents) - 1)) };
 }
 
 export async function startResearchQualityReviewAction(runId: string, raw: unknown): Promise<Result<{ reviewId: string; created: boolean }>> {
   const ctx = await requireRequestContext();
+  if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const input = validateStartInput(raw);
     const r = await prepareReview(ctx.tenantId, runId, input, { userId: ctx.userId, email: ctx.email });
@@ -69,6 +74,7 @@ export async function startResearchQualityReviewAction(runId: string, raw: unkno
 
 export async function retryResearchQualityReviewAction(runId: string, reviewId: string): Promise<Result<{ note: string | null }>> {
   const ctx = await requireRequestContext();
+  if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const tenantId = ctx.tenantId;
     // Validate ownership synchronously, then run in the background.
@@ -85,6 +91,7 @@ export async function recordResearchQualityEntryAction(
   e: { kind: ResearcherEntryKind; observationId: string | null; observationVersionId: string | null; body: string | null; expectedRevision: number | null; idempotencyKey: string },
 ): Promise<Result<{ revision: number | null }>> {
   const ctx = await requireRequestContext();
+  if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     if (!["accept", "dismiss", "reopen", "comment", "wording", "clarification"].includes(e.kind)) throw new ResearchQualityError("Unknown action.");
     const body = typeof e.body === "string" ? e.body.trim() : null;
@@ -99,6 +106,7 @@ export async function recordResearchQualityEntryAction(
 
 export async function replaceResearchQualitySourceAction(runId: string, sourceId: string, documentId: string): Promise<Result<object>> {
   const ctx = await requireRequestContext();
+  if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await replaceSourceDocument(ctx.tenantId, runId, sourceId, documentId);
     return { ok: true };
@@ -109,6 +117,7 @@ export async function replaceResearchQualitySourceAction(runId: string, sourceId
 
 export async function purgeResearchQualitySourceAction(runId: string, sourceId: string): Promise<Result<{ versions: number }>> {
   const ctx = await requireRequestContext();
+  if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, ...(await purgeSourceText(ctx.tenantId, runId, sourceId)) };
   } catch (error) {

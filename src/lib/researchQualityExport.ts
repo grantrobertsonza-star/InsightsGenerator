@@ -5,9 +5,10 @@
 // uncertainty, the improvement plan, clarifications and researcher decisions and wording. Stale,
 // unknown and partial states are labelled in the text. Dismissed observations leave the
 // improvement plan and are listed, with the dismissal, in an appendix.
+import { precisionCheckText } from "./marginOfError";
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
 import { safeFileStem } from "./docxReport";
-import { ROLE_LABEL, type ObservationPayload } from "./researchQualityTypes";
+import { REVIEW_KIND_LABEL, ROLE_LABEL, type ObservationPayload } from "./researchQualityTypes";
 import {
   DOC_LABEL,
   FITNESS_LABEL,
@@ -21,7 +22,12 @@ import {
   comparisonLabel,
   CHECKLIST_STATUS_LABEL,
   checklistScoreText,
+  criterionShortLabel,
+  unverifiedEvidenceNote,
+  oneSidedComparisonNote,
+  reviewStepLabel,
 } from "./researchQualityPresentation";
+const DASHBOARD_BAND_LABEL: Record<string, string> = { strong: "Strong", workable: "Workable", weak: "Weak" };
 import type { ObservationView, ResearchQualityView } from "./researchQualityView";
 
 const p = (text: string, opts: { bold?: boolean; italics?: boolean; size?: number } = {}) => new Paragraph({ children: [new TextRun({ text, ...opts })] });
@@ -41,9 +47,63 @@ function qualifiers(o: ObservationView): string[] {
   return out;
 }
 
+/**
+ * A brief, proposal or comparison review (Grant 2026-10-19): a one-off, view-only report, so the
+ * export is the dashboard and, per dimension, each criterion's rating, the reason, the document's own
+ * words behind it and how to improve it. Nothing about decisions, evidence or researcher decisions.
+ */
+async function buildKindDocx(view: ResearchQualityView, projectName: string | null): Promise<{ buffer: Buffer; filename: string }> {
+  const r = view.review!;
+  const body: Paragraph[] = [];
+  const files = r.manifest.sources.map((s) => `${s.filename} (${s.roles.map((x) => ROLE_LABEL[x]).join(", ")})`).join(" and ");
+  body.push(h(`${REVIEW_KIND_LABEL[r.kind!]}${projectName ? `: ${projectName}` : ""}`, HeadingLevel.TITLE));
+  body.push(p(`${files}. Review ${r.sequence}, ${r.state}, ${r.createdAt.slice(0, 16).replace("T", " ")} UTC by ${r.createdBy ?? "single user"}. Criteria ${r.criteriaRelease}; model ${r.model}.`));
+  for (const s of r.manifest.sources) {
+    const read = s.assessedRanges.reduce((n, x) => n + (x.end - x.start), 0);
+    if (read < s.charCount) body.push(p(`${s.filename}: only the first ${read.toLocaleString("en-GB")} of ${s.charCount.toLocaleString("en-GB")} characters were read; later sections are not rated.`, { bold: true }));
+  }
+  // Codex RQ-F01: a step that did not succeed (a reading whose quotes were all rejected, say) is
+  // named here as it is on screen, so the export never reads as a finished review when it is not.
+  for (const t of r.coverage.tasks ?? []) if (t.status !== "succeeded") body.push(p(`Not completed: ${reviewStepLabel(t.key, r.manifest)}${t.error ? `: ${t.error}` : ""}.`, { bold: true }));
+  for (const u of r.unverifiedEvidence) body.push(p(unverifiedEvidenceNote(u), { bold: true }));
+  const oneSided = oneSidedComparisonNote(r.oneSidedComparisons);
+  if (oneSided) body.push(p(oneSided, { bold: true }));
+  body.push(p("AI ratings of how well the document is written, each checked by code against the document's own words. A guide to where to improve it, not a certification.", { italics: true }));
+  const quotesFor = (cid: string) => r.observations.filter((o) => o.criterionId === cid && o.status !== "dismissed");
+  for (const d of r.dashboards) {
+    body.push(h(`${d.label}: ${d.pct === null ? `no overall score (only ${d.ratedWeight} of ${d.totalWeight} weight rated)` : `${d.pct}% (${DASHBOARD_BAND_LABEL[d.band!]})`}`, HeadingLevel.HEADING_1));
+    body.push(p(`Each criterion is rated Strong 5, Workable 3, Weak 1 or Absent 0. ${d.basis}`, { italics: true }));
+    for (const x of d.dimensions) {
+      const name = x.categoryLabel ?? criterionShortLabel(x.dimensionId);
+      const score = x.score === null ? x.label : `${Number.isInteger(x.score) ? x.score : x.score.toFixed(1)}/5, ${x.label}`;
+      body.push(h(`${name}${x.categoryLabel ? ` (weight ${x.weight}%)` : x.weight > 1 ? ` (counts x${x.weight})` : ""}: ${score}`, HeadingLevel.HEADING_2));
+      for (const c of x.criteria) {
+        const obs = quotesFor(c.criterionId);
+        if (x.categoryLabel) body.push(p(`${criterionShortLabel(c.criterionId)}: ${c.score === null ? c.label : `${c.score}/5, ${c.label}`}`, { bold: true }));
+        body.push(p(obs[0]?.question ?? c.criterionId, { italics: true }));
+        if (c.reason) body.push(p(`Why: ${c.reason}`));
+        if (c.criterionId === "RQ-PROP-SAMPLE-SIZE" && r.manifest.precisionChecks) {
+          // RQC-6: the calculated check, by code, said apart from the model's rating.
+          const checks = r.manifest.precisionChecks.flatMap((x) => x.checks.map((k) => ({ ...k, filename: x.filename })));
+          body.push(p("Margin of error, calculated (not the model's rating; a proportion of 50%, no finite-population correction):", { italics: true }));
+          if (checks.length === 0) body.push(bullet("No margin of error is stated in the text reviewed, so there is nothing to check."));
+          for (const k of checks) body.push(bullet(`${precisionCheckText(k)} "${k.quote}" (${k.filename})`));
+        }
+        for (const o of obs) for (const st of o.payload.statements) body.push(bullet(`"${st.exactQuote}" (${r.manifest.sources.find((s) => s.sourceVersionId === st.sourceVersionId)?.filename ?? "document"})`));
+        const imp = obs[0]?.payload.improvement;
+        if (imp && (imp.currentAction || imp.futureAction)) body.push(p(`To improve: ${[imp.currentAction, imp.futureAction].filter(Boolean).join(" ")}`));
+      }
+    }
+  }
+  const doc = new Document({ sections: [{ children: body }] });
+  const buffer = await Packer.toBuffer(doc);
+  return { buffer, filename: `${safeFileStem(projectName, "project")}-${r.kind!.replace(/_/g, "-")}-review-${r.sequence}.docx` };
+}
+
 export async function buildResearchQualityDocx(view: ResearchQualityView, projectName: string | null): Promise<{ buffer: Buffer; filename: string }> {
   const r = view.review;
   if (!r) throw new Error("There is no review to export yet.");
+  if (r.kind) return buildKindDocx(view, projectName);
   const sourceName = (versionId: string) => r.manifest.sources.find((s) => s.sourceVersionId === versionId)?.filename ?? "unknown source";
   const ov = overview(r.observations);
   const body: Paragraph[] = [];
@@ -51,7 +111,7 @@ export async function buildResearchQualityDocx(view: ResearchQualityView, projec
   body.push(p(`State: ${r.state}${r.state !== "complete" ? " (not every part was assessed; see Scope)" : ""}. Created ${r.createdAt.slice(0, 16).replace("T", " ")} UTC by ${r.createdBy ?? "single user"}.`));
   body.push(p(`Mode: ${r.mode === "improve_planned" ? "improve a planned study" : "review a documented study"}. Study type: ${r.studyType}. Purpose: ${r.purpose || "not stated"}.`));
   body.push(p(`Criteria library ${r.criteriaRelease}; reference catalogue ${r.referencesRelease}${r.syntheticReferences ? " (SYNTHETIC TEST REFERENCES, NOT METHODOLOGICAL STANDARDS)" : ""}; model ${r.model}; prompts ${r.promptVersion}.`));
-  body.push(p("These are AI judgements about documents, validated by code and reviewed by a researcher. They are not a certification, a score or proof that work was carried out. An accepted observation means researcher agreement, not scientific verification.", { italics: true }));
+  body.push(p("These are AI judgements about documents, validated by code and reviewed by a researcher. Scores are a guide to where to look, not a certification or proof that work was carried out. An accepted observation means researcher agreement, not scientific verification.", { italics: true }));
 
   body.push(h("Scope", HeadingLevel.HEADING_1));
   for (const s of r.manifest.sources) {
@@ -61,12 +121,26 @@ export async function buildResearchQualityDocx(view: ResearchQualityView, projec
   }
   for (const c of r.manifest.criteria.filter((c) => c.status !== "selected")) body.push(bullet(`${c.criterionId} ${c.status}: ${c.reason}`));
   for (const t of r.coverage.tasks ?? []) if (t.status !== "succeeded") body.push(bullet(`Step ${t.key} ${t.status}${t.error ? `: ${t.error}` : ""}`));
+  for (const u of r.unverifiedEvidence) body.push(bullet(unverifiedEvidenceNote(u)));
   if (r.newClarifications > 0) body.push(p(`${r.newClarifications} researcher clarification(s) were added after this review and are not reflected in it.`, { bold: true }));
 
   body.push(h("Overview", HeadingLevel.HEADING_1));
   body.push(p(`${ov.strengths.length} documented strength(s), ${ov.concerns.length} concern(s), ${ov.gaps.length} documentation gap(s), ${ov.decisionImplications.length} with decision implications. ${ov.awaitingReview} awaiting review; ${ov.requiresReview} need review because a source changed or could not be checked.`));
 
-  // Part 1: the scored checklist (RQK-1), the same figures the screen shows, computed on the server.
+  // The bird's-eye dashboard (RQC-3 brief dimensions): the same figures as the screen's Overview.
+  if (r.dashboards.length > 0 || r.dashboardNote) body.push(h("Dashboard", HeadingLevel.HEADING_1));
+  if (r.dashboardNote) body.push(p(r.dashboardNote));
+  for (const d of r.dashboards) {
+    body.push(h(`${d.label}: ${d.pct === null ? `no overall score (only ${d.ratedWeight} of ${d.totalWeight} weight rated)` : `${d.pct}% (${DASHBOARD_BAND_LABEL[d.band!]})`}`, HeadingLevel.HEADING_2));
+    body.push(p(`Each dimension is rated Strong 5, Workable 3, Weak 1 or Absent 0. The overall figure is weighted points over the weighted maximum, across rated dimensions only (a category scores the average of its rated criteria); Strong is 80% or more, Workable 60% or more. ${d.basis}`, { italics: true }));
+    for (const x of d.dimensions) {
+      const score = x.score === null ? x.label : `${Number.isInteger(x.score) ? x.score : x.score.toFixed(1)}/5, ${x.label}`;
+      if (x.categoryLabel === null) body.push(bullet(`${criterionShortLabel(x.dimensionId)}${x.weight > 1 ? ` (counts x${x.weight})` : ""}: ${score}`));
+      else body.push(bullet(`${x.categoryLabel} (weight ${x.weight}%): ${score}. ${x.criteria.map((c) => `${criterionShortLabel(c.criterionId)} ${c.score === null ? c.label.toLowerCase() : `${c.score}/5`}`).join("; ")}`));
+    }
+  }
+
+  // Part 1: the scored checklist (RQK), the same figures the screen shows, computed on the server.
   body.push(h("Scored checklist", HeadingLevel.HEADING_1));
   if (r.checklists.length === 0) body.push(p(r.checklistNote ?? "No checklist was scored in this review."));
   else
@@ -85,7 +159,7 @@ export async function buildResearchQualityDocx(view: ResearchQualityView, projec
   }
 
   body.push(h("Scorecard", HeadingLevel.HEADING_1));
-  body.push(p("Each criterion is scored on its own: Strong 5, Workable 3, Weak 1, Absent 0. Scores are not added up into one figure."));
+  body.push(p("Each criterion is scored on its own: Strong 5, Workable 3, Weak 1, Absent 0. Only the dashboard above combines them, as a weighted percentage."));
   for (const g of scorecard(r.observations)) {
     body.push(h(g.label, HeadingLevel.HEADING_2));
     for (const row of g.rows) {

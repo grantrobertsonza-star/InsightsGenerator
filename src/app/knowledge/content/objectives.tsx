@@ -8,7 +8,7 @@ const toc = [
   { id: "scoring", title: "Quality scoring: four dimensions" },
   { id: "coverage", title: "Coverage against the insights" },
   { id: "workflow", title: "The review workflow" },
-  { id: "pages", title: "The two objective pages" },
+  { id: "pages", title: "The Objectives page" },
   { id: "evidence", title: "Evidence from the data" },
   { id: "limits", title: "Where it stops" },
   { id: "practice", title: "A sensible way to work with it" },
@@ -79,8 +79,28 @@ export default function ObjectiveGuide() {
         supplied, a model reads it and returns two things: the business problem, and the research objectives, numbered
         if there is more than one. If both a brief and a proposal are given, the proposal is treated as the more
         considered statement where it is sharper, and the two are reconciled into one set. Anything you typed takes
-        priority over what was extracted. If the document cannot be read, what you typed is still saved and the failure
-        is logged quietly.
+        priority over what was extracted: objectives are only taken from the document when the objective box is
+        empty. Each objective added this way shows where it came from (&quot;Added from the proposal ...&quot;).
+      </P>
+      <P>
+        If the document cannot be read, what you typed is still saved, and the form says the fill did not happen, with
+        the reason and a <em>Try the fill again</em> button that chooses the same documents again without overwriting
+        what you typed. A reload still shows the failure until a fill succeeds.
+      </P>
+      <P>
+        A document is read once. Choosing a brief or proposal that an earlier fill of this project already used (or a
+        copy of it with the same content) makes no new reading and adds nothing; the form says when it was used and how
+        many objectives came from it. This matters because a fresh reading words the same objectives differently, and
+        those would otherwise come back as new ones. An objective read from a document before is not added again even
+        if you have since edited, rejected or deleted it: those are your decisions.
+      </P>
+      <P>
+        To look for anything new in a document already used, press <em>Read it again for anything new</em>. Lines new
+        to the project are added as suggestions waiting for review, never accepted and never in your stated list, each
+        marked &quot;Suggested on re-reading the proposal ...&quot;. In the objectives list, a suggestion that looks like an objective
+        you already have is shown beside it, as a hint only; nothing is merged or hidden. If the objective box is not
+        empty, the lines you typed are added and the document&apos;s new lines are not used, and the result names them,
+        so you can clear the box and read again.
       </P>
       <P>
         The reader is told to write one complete objective per line and never to output a section heading, such as
@@ -180,9 +200,9 @@ export default function ObjectiveGuide() {
       <P>
         Scores are tied to the objective&apos;s text. An unchanged list is not rescored, an edited one is, and
         <em> Rescore objectives</em> forces a fresh pass. Scoring also runs after you accept, restore or add an
-        objective. Because the inventory is read at the moment of scoring, rescore after adding data. Up to 20
-        objectives are scored in a single pass. A failure in the automatic run is logged and does not interrupt what
-        you were doing.
+        objective. Because the inventory is read at the moment of scoring, rescore after adding data. Objectives are
+        sent to the scorer 20 at a time, up to 200 in one run; any beyond that are left unscored, and Rescore
+        objectives says so. A failure in the automatic run is logged and does not interrupt what you were doing.
       </P>
 
       <H2 id="coverage">Coverage against the insights</H2>
@@ -201,8 +221,10 @@ export default function ObjectiveGuide() {
       />
       <P>
         Every item gets a short conclusion (capped at 35 words) and a list of the insights that bear on it. The
-        mapping is many to many. If the model returns nothing usable for an item, that item defaults to Gap with a note
-        that it has not been assessed, which is why a Gap on a fresh run is worth rechecking before you act on it.
+        mapping is many to many. A Gap is a verdict the check actually returned. When the check cannot assess every
+        item (the model returned nothing usable, gave two answers for one item, or covered only some of them), nothing
+        is recorded as a Gap: the check fails with a message saying so, the previous results stay as they were, and
+        <em> Check again</em> runs it afresh.
       </P>
       <H3>Inferred objectives get no verdict</H3>
       <P>
@@ -229,7 +251,7 @@ export default function ObjectiveGuide() {
         rows={[
           ["Action", "What it does"],
           ["Accept / Unaccept", "Puts an objective in or out of play. Only accepted objectives are scored and checked"],
-          ["Edit", "Saves your wording and accepts it. A changed text is marked Edited, which protects it from being cleared when suggestions are regenerated"],
+          ["Edit", "Saves your wording and accepts it. A changed text is marked Edited, which protects it from being cleared when suggestions are regenerated. If the objective was changed elsewhere since you opened the editor, nothing is saved: your draft stays and you choose Use the current wording or Replace it with mine"],
           ["Reject / Restore", "Sets an objective aside without deleting it. Restoring returns it to accepted"],
           ["Delete", "Removes it permanently, after a confirmation"],
           ["Accept all suggested", "Accepts every pending suggestion as it stands"],
@@ -240,33 +262,41 @@ export default function ObjectiveGuide() {
         ]}
       />
       <P>
+        Adding by hand refuses an objective that is already pending or accepted, and names it; one you rejected can be
+        typed in again as a deliberate re-add. Two objectives are the same when their wording matches after ignoring
+        numbering, case, spacing, curly quotes and trailing punctuation; there is no matching by meaning, so a reworded
+        objective is a different one.
+      </P>
+      <P>
         Accepting, restoring, adding and regenerating also trigger scoring and a coverage refresh in the background.
         Rejecting and deleting do not, so after either one the coverage panel may still reflect the earlier list until
         you press <em>Check again</em>. Likewise, new insights accepted after the last check are not reflected until the
         check is run again.
       </P>
 
-      <H2 id="pages">The two objective pages</H2>
+      <H2 id="pages">The Objectives page</H2>
       <P>
-        Objectives have two places in the sidebar, under one <em>Objectives</em> group. <em>Set up</em> holds the form
-        (brief and proposal import, business problem, objectives, audience) and your stated objectives, which you can
-        edit or delete there. <em>Review</em> is where they are scored and checked.
+        Objectives are set up, scored and checked on one page. Across the top, <em>Objective and context</em> holds the
+        form in three columns: fill in from a brief or proposal, the business problem, and your objectives and audience
+        with Save. Drag the line between two columns to resize them, or use the arrow keys on it; double-click or
+        press Enter on it to make them equal again. Your widths are kept in this browser. The band can be hidden to
+        give the panes below more room.
       </P>
       <P>
-        Review has three panes. The left lists every objective as a numbered, colour-coded card with its tag, its
-        quality tier and score, and whether the evidence answers it. Selecting one shows that objective in the middle
-        (its text, the actions in the table above, four score tiles, the scorer&apos;s reasoning and how to sharpen it)
-        in the same colour, and narrows the right pane to its coverage verdict, its linked insights and its evidence
-        questions. With nothing selected, the middle shows every objective in one scored table and the right shows the
-        whole coverage check. Selecting a row in that table also selects the objective. Objectives are matched to their
-        results by their wording, not by position, so a re-ordered list does not mismatch a verdict.
+        Below it are three panes. The left lists your stated objectives first, which you can edit or delete there, then
+        any suggestions waiting for review, each with its tag, quality tier and score, and whether the evidence answers
+        it. Selecting one shows it in the middle (its text, Edit, Accept or Unaccept and Delete, four score tiles, the
+        scorer&apos;s reasoning and how to sharpen it) with its coverage verdict and linked insights underneath. The
+        right pane holds the coverage check itself and the evidence from the data. With nothing selected, the middle
+        shows every objective in one scored table and the right shows the whole coverage check. Objectives are matched
+        to their results by their wording, not by position, so a re-ordered list does not mismatch a verdict.
       </P>
 
       <H2 id="evidence">Evidence from the data</H2>
       <P>
         The right pane also asks the data directly. Each stated objective and confirmed decision is broken into up to
         three questions, written before any table is seen. Each question is answered with a table built from your
-        case-level data files (SPSS, Stata or SAS files, and raw case tables) by the same engine as Cross tabs, and
+        case-level data files (SPSS or Stata files, and raw case tables) by the same engine as Cross tabs, and
         read as supporting, against, mixed, inconclusive or silent. Objectives the app inferred itself are skipped,
         because testing them against the same data would be circular. It does not read the uploaded reports or any
         table you already built or imported.
@@ -300,6 +330,11 @@ export default function ObjectiveGuide() {
         They describe what the evidence looks arranged to address. They are useful for spotting what a report implicitly
         asked, and they are not a substitute for the question you commissioned. The app does not test them, for the
         circularity reason given above.
+      </Limit>
+      <Limit title="Re-read suggestions are matched by words, not meaning">
+        A suggestion is placed beside an existing objective when the two share enough content words. That is a hint for
+        your review: a restatement in different words is not flagged, and nothing is merged. A document deleted since
+        its fill cannot be recognised by its content, so importing it again fills normally.
       </Limit>
       <Limit title="Coverage is only as good as the accepted insights">
         A Gap may mean the project did not answer the question, or that the relevant insight was rejected, never

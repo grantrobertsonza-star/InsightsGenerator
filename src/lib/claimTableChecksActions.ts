@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { checkClaimsPending, listClaimChecks, resetClaimChecks, type ClaimChecked } from "./claimTableChecks";
 import { requireTenantId } from "./requestContext";
+import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 
 type Fail = { ok: false; error: string };
 
@@ -13,6 +14,7 @@ function explain(e: unknown): string {
 
 export async function loadClaimChecksAction(runId: string): Promise<{ ok: true; claims: ClaimChecked[] } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, claims: await listClaimChecks(TENANT_ID, runId) };
   } catch (e) {
@@ -23,6 +25,7 @@ export async function loadClaimChecksAction(runId: string): Promise<{ ok: true; 
 /** Checks three claims per call; the panel repeats until none remain. */
 export async function checkClaimsAction(runId: string): Promise<{ ok: true; done: number; remaining: number } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const r = await checkClaimsPending(TENANT_ID, runId, 3);
     revalidatePath(`/runs/${runId}`);
@@ -34,6 +37,7 @@ export async function checkClaimsAction(runId: string): Promise<{ ok: true; done
 
 export async function resetClaimChecksAction(runId: string): Promise<{ ok: true } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     await resetClaimChecks(TENANT_ID, runId);
     return { ok: true };

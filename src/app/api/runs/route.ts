@@ -16,7 +16,9 @@ export async function GET(_request: Request) {
     const result = await client.query(
       `select id, business_problem, research_objective, decision_statement, evidence_threshold, audience,
               status, created_at
-       from runs order by created_at desc`
+       from runs where tenant_id = $1 and (to_jsonb(runs)->>'bin_of') is null order by created_at desc`,
+      // SEC1: filtered by tenant in the statement, not only by row-level security.
+      [TENANT_ID],
     );
     return result.rows;
   });

@@ -45,7 +45,7 @@ vi.mock("../anthropic", () => ({
       create: vi.fn(async (req: { messages: { content: string }[] }) => {
         const n = (req.messages[0].content.match(/^\d+\. \[/gm) ?? []).length;
         const insights = Array.from({ length: n }, (_, index) => ({ index, headline: `Headline ${["one", "two", "three", "four"][index]}`, observation: "o", tension: "t", implication: "i" }));
-        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", input: { insights } }] };
+        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "record_insights", input: { insights } }] };
       }),
     },
   },

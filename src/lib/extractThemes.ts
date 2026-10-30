@@ -1,4 +1,5 @@
 import { getGuideHintsForRun } from "./guides";
+import { finishedToolInput, finishedToolResult } from "./modelToolResult";
 import type { PoolClient } from "pg";
 import {
   applyOverrides,
@@ -17,13 +18,18 @@ import { withTenant } from "./db";
 import { markDocumentProcessingStatus } from "./documentUpload";
 import { mapWithConcurrency } from "./concurrency";
 import type { ParsedCoding } from "./codedImport";
+import { lockOwnedTranscript } from "./codingTranscriptOwnership";
+import { codingHasGap, recordModelBaselineTx } from "./codingBaseline";
 import {
   loadCodeMeta,
   loadCodeMetaForDocuments,
+  readNotedTurnTexts,
   saveCodeMeta,
+  setAsideNotesOfReplacedTurns,
   syncFindingThemes,
 } from "./codingMeta";
 import { extractDocumentText } from "./extractFindings";
+import { CURRENT_SENTENCE_RULE, type SentenceRule } from "./sentences";
 import {
   MAX_CODES,
   buildApplyBatches,
@@ -313,7 +319,6 @@ async function runOpenCoding(
     });
     await logApiUsage(tenantId, runId, "extract_themes", response.usage);
 
-    const toolUse = response.content.find((block) => block.type === "tool_use");
     if (response.stop_reason === "max_tokens") {
       noteOpenCodingFailure(
         documentId,
@@ -321,11 +326,13 @@ async function runOpenCoding(
       );
       return null;
     }
-    if (!toolUse || toolUse.type !== "tool_use") {
-      noteOpenCodingFailure(documentId, "the model did not return a list of themes");
+    // EC10K-F02 (batch 64): a refused, other-stop or other-tool answer is a failed pass too, like a missing one.
+    const result = finishedToolResult(response, "record_themes", "The open coding pass");
+    if (!result.input) {
+      noteOpenCodingFailure(documentId, result.unfinished.reason === "no_tool_use" ? "the model did not return a list of themes" : result.unfinished.message);
       return null;
     }
-    const raw = (toolUse.input as { themes?: unknown }).themes;
+    const raw = (result.input as { themes?: unknown }).themes;
     if (!Array.isArray(raw)) {
       noteOpenCodingFailure(documentId, "the model returned themes in an unreadable shape");
       return null;
@@ -490,11 +497,9 @@ async function consolidate(
   });
   await logApiUsage(tenantId, runId, "codebook_consolidation", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  const raw =
-    toolUse && toolUse.type === "tool_use"
-      ? (toolUse.input as { codes?: unknown }).codes
-      : null;
+  // EC10K-F02 (batch 64): an unfinished answer throws before anything is replaced, rather than reading
+  // as a merge that produced no codes.
+  const raw = finishedToolInput(response, "record_codebook", "The merging of the coding passes into one codebook").codes;
   const codes = validateConsolidation(raw, themesPerRun);
   const manifestId = await recordManifest(tenantId, runId, documentId, {
     stage: "consolidation",
@@ -667,8 +672,10 @@ async function groupCodesIntoThemes(
       messages: [{ role: "user", content: input }],
     });
     await logApiUsage(tenantId, runId, "theme_grouping", response.usage);
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    const toolInput = toolUse && toolUse.type === "tool_use" ? toolUse.input : null;
+    // EC10K-F02 (batch 64): an unfinished answer is a grouping that failed, with its reason.
+    const result = finishedToolResult(response, "record_themes", "The grouping of codes into themes");
+    if (!result.input && result.unfinished.reason !== "no_tool_use") return { themes: 0, reason: result.unfinished.message };
+    const toolInput = result.input;
     const raw = normaliseThemeList(toolInput);
     if (!Array.isArray(raw)) {
       let sample = "";
@@ -692,7 +699,7 @@ async function groupCodesIntoThemes(
       name: c.name,
       theme: groups.find((g) => g.codes.includes(i + 1))?.theme ?? "",
     }));
-    await saveCodeMeta(tenantId, documentId, entries);
+    await saveCodeMeta(tenantId, runId, documentId, entries);
     return { themes: groups.length, reason: null };
   } catch (error) {
     return {
@@ -763,10 +770,8 @@ async function mergeOverlappingThemes(
       messages: [{ role: "user", content: listing }],
     });
     await logApiUsage(tenantId, runId, "theme_integration_review", response.usage);
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    const raw = normaliseThemeList(
-      toolUse && toolUse.type === "tool_use" ? toolUse.input : null,
-    );
+    // EC10K-F02 (batch 64): an unfinished review throws (the integration is refused and nothing saved).
+    const raw = normaliseThemeList(finishedToolInput(response, "record_merges", "The review of overlapping themes"));
     const otherIndex = groups.findIndex((g) => g.theme === OTHER_THEME) + 1;
     const merges = validateThemeGrouping(raw, groups.length).filter(
       (m) => otherIndex === 0 || !m.codes.includes(otherIndex),
@@ -861,10 +866,8 @@ async function placeLeftoverCodes(
       ],
     });
     await logApiUsage(tenantId, runId, "theme_integration_place", response.usage);
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    const raw = normaliseThemeList(
-      toolUse && toolUse.type === "tool_use" ? toolUse.input : null,
-    );
+    // EC10K-F02 (batch 64): an unfinished placement throws (the integration is refused and nothing saved).
+    const raw = normaliseThemeList(finishedToolInput(response, "place_codes", "The placing of codes left outside every theme"));
     if (!Array.isArray(raw)) return groups;
     const next = groups.map((g) => ({ theme: g.theme, codes: [...g.codes] }));
     const seen = new Set<number>();
@@ -963,10 +966,8 @@ export async function integrateThemes(
     messages: [{ role: "user", content: listing }],
   });
   await logApiUsage(tenantId, runId, "theme_integration", response.usage);
-  const toolUse = response.content.find((b) => b.type === "tool_use");
-  const raw = normaliseThemeList(
-    toolUse && toolUse.type === "tool_use" ? toolUse.input : null,
-  );
+  // EC10K-F02 (batch 64): an unfinished answer throws before any grouping is saved.
+  const raw = normaliseThemeList(finishedToolInput(response, "record_themes", "The grouping across transcripts"));
   const groups = validateThemeGrouping(raw, rows.length);
   if (groups.length === 0)
     throw new Error(
@@ -1015,7 +1016,7 @@ export async function integrateThemes(
     byDoc.set(r.document_id, list);
   });
   for (const [documentId, entries] of byDoc) {
-    await saveCodeMeta(tenantId, documentId, entries);
+    await saveCodeMeta(tenantId, runId, documentId, entries);
     await syncFindingThemes(tenantId, documentId);
   }
   return {
@@ -1138,6 +1139,13 @@ const APPLY_TOOLS = [
 const APPLY_INPUT_VERSION = "structured-decisions-v1";
 export const APPLY_PROMPT_HASH = sha256(APPLY_SYSTEM + JSON.stringify(APPLY_TOOLS) + APPLY_INPUT_VERSION);
 
+/** The model the apply calls use. Set CODING_APPLY_MODEL to try a cheaper model for these yes/no calls;
+ * unset keeps the usual one. Read once per application, so every call of one application, its manifest
+ * rows and its stored baseline name the same model. */
+export function codingApplyModel(): string {
+  return process.env.CODING_APPLY_MODEL || CLAUDE_MODEL;
+}
+
 function codebookBlock(codes: CodeRow[]): string {
   return codes
     .map(
@@ -1179,7 +1187,11 @@ export async function applyCodebook(
    * and counted separately so it is never conflated with either "coded as not meeting" or "the call
    * failed outright". */
   incompleteBatches: number;
+  /** The model and prompt this application used (codingApplyModel, APPLY_PROMPT_HASH). */
+  model: string;
+  promptHash: string;
 }> {
+  const model = codingApplyModel();
   const batches = buildApplyBatches(segments, { maxItems: 30, maxChars: 9000 });
   const unitsOf = (item: { text: string; units: string[] }) => (item.units.length > 0 ? item.units : [item.text]);
   // ANA-QUAL-002: captured once, from the same batches the apply calls below actually read from,
@@ -1209,8 +1221,7 @@ export async function applyCodebook(
         `Code ${code}:\n${codebookBlock([codes[code - 1]]).replace(/^1\./, `${code}.`)}\n\n` +
         `For every unit above, decide whether it meets this code.`;
       const response = await anthropic.messages.create({
-        // Set CODING_APPLY_MODEL to try a cheaper model for these yes/no calls; unset keeps the usual one.
-        model: process.env.CODING_APPLY_MODEL || CLAUDE_MODEL,
+        model,
         max_tokens: 8000,
         system: APPLY_SYSTEM,
         tool_choice: { type: "tool", name: "record_decisions" },
@@ -1229,17 +1240,18 @@ export async function applyCodebook(
       // connection holds a worker for the SDK default of 10 minutes per attempt, and the bar looks frozen.
       { timeout: 120_000, maxRetries: 2 });
       await logApiUsage(tenantId, runId, "codebook_apply", response.usage);
-      const toolUse = response.content.find((b) => b.type === "tool_use");
-      if (!toolUse || toolUse.type !== "tool_use" || response.stop_reason === "max_tokens") {
+      // EC10K-F02 (batch 64): a cut-off, refused, other-stop or other-tool answer fails the batch (traced).
+      const result = finishedToolResult(response, "record_decisions", "The coding of a batch");
+      if (!result.input) {
         await recordTrace(tenantId, runId, "coding_apply_batch_failed", {
           document_id: documentId,
           batch: batchIndex,
           code,
-          reason: response.stop_reason === "max_tokens" ? "max_tokens" : "no_tool_use",
+          reason: result.unfinished.reason === "malformed" ? "no_tool_use" : result.unfinished.reason,
         });
         return { batchIndex, code, hits: null as Map<number, number[]> | null, incomplete: false };
       }
-      const rawDecisions = (toolUse.input as { decisions?: unknown }).decisions;
+      const rawDecisions = (result.input as { decisions?: unknown }).decisions;
       const unitCounts = new Map(batch.items.map((i) => [i.index, unitsOf(i).length]));
       const { hits, decided } = parseUnitDecisions(rawDecisions, unitCounts);
       // Diagnostic only: how often the model called a decision ambiguous rather than clear, which is a
@@ -1261,9 +1273,8 @@ export async function applyCodebook(
         runIndex: batchIndex * 1000 + code,
         promptHash: APPLY_PROMPT_HASH,
         inputHash: sha256(turns + question),
-        // The actual model this call used, not always CLAUDE_MODEL - see the CODING_APPLY_MODEL
-        // comment on the request above.
-        model: process.env.CODING_APPLY_MODEL || CLAUDE_MODEL,
+        // The actual model this call used, not always CLAUDE_MODEL (codingApplyModel).
+        model,
         detail: {
           code,
           turns: batch.items.length,
@@ -1350,7 +1361,7 @@ export async function applyCodebook(
       unitCodes.set(turn, list);
     }
   }
-  return { assignments: merged, unitCodes, unitTexts, failedBatches: failedSet.size, totalBatches: batches.length, incompleteBatches };
+  return { assignments: merged, unitCodes, unitTexts, failedBatches: failedSet.size, totalBatches: batches.length, incompleteBatches, model, promptHash: APPLY_PROMPT_HASH };
 }
 
 // --- Step 4: findings ---------------------------------------------------
@@ -1435,11 +1446,9 @@ async function summarise(
       messages: [{ role: "user", content: user }],
     });
     await logApiUsage(tenantId, runId, "codebook_summary", response.usage);
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    const raw =
-      toolUse && toolUse.type === "tool_use"
-        ? (toolUse.input as { summaries?: unknown }).summaries
-        : null;
+    // EC10K-F02 (batch 64): an unfinished answer throws into the catch below, so every code keeps its own
+    // definition as its finding wording rather than part of a cut-off answer.
+    const raw = finishedToolInput(response, "record_summaries", "The summaries of the codes").summaries;
     if (Array.isArray(raw)) {
       for (const item of raw as { code?: unknown; finding_text?: unknown }[]) {
         if (
@@ -1466,24 +1475,6 @@ async function summarise(
   return out;
 }
 
-/**
- * Counter-review on ANA-QUAL-001: a batch that failed outright (no usable tool call at
- * all - a bad response, a timeout, an out-of-credit stop) used to be invisible to the
- * ready/incomplete decision at every one of applyCodebook's three call sites, which only
- * looked at incompleteBatches (a batch that DID return a usable call but left some units
- * undecided). The counter-review's own reproduction: one of three batches failed outright
- * (failedBatches: 1, incompleteBatches: 0) and every caller still picked "ready" - a
- * document whose transcript was only two-thirds actually coded looked indistinguishable
- * from a complete run. A failed batch's assignments are already correctly excluded from
- * the merged results (perUnit/merged skip failedSet entries), so the FINDINGS themselves
- * were never wrong - only the status claiming they were complete was. An explicit no-code
- * decision (hits is an empty but non-null map, incomplete: false) is not a gap at all and
- * must not trip this - that case already falls through to false here, same as before.
- */
-function codingHasGap(applied: { failedBatches: number; incompleteBatches: number }): boolean {
-  return applied.failedBatches > 0 || applied.incompleteBatches > 0;
-}
-
 async function writeCodebookAndFindings(
   tenantId: string,
   runId: string,
@@ -1505,6 +1496,16 @@ async function writeCodebookAndFindings(
   // coding_segments.text holds then. Optional for the same reason unitCodes is: a caller with no
   // unit-level codes has nothing to snapshot either.
   unitTexts?: Map<number, string[]>,
+  // Batch 61 (STAB-F02): when `assignments` is the model's own application of this codebook, how it was
+  // made. The same assignments are then kept, in this transaction, as the immutable original the
+  // stability check compares with. Omitted for a researcher-coded import, which has no model original.
+  modelApplication?: {
+    model: string;
+    promptHash: string;
+    totalBatches: number;
+    failedBatches: number;
+    incompleteBatches: number;
+  },
 ): Promise<{ id: string; finding_text: string }[]> {
   const segmentByIndex = new Map(segments.map((s) => [s.index, s]));
   // Findings and their turn counts follow what the researcher has changed by
@@ -1657,6 +1658,32 @@ async function writeCodebookAndFindings(
         }
       }
     }
+    if (modelApplication) {
+      const decisions = new Map<string, string[]>();
+      for (const [segIndex, codeNumbers] of assignments) {
+        const segment = segmentByIndex.get(segIndex);
+        if (!segment || codeNumbers.length === 0) continue;
+        decisions.set(segment.id, codeNumbers.map((n) => codes[n - 1].id));
+      }
+      await recordModelBaselineTx(client, {
+        tenantId,
+        runId,
+        documentId,
+        codebookId,
+        model: modelApplication.model,
+        promptHash: modelApplication.promptHash,
+        codes: codes.map((c) => ({
+          id: c.id,
+          name: c.name,
+          definition: c.definition,
+          inclusion: c.inclusion,
+          exclusion: c.exclusion,
+        })),
+        segments: segments.map((s) => ({ id: s.id, index: s.index, role: s.role, text: s.text })),
+        applied: modelApplication,
+        decisions,
+      });
+    }
     // Lay the researcher's own changes back over the model's assignments.
     await applyOverrides(
       client,
@@ -1757,6 +1784,8 @@ async function insertCodebook(
   }[],
 ): Promise<{ codebookId: string; rows: CodeRow[]; version: number }> {
   return withTenant(tenantId, async (client) => {
+    // Serialises with hand changes to turns (COD500-F02), which check the version in force.
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "update");
     const version = await nextVersion(client, documentId);
     const book = await client.query<{ id: string }>(
       `insert into coding_codebooks (tenant_id, run_id, document_id, version, source)
@@ -1806,10 +1835,21 @@ async function replaceSegments(
   segments: (TranscriptSegment & { page: number | null })[],
 ): Promise<StoredSegment[]> {
   return withTenant(tenantId, async (client) => {
+    // COD5K-F02: the update lock waits for a turn note being saved (share lock) and makes a note save
+    // that arrives during the re-read wait, then read the new turns; the notes whose turn changed are
+    // set aside in this same transaction (setAsideNotesOfReplacedTurns), so none is ever shown
+    // against different speech, and a failed re-read rolls back with every note where it was.
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "update");
+    // The noted turns' words, read before they are deleted, so a note set aside below keeps the exact
+    // text it was written about.
+    const notedTurns = await readNotedTurnTexts(client, documentId);
     await client.query("delete from coding_segments where document_id = $1", [
       documentId,
     ]);
-    if (segments.length === 0) return [];
+    if (segments.length === 0) {
+      await setAsideNotesOfReplacedTurns(client, documentId, notedTurns);
+      return [];
+    }
     const inserted = await client.query<{ id: string; segment_index: number }>(
       `insert into coding_segments (tenant_id, run_id, document_id, segment_index, speaker, role, page, text)
        select $1, $2, $3, t.i, t.sp, t.r, t.pg, t.tx
@@ -1826,6 +1866,7 @@ async function replaceSegments(
         segments.map((s) => s.text),
       ],
     );
+    await setAsideNotesOfReplacedTurns(client, documentId, notedTurns);
     const idByIndex = new Map(
       inserted.rows.map((r) => [r.segment_index, r.id]),
     );
@@ -1840,23 +1881,37 @@ export type CodedUnitPassage = {
   unit: number;
   /** The exact passage the model was shown when this code was assigned (migration 0090
    * snapshot, captured in applyCodebook/writeCodebookAndFindings at coding time). Null only for
-   * a row written before 0090 shipped, when no snapshot was ever taken - currentText below is
-   * the only passage available for it. */
+   * a row written before 0090 shipped, when no snapshot was ever taken - a re-derivation (see
+   * `text` and `codedUnderRule`) is the only passage available for it. */
   textAsCoded: string | null;
   /** The passage as reconstructCodedUnitText reads it from the document's CURRENT stored
    * segment texts, same re-derivation this function has always done. Null when the stored
    * transcript has moved on since the code was applied (resegmented, or the unit no longer
    * exists) - see reconstructCodedUnitText's own comment. */
   currentText: string | null;
-  /** True when a snapshot exists and no longer matches the current re-derivation - the
-   * transcript has visibly changed since this code was assigned (ANA-QUAL-002). Advisory only:
-   * `text` below always shows the historical passage regardless of this flag, it is never
-   * silently swapped for whatever currentText happens to read now. False (not stale) when there
-   * is no snapshot to compare - a pre-0090 row has nothing to be caught drifting from. */
+  /** The same re-derivation under the sentence rule in force before COD5K-F01
+   * ("legacy-number-full-stop", sentences.ts), which read any number then a full stop as a list
+   * marker. Equal to currentText for every turn without such a number. */
+  legacyRuleText: string | null;
+  /** Which sentence rule reproduces the passage the model was shown: the rule whose re-derivation
+   * equals the snapshot (the current rule when both do); for a row without a snapshot on a database
+   * that has the 0090 column, "legacy-number-full-stop", since such a row was written before 0090
+   * and so before COD5K-F01. Null when that cannot be established (stale, or see passageUncertain). */
+  codedUnderRule: SentenceRule | null;
+  /** True when a snapshot exists and matches neither re-derivation - the transcript has visibly
+   * changed since this code was assigned (ANA-QUAL-002). A snapshot that only the legacy rule
+   * reproduces is NOT stale: the stored turn is unchanged, only the boundary rule moved, and the
+   * snapshot is still the passage the model saw. Advisory only: `text` below always shows the
+   * historical passage regardless of this flag. False when there is no snapshot to compare. */
   stale: boolean;
+  /** True only for a row without a snapshot on a database without migration 0090, where the two
+   * rules give different passages: the row may have been coded under either, so which passage the
+   * model saw is unknown and `text` is null rather than a guess. */
+  passageUncertain: boolean;
   /** The passage to show by default: the immutable snapshot when one was taken, otherwise the
-   * live re-derivation (pre-0090 rows only, where that re-derivation is all there has ever
-   * been). Never resolves a snapshotted assignment to different current text. */
+   * re-derivation under the rule the row was coded with (pre-0090 rows: the legacy rule). Never
+   * resolves a snapshotted assignment to different current text, and never shows a passage
+   * re-split under a rule the model was not shown. */
   text: string | null;
 };
 
@@ -1940,11 +1995,34 @@ export async function getCodedUnitPassages(
     );
     return assigned.rows.map((r) => {
       const segmentIndex = indexById.get(r.segment_id) ?? -1;
-      const currentText = segmentIndex >= 0 ? reconstructCodedUnitText(allSegmentTexts, segmentIndex, r.unit) : null;
+      const derive = (rule: SentenceRule) =>
+        segmentIndex >= 0 ? reconstructCodedUnitText(allSegmentTexts, segmentIndex, r.unit, rule) : null;
+      const currentText = derive(CURRENT_SENTENCE_RULE);
+      const legacyRuleText = derive("legacy-number-full-stop");
       const textAsCoded = r.unit_text ?? null;
-      const stale = textAsCoded !== null && currentText !== textAsCoded;
-      const text = textAsCoded ?? currentText;
-      return { segmentIndex, codeId: r.code_id, codeName: r.code_name, unit: r.unit, textAsCoded, currentText, stale, text };
+      let codedUnderRule: SentenceRule | null = null;
+      let passageUncertain = false;
+      let text: string | null;
+      if (textAsCoded !== null) {
+        if (currentText === textAsCoded) codedUnderRule = CURRENT_SENTENCE_RULE;
+        else if (legacyRuleText === textAsCoded) codedUnderRule = "legacy-number-full-stop";
+        text = textAsCoded;
+      } else if (hasUnitText) {
+        // Written before 0090 shipped, so before COD5K-F01: the model saw the legacy rule's units.
+        codedUnderRule = "legacy-number-full-stop";
+        text = legacyRuleText;
+      } else if (currentText === legacyRuleText) {
+        codedUnderRule = CURRENT_SENTENCE_RULE;
+        text = currentText;
+      } else {
+        passageUncertain = true;
+        text = null;
+      }
+      const stale = textAsCoded !== null && codedUnderRule === null;
+      return {
+        segmentIndex, codeId: r.code_id, codeName: r.code_name, unit: r.unit, textAsCoded,
+        currentText, legacyRuleText, codedUnderRule, stale, passageUncertain, text,
+      };
     });
   });
 }
@@ -2046,7 +2124,7 @@ export type CodingRunResult = {
   findings: { id: string; finding_text: string }[];
   /** ANA-QUAL-001: false means the researcher-visible completion status (ready/incomplete)
    * could NOT actually be written back - the database rejected it (pre-0088, or pre-0079 -
-   * see markDocumentProcessingStatus) - so whatever status this document is showing is
+   * see markDocumentProcessingStatus) or the document is no longer there (DI-F05) - so whatever status this document is showing is
    * stale, not a confirmation that today's run's real coverage was recorded. Callers
    * surface this rather than letting a stale "ready" stand uncorrected. */
   statusPersisted: boolean;
@@ -2274,6 +2352,7 @@ async function extractThemesFromTranscriptInner(
     { onlyReplacePending, archiveReason },
     applied.unitCodes,
     applied.unitTexts,
+    applied,
   );
 
   await recordTrace(tenantId, runId, "coding_summary", {
@@ -2468,6 +2547,7 @@ export async function importCodedTranscript(
   try {
     await saveCodeMeta(
       tenantId,
+      runId,
       documentId,
       coding.codes.map((c) => ({
         name: c.name,
@@ -2482,6 +2562,7 @@ export async function importCodedTranscript(
   let finalAssignments = assignments;
   let finalUnitCodes: Map<number, { unit: number; codes: number[] }[]> | undefined;
   let finalUnitTexts: Map<number, string[]> | undefined;
+  let modelApplication: Awaited<ReturnType<typeof applyCodebook>> | undefined;
   // ANA-QUAL-001: set below in either branch - true by default since a plain researcher-
   // coded import (codebookOnly false) always writes "ready" unconditionally further down,
   // and that write's own result overwrites this default.
@@ -2524,6 +2605,7 @@ export async function importCodedTranscript(
     finalAssignments = applied.assignments;
     finalUnitCodes = applied.unitCodes;
     finalUnitTexts = applied.unitTexts;
+    modelApplication = applied;
   }
   const rows = await writeCodebookAndFindings(
     tenantId,
@@ -2536,6 +2618,7 @@ export async function importCodedTranscript(
     { onlyReplacePending: false, archiveReason: "manual_reextract" },
     finalUnitCodes,
     finalUnitTexts,
+    modelApplication,
   );
 
   const codesWithoutQuotes = coding.codes
@@ -2709,6 +2792,7 @@ export async function reapplyCodebook(
     { onlyReplacePending: false, archiveReason: "manual_reextract" },
     applied.unitCodes,
     applied.unitTexts,
+    applied,
   );
   await recordTrace(tenantId, runId, "coding_summary", {
     documentId,

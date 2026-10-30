@@ -1056,7 +1056,37 @@ function StabilityTab({
 }) {
   const [reruns, setReruns] = useState(2);
   const st = view.stability;
+  const base = view.stabilityBaseline;
   const [showResolved, setShowResolved] = useState(false);
+  const originalStatus = (
+    <div className="space-y-1 rounded-lg border border-border bg-white px-3 py-2 text-[11px] text-muted">
+      {base.refusal ? (
+        <p className="text-amber-700">{base.refusal}</p>
+      ) : (
+        <p>
+          Ready: a new run would use the same model ({base.model}), coding instructions, codebook definitions
+          and turns as the model&apos;s original coding of this transcript
+          {base.recordedAt ? `, kept on ${base.recordedAt.slice(0, 10)}` : ""}.
+        </p>
+      )}
+      {!base.modelPinned && (
+        <p>
+          {base.model} is a model name the AI provider can move to a newer release without the name
+          changing. The app cannot see such a move, so &quot;same model&quot; here means the same name.
+        </p>
+      )}
+      {base.researcherChanges && (
+        <p>
+          The coding now in force differs from the model&apos;s original by{" "}
+          {base.researcherChanges.added} theme{base.researcherChanges.added === 1 ? "" : "s"} added and{" "}
+          {base.researcherChanges.removed} removed on {base.researcherChanges.turns} turn
+          {base.researcherChanges.turns === 1 ? "" : "s"} (your changes by hand and any settling by majority).
+          That is agreement with you, a separate measure: the stability check always compares the model with
+          its own original, so your changes do not lower it.
+        </p>
+      )}
+    </div>
+  );
   const controls = (
     <div className="flex flex-wrap items-center gap-2">
       <label
@@ -1079,7 +1109,7 @@ function StabilityTab({
       <button
         type="button"
         className={primaryButton}
-        disabled={busy || view.setupMissing}
+        disabled={busy || view.setupMissing || base.refusal !== null}
         onClick={() =>
           run(() =>
             runStabilityCheckAction(runId, view.documentId, view.codebookId, reruns),
@@ -1103,6 +1133,7 @@ function StabilityTab({
           costs as much as the original application and changes nothing until
           you decide on a turn.
         </p>
+        {originalStatus}
         {controls}
       </div>
     );
@@ -1112,31 +1143,93 @@ function StabilityTab({
   const s = st.summary;
   return (
     <div className="space-y-3">
+      {originalStatus}
       {controls}
+      <div className="rounded-lg border border-border bg-white px-3 py-2 text-[11px] text-muted">
+        {st.check.recorded ? (
+          <>
+            <p>
+              Completeness: {st.check.complete} of {st.check.requested} requested pass
+              {st.check.requested === 1 ? "" : "es"} came back complete and were compared with the original
+              coding ({st.runs} runs in all, the original included). Checked {st.check.checkedAt.slice(0, 10)}.
+            </p>
+            {st.check.excluded.length > 0 && (
+              <ul className="mt-0.5 list-disc pl-4">
+                {st.check.excluded.map((e) => (
+                  <li key={e.pass}>
+                    Pass {e.pass} left out, {e.reason}. A missing decision is never counted as &quot;no theme&quot;.
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-1">
+              Same method: every compared pass used the original&apos;s model, coding instructions, codebook
+              definitions and turns.
+            </p>
+            {!st.check.againstCurrentOriginal && (
+              <p className="mt-1 text-amber-700">
+                The codebook has been applied again since this check, so it describes the earlier coding. Run the
+                check again.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-amber-700">
+            This result was made before the check recorded which passes were complete and which coding it started
+            from. An incomplete pass may have been counted as &quot;no theme&quot;, and the first run may include your
+            own changes, so read it with caution and run the check again. Method: unknown.
+          </p>
+        )}
+      </div>
       <div className="rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground">
-        <span className="font-semibold">
-          {st.codeAgreement === null ? "n/a" : pct(st.codeAgreement)}
-        </span>{" "}
-        average agreement per theme across {st.runs} runs. For each theme, that
-        is the share of the turns it came up in where every run gave it. Themes
-        that came up in fewer than 10 turns are left out of this figure.
-        {st.kappaAverage !== null && (
+        <p>
+          Repeatability of the coding: the same model applied the same codebook to the same turns {st.runs - 1} more
+          time{st.runs === 2 ? "" : "s"}, like one coder coding the same material again.
+        </p>
+        {st.eligibleCodes === 0 ? (
+          <p className="mt-1">
+            No theme came up in 10 or more turns, so there is no overall figure. Read each theme below; with so few
+            turns their figures are exploratory.
+          </p>
+        ) : (
+          <p className="mt-1">
+            <span className="font-semibold">
+              {st.pairwiseAverage === null ? "n/a" : pct(st.pairwiseAverage)}
+            </span>{" "}
+            average pairwise agreement per theme
+            {st.kappaAverage !== null && (
+              <>
+                , average kappa <span className="font-semibold">{st.kappaAverage.toFixed(2)}</span>
+              </>
+            )}
+            , over the {st.eligibleCodes} theme{st.eligibleCodes === 1 ? "" : "s"} that came up in 10 or more turns.
+            Pairwise agreement is the share of turns, for each pair of runs, on which both made the same yes or no
+            decision on the theme. Kappa discounts the agreement expected by chance; 0.80 or above is usually read as
+            strong.
+          </p>
+        )}
+        {st.belowMinimumCodes > 0 && (
           <p className="mt-1 text-[11px] text-muted">
-            Chance-corrected: average kappa {st.kappaAverage.toFixed(2)}. Kappa
-            discounts the agreement you would get by luck, so it is the figure
-            to compare with research benchmarks, where 0.80 or above is usually
-            read as strong. The percentage above is not on that scale.
+            {st.belowMinimumCodes} theme{st.belowMinimumCodes === 1 ? "" : "s"} came up in fewer than 10 turns and{" "}
+            {st.belowMinimumCodes === 1 ? "is" : "are"} left out of the averages (marked &quot;Too few turns to
+            judge&quot; below).
           </p>
         )}
         <p className="mt-1 text-[11px] text-muted">
-          Read this theme by theme. A low overall figure does not mean all of
-          the coding is unreliable: it is an average, and a few fuzzy themes
-          can pull it down while the rest are solid. Report strong themes with
-          confidence and weak ones as tentative. These figures show
-          consistency, not correctness; your audit sample is the check on that.
+          Consistent in every run (stricter):{" "}
+          <span className="font-medium text-foreground">
+            {st.codeAgreement === null ? "n/a" : pct(st.codeAgreement)}
+          </span>
+          . For each eligible theme, the share of the turns it came up in where every run gave it, averaged. It counts
+          consistent positive codings only, so it is stricter than pairwise agreement and falls as runs are added.
         </p>
         <p className="mt-1 text-[11px] text-muted">
-          Stricter whole-turn check: {s.share === null ? "n/a" : pct(s.share)}{" "}
+          These figures measure consistency, not correctness: runs share the same blind spots, so a turn the model
+          gets wrong the same way every time looks stable. Whether the coding is right needs your audit sample.
+          Read them theme by theme: a few fuzzy themes can pull the averages down while the rest are solid.
+        </p>
+        <p className="mt-1 text-[11px] text-muted">
+          Further detail. Whole-turn check: {s.share === null ? "n/a" : pct(s.share)}{" "}
           of {s.turns} participant turns got exactly the same set of themes in
           every run. {s.medium} came out differently in one run, {s.low} in
           most.
@@ -1163,12 +1256,6 @@ function StabilityTab({
             over what a turn is about.
           </p>
         )}
-        <p className="mt-1 text-[11px] text-muted">
-          Agreement between runs flags turns worth a second look. It does not
-          show that a stable turn is right: runs share the same blind spots,
-          so a turn the model gets wrong the same way every time looks stable.
-          Your own audit above is the check on that.
-        </p>
       </div>
 
       <div className="rounded-lg border border-border bg-white px-3 py-2 text-xs">
@@ -1191,7 +1278,9 @@ function StabilityTab({
           <p className="mt-1 text-[11px] text-amber-700">
             {st.runs < 3
               ? "Needs at least three runs: the original and two more. Run the check with 2 more times."
-              : "Run the check again so each run is kept (needs database migration 0074)."}
+              : st.check.recorded
+                ? "Run the check again so each run is kept."
+                : "Run the check again so its completeness is recorded, then settle by majority."}
           </p>
         )}
         {st.majority.applied && (
@@ -1208,8 +1297,9 @@ function StabilityTab({
             <tr>
               <th className={th}>Theme</th>
               <th className={th}>Turns it came up in</th>
-              <th className={th}>Same in every run</th>
+              <th className={th}>Pairwise agreement</th>
               <th className={th}>Kappa</th>
+              <th className={th}>Same in every run (stricter)</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -1217,6 +1307,17 @@ function StabilityTab({
               <tr key={c.codeId}>
                 <td className={`${td} font-medium`}>{c.name}</td>
                 <td className={td}>{c.usedTurns}</td>
+                <td className={td}>
+                  {c.pairwise === null ? "n/a" : pct(c.pairwise)}
+                  {c.pairwiseComparisons > 0 && (
+                    <span className="ml-1 text-muted">of {c.pairwiseComparisons} comparisons</span>
+                  )}
+                </td>
+                <td className={td}>
+                  {c.kappa === null
+                    ? "n/a"
+                    : `${c.kappa.toFixed(2)}${c.tooFew ? "" : ` (${kappaBand(c.kappa, false).toLowerCase()})`}`}
+                </td>
                 <td className={td}>
                   {c.usedTurns === 0
                     ? "n/a"
@@ -1234,11 +1335,6 @@ function StabilityTab({
                       </span>
                     )
                   )}
-                </td>
-                <td className={td}>
-                  {c.kappa === null
-                    ? "n/a"
-                    : `${c.kappa.toFixed(2)}${c.tooFew ? "" : ` (${kappaBand(c.kappa, false).toLowerCase()})`}`}
                 </td>
               </tr>
             ))}

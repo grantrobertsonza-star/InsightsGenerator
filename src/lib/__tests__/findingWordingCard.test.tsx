@@ -9,11 +9,14 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("@/lib/findingActions", () => ({}));
+vi.mock("@/lib/tableMethod", async () => await import("../tableMethod"));
 vi.mock("@/lib/previewActions", () => ({}));
 vi.mock("@/components/icons", async () => await import("../../components/icons"));
 vi.mock("@/lib/findingsChartData", async () => await import("../findingsChartData"));
 vi.mock("@/lib/discoveryClassification", async () => await import("../discoveryClassification"));
+vi.mock("@/lib/rowCells", async () => await import("../rowCells"));
 vi.mock("@/lib/findingBasis", async () => await import("../findingBasis"));
+vi.mock("@/lib/evidenceOverview", async () => await import("../evidenceOverview"));
 vi.mock("../../app/runs/[id]/FindingsChart", () => ({ default: () => null }));
 
 const { default: FindingsTable } = await import("../../app/runs/[id]/FindingsTable");

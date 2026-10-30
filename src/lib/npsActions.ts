@@ -1,11 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { exactPct, exactSe, exactTotalPct } from "./crosstabExact";
 
-import { buildCrosstab, loadCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import { buildCrosstab, computeCrosstab, loadCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import type { CrosstabRequest } from "./parseStatsFile";
 import { resolveSurveyDesign, effectiveDesignChoice, type SurveyDesignChoice } from "./surveyDesign";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { withTenant } from "./db";
+import { RUN_NOT_AVAILABLE, assertRunOwned, runAccessible } from "./runOwnership";
 import { recordHumanReview } from "./findingProvenance";
 import { defaultWeight } from "./starterTables";
 import { baseOf, computeNps, leadingNumber } from "./descriptiveFindings";
@@ -13,6 +16,9 @@ import { requireTenantId } from "./requestContext";
 
 export type NpsSegment = {
   name: string;
+  /** The group variable's answer code for this segment (a company, D3b): its identity; `name` is its label. Absent
+   * on a wave segment and on results saved before 29 October 2026. */
+  code?: string;
   /** ANA-NPS-002: kept for existing callers - this is the effective (Kish) base, same number `n`
    * has always held. Prefer rawN/weightedBase/effectiveN below for anything that needs to tell
    * these apart; this field alone cannot. */
@@ -36,6 +42,10 @@ export type NpsSegment = {
   designExact: boolean;
   /** Share choosing each point 0-10 within this segment, same shape as NpsResult.scale, so the full ring/breakdown view can be drawn per segment too. */
   scale: { value: number; pct: number }[];
+  /** D2b: this group's NPS against everyone else answering in the group variable (points), with the difference's
+   * standard error and Benjamini-Hochberg adjusted p across the groups. Null when the engine could not compute it (a
+   * group or its complement with no base); absent on segments from waves and on results saved before 29 October. */
+  versusRest?: { difference: number; se: number; p: number | null; pAdjusted: number | null; method: "design" | "with_replacement" } | null;
   // Overnight queue, package 4: a demographic group split (the other producer of NpsSegment,
   // below) shares one file and one resolved design across every segment, so these three stay
   // meaningful only at the whole-result level there and these fields are left undefined for
@@ -130,8 +140,12 @@ export async function runNpsAction(
   // heuristic; passing `{ psu, strata: null }` is a PSU-only design, a defined input path of its
   // own, not gated on a strata variable also being supplied.
   design?: SurveyDesignChoice | null,
+  // "compute": read the score without saving the table it is read from (a dashboard that recalculates each time it
+  // opens, D3); "save" keeps the evidence table, as the NPS tool always has.
+  table: "save" | "compute" = "save",
 ): Promise<{ ok: true; result: NpsResult } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     // ANA-NPS-003 (Brief 37 repair): the dictionary's build/cache path depends on the
     // document's persisted layout - a required saved input distinct from design. An explicit
@@ -167,25 +181,22 @@ export async function runNpsAction(
     const g = groupVar ? dict.variables.find((x) => x.name === groupVar) : null;
     if (groupVar && !g) return { ok: false, error: "That grouping variable was not found in this file." };
 
-    const built = await buildCrosstab(
-      TENANT_ID,
-      runId,
-      documentId,
-      {
-        columnVars: g ? [g.name] : [],
-        rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
-        weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
-        source: "ask",
-        // ANA-NPS-003: an ordinary NPS request previously exposed no design argument at all and
-        // always ran its own blind auto-detect, ignoring any explicit choice a caller supplied -
-        // resolveSurveyDesign (./surveyDesign) now gives this an explicit input path (the
-        // `design` parameter above), with the shared heuristic only as a fallback when no
-        // explicit choice was made, and only when it found an unambiguous PSU candidate.
-        design: resolvedDesign.design ?? undefined,
-      },
-      { status: "evidence" },
-    );
-    const { result } = await loadCrosstab(TENANT_ID, runId, built.tableId);
+    const request: CrosstabRequest = {
+      columnVars: g ? [g.name] : [],
+      rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
+      weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
+      source: "ask",
+      // ANA-NPS-003: an ordinary NPS request previously exposed no design argument at all and
+      // always ran its own blind auto-detect, ignoring any explicit choice a caller supplied -
+      // resolveSurveyDesign (./surveyDesign) now gives this an explicit input path (the
+      // `design` parameter above), with the shared heuristic only as a fallback when no
+      // explicit choice was made, and only when it found an unambiguous PSU candidate.
+      design: resolvedDesign.design ?? undefined,
+    };
+    const { result } =
+      table === "compute"
+        ? await computeCrosstab(TENANT_ID, runId, documentId, request)
+        : await loadCrosstab(TENANT_ID, runId, (await buildCrosstab(TENANT_ID, runId, documentId, request, { status: "evidence" })).tableId);
     if (!result || result.questions.length === 0) return { ok: false, error: "This question could not be tabulated." };
 
     const q = result.questions[0];
@@ -217,7 +228,8 @@ export async function runNpsAction(
     // from a genuine design-based category SE just by its presence - see parseStatsFile.ts's
     // designApplied comment. Gate on it so an abandoned design is never mislabelled design-based.
     const designApplied = result.notes?.designApplied === true;
-    const nps = computeNps(answers, n0, (r) => r.total.pct, singleCol && designApplied ? (r) => r.se?.[0] ?? null : () => null, contrastSe);
+    // CT5K-F01: the parts are the unrounded shares (crosstabExact.ts); computeNps rounds only its results.
+    const nps = computeNps(answers, n0, (r) => exactTotalPct(r), singleCol && designApplied ? (r) => exactSe(r, 0) : () => null, contrastSe);
     if (!nps) {
       return {
         ok: false,
@@ -253,7 +265,7 @@ export async function runNpsAction(
           if (segBase === null) return null;
           const nI = segBase.eff;
           const segContrastSe = q.npsContrastSe?.columns?.[i] ?? undefined;
-          const segNps = computeNps(answers, nI, (r) => r.pct[i] ?? null, designApplied ? (r) => r.se?.[i] ?? null : () => null, segContrastSe);
+          const segNps = computeNps(answers, nI, (r) => exactPct(r, i), designApplied ? (r) => exactSe(r, i) : () => null, segContrastSe);
           // A suppressed point within this one segment makes only this segment's reading
           // unavailable (ANA-NPS-001); the segment is dropped rather than shown with a score
           // that silently treated the missing point as 0.
@@ -263,8 +275,16 @@ export async function runNpsAction(
             .filter((x): x is { value: number; pct: number } => x.value !== null && x.value >= 0 && x.value <= 10)
             .sort((a, b) => a.value - b.value);
           const { suppressed: _segSuppressed, ...segNpsFields } = segNps;
+          const t = q.npsGroupTests?.columns?.[i] ?? null;
+          const versusRest = q.npsGroupTests
+            ? t
+              ? { difference: t.difference, se: t.se, p: t.p, pAdjusted: t.pAdjusted ?? null, method: q.npsGroupTests.method }
+              : null
+            : undefined;
           return {
             name: c.name,
+            ...(c.rawCode !== undefined ? { code: c.rawCode } : {}),
+            ...(versusRest !== undefined ? { versusRest } : {}),
             n: Math.round(nI),
             rawN: segBase.n,
             weightedBase: segBase.w,
@@ -319,6 +339,7 @@ export async function addNpsFindingAction(
   const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       // Scoped by source_document_id too, not just the variable name: two documents in the
       // same run (two waves, say) can each have their own variable with the same name, and
       // without this a second document's reading would be mistaken for an existing finding
@@ -416,6 +437,7 @@ export async function removeNpsFindingAction(runId: string, documentId: string, 
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'level' and stated_stats->>'testType' = 'nps' and stated_stats->>'source' = 'nps_tool' and stated_stats->>'variable' = $2 and source_document_id = $3 and status <> 'rejected' returning id",
         [runId, variable, documentId],
@@ -433,6 +455,7 @@ export async function removeNpsFindingAction(runId: string, documentId: string, 
 /** Whether this NPS question is currently committed to findings (for the button state in the tool). */
 export async function npsFindingStatusAction(runId: string, documentId: string, variable: string): Promise<{ ok: true; committed: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
+  if (!(await runAccessible(TENANT_ID, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     const committed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

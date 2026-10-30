@@ -5,6 +5,7 @@
 // assertions, plus: after each reload the superseded wording is no longer shown.
 // Real browser against the disposable local stack; model replay only. Synthetic data.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -23,7 +24,7 @@ test("Setup A to B, Review B to C, delete in Review: one candidate id throughout
   try {
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
-    const section = (name) => page.getByRole("button", { name, exact: true }).first().click();
+    const section = (name) => openSection(page, name);
     const run = await ui.createRun({ name: `objective-identity-${Date.now()}` });
 
     await section("Set Objectives");
@@ -40,7 +41,9 @@ test("Setup A to B, Review B to C, delete in Review: one candidate id throughout
     const editing = page.locator("li").filter({ has: page.locator("textarea") });
     await editing.locator("textarea").fill("Native objective B");
     await editing.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByText("Native objective B", { exact: true })).toBeVisible();
+    // The saved wording can show in the Setup list and in the review table at once, so any one of them
+    // (the batch21 full run: a strict-mode match of two elements failed this line once).
+    await expect(page.getByText("Native objective B", { exact: true }).first()).toBeVisible();
     // The new wording shows before the save finishes; wait for the stored row before reloading
     // (the original harness reloaded at once and passed only when the save happened to be quicker).
     await expect.poll(async () => (await db.query("select candidate_text from objective_candidates where id=$1", [id])).rows[0]?.candidate_text).toBe("Native objective B");
@@ -51,8 +54,10 @@ test("Setup A to B, Review B to C, delete in Review: one candidate id throughout
     await page.getByRole("button").filter({ hasText: "Native objective B" }).first().click();
     const detail = page.locator("div").filter({ has: page.getByRole("button", { name: "All objectives", exact: true }) }).filter({ has: page.getByRole("button", { name: "Edit", exact: true }) }).last();
     await detail.getByRole("button", { name: "Edit", exact: true }).click();
-    await page.locator("textarea:visible").first().fill("Native objective C");
-    await page.getByRole("button", { name: "Save", exact: true }).first().click();
+    // The editor inside the detail pane: on the one-page layout the context band above has its own
+    // text boxes and Save.
+    await detail.locator("textarea:visible").first().fill("Native objective C");
+    await detail.getByRole("button", { name: "Save", exact: true }).first().click();
     await expect.poll(async () => (await db.query("select candidate_text from objective_candidates where id=$1", [id])).rows[0]?.candidate_text).toBe("Native objective C");
 
     // Setup (after reload) shows C, not A or B; still one row with the same id.

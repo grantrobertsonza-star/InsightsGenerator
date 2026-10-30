@@ -12,6 +12,7 @@
 //   4. Recommendations, "Edit and accept" then "Save and accept": reported, the edited action text
 //      is kept.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -45,7 +46,7 @@ test("refused review saves are reported and keep the researcher's text", async (
     const run = await ui.createRun({ name: `review-action-failure-${Date.now()}` });
     // Section buttons can carry a count ("Recommendations 1"), so a string name matches exactly
     // and a pattern is used where a count may follow.
-    const section = (name) => page.getByRole("button", typeof name === "string" ? { name, exact: true } : { name }).first().click();
+    const section = (name) => openSection(page, name);
     const open = async (name) => {
       await page.goto(run.url, { waitUntil: "networkidle" });
       await section(name);
@@ -60,11 +61,11 @@ test("refused review saves are reported and keep the researcher's text", async (
 
     // 1. Edit and Save an objective in Review Objectives.
     await open("Review Objectives");
-    const row = page.locator("tr", { hasText: "Review failure objective" }).first();
+    const row = page.locator("tbody[data-objective-row]", { hasText: "Review failure objective" }).first();
     await expect(row).toBeVisible({ timeout: 60_000 });
     await refuse("objective_candidates", run.id);
     await row.getByRole("button", { name: "Edit", exact: true }).click();
-    const editingRow = page.locator("tr", { has: page.locator("textarea") }).first();
+    const editingRow = page.locator("tbody[data-objective-row]", { has: page.locator("textarea") }).first();
     await editingRow.locator("textarea").fill("Review failure objective, edited");
     await editingRow.getByRole("button", { name: "Save", exact: true }).click();
     await expect(editingRow.getByRole("alert")).toContainText(OUTAGE, { timeout: 60_000 });

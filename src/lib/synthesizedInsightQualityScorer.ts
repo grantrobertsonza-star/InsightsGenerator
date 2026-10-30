@@ -1,4 +1,5 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
@@ -198,11 +199,15 @@ export async function scoreSynthesizedInsightQuality(tenantId: string, runId: st
 
       await logApiUsage(tenantId, runId, "synthesized_insight_quality_scorer", response.usage);
 
-      const toolUse = response.content.find((block) => block.type === "tool_use");
-      const rawScores =
-        toolUse && toolUse.type === "tool_use" && Array.isArray((toolUse.input as { scores?: unknown }).scores)
-          ? ((toolUse.input as { scores: unknown[] }).scores as Record<string, unknown>[])
-          : [];
+      // EC10K-F02: only a finished record_scores call is used; an unfinished one fails this batch.
+      let finished: Record<string, unknown>;
+      try {
+        finished = finishedToolInput(response, "record_scores", "The insight quality scoring");
+      } catch (error) {
+        if (!(error instanceof UnfinishedModelResultError)) throw error;
+        return { ok: false, error: `${batch.length} insight(s) starting at index ${chunkIndex * SCORING_CHUNK_SIZE}: ${error.message}` };
+      }
+      const rawScores = Array.isArray(finished.scores) ? (finished.scores as Record<string, unknown>[]) : [];
 
       const validScore = (value: unknown): value is 1 | 3 | 5 => value === 1 || value === 3 || value === 5;
 

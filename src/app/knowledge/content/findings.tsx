@@ -107,6 +107,16 @@ export default function FindingsGuide() {
         (reprocessing a document, deleting a table), a snapshot is archived first so the earlier version can still be
         looked up.
       </P>
+      <H3>When a change is saved, refused or fails</H3>
+      <P>
+        A change to a finding&apos;s status, kind, theme or note shows as saved only once it is. If the finding is no longer
+        in the project (deleted, or replaced when its file was read again since you opened the page), the change is
+        refused and says so; reload to see the current findings. Accept all and Reject all are all or nothing: if any
+        finding in the batch is gone, none is changed, and a banner says how many were missing. When a save is refused
+        or fails, the buttons return to what they showed, a note you were writing stays in its box with the reason
+        beside it, and Save tries again with the same text. The rest of the page stays as it was. A blank theme or note
+        clears it; a kind, once set, can be changed but not cleared.
+      </P>
 
       <H2 id="duplicates">Duplicates and look-alikes</H2>
       <P>
@@ -158,18 +168,24 @@ export default function FindingsGuide() {
           ["Tag", "What it is telling you"],
           ["Base size small / borderline / unknown", "The group behind the figure is small, near the threshold, or the base was not stated"],
           ["Standard deviation unknown", "A mean or difference was reported without a spread, so its reliability cannot be judged"],
-          ["Uncorrected multiple comparisons", "Many cells were tested at once and none was adjusted, so a few will look significant by chance"],
+          ["Uncorrected multiple comparisons", "Many cells were tested at once and none was adjusted (no correction chosen, or a check that does not correct, such as a banner plan), so a few will look significant by chance"],
+          ["False discovery controlled (row)", "The finding survived a Benjamini-Hochberg correction across the columns of its banner variable, the cross tab default"],
+          ["Bonferroni corrected (row)", "The finding survived the stricter Bonferroni correction, when that was chosen"],
           ["False discovery rate controlled within table", "The finding survived a Benjamini-Hochberg correction across every cell tested in its table"],
-          ["Sampling assumed random", "The test treats the sample as random, which may not hold for the survey design"],
+          ["Survey design modelled", "The test used the PSU and strata named for the data file (Taylor series variance)"],
+          ["Sampling assumed random", "No survey design was modelled, so the test treats the sample as random, which may not hold for the survey design"],
           ["Insufficient n for a test", "There were too few cases for a significance test to mean anything"],
         ]}
       />
       <P>
         The multiple comparisons tag deserves particular attention in cross tab work. Test enough cells and a few
         will cross the 95% line by luck alone. An adjustment such as the false discovery rate procedure
-        (Benjamini &amp; Hochberg, 1995) is a recognised remedy. It is applied to findings from the starter set, which
-        then carry a different tag, but not yet to tables you build by hand. For those, treat a lone significant cell
-        inside a very large table with suspicion, and prefer patterns that show up across several related cells.
+        (Benjamini &amp; Hochberg, 1995) is a recognised remedy. Every cross table applies one by default, whether it
+        came from StarterTabs or was built by hand: the false discovery rate across the columns of each banner
+        variable, row by row. Bonferroni, or no correction, can be chosen instead, and the finding&apos;s tag says which
+        ran. Findings from the starter set are also controlled across every cell of their table. A table built with no
+        correction carries the uncorrected tag. Even with a correction, treat a lone significant cell inside a very
+        large table with some suspicion, and prefer patterns that show up across several related cells.
       </P>
 
       <H2 id="corroboration">Corroboration and contradiction</H2>
@@ -214,8 +230,10 @@ export default function FindingsGuide() {
         worth adding in a note.
       </Limit>
       <Limit title="Table findings inherit table limits">
-        They use an uncorrected test, an assumption of random sampling, and a complement comparison (a column against
-        everyone else in the same banner variable). Treat them as leads to examine, not as confirmed differences.
+        They use a complement comparison (a column against everyone else in the same banner variable), corrected only
+        within the row (or the table) under the setting chosen, and a survey design only when one was named; their
+        caveats say which. The correction does not cover the many tables of a project. Treat them as leads to examine,
+        not as confirmed differences.
       </Limit>
       <DoesDoesNot
         does={[
@@ -228,7 +246,7 @@ export default function FindingsGuide() {
         doesNot={[
           "Prove that a claim is true in the real world.",
           "Decide whether two similar findings come from independent research.",
-          "Correct for multiple comparisons in hand-built tables (only the starter set is corrected).",
+          "Correct for multiple comparisons across the many tables of a project (each table is corrected on its own).",
           "Judge whether a finding is interesting or useful. That is the next stage.",
         ]}
       />

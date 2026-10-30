@@ -8,7 +8,9 @@
 //
 // What this checks, in a real browser against the disposable local stack (real PostgreSQL through
 // the restricted app role; storage and model are the stack's local stand-ins, not used here):
-//   1. while the page's scripts are held back, the layout control is disabled and the note shows
+//   1. while the page's scripts are held back, the layout control is disabled and the note is there
+//      (both in the server render; since 2026-10-20 they sit in the Setup tab, which opens only once
+//      the scripts run, so here they are checked as rendered rather than as seen)
 //   2. once loaded, the control is enabled and the note is gone
 //   3. a layout chosen then is saved: it survives a reload
 // Scripts are held back by delaying the app's JavaScript chunks, which widens the loading gap that
@@ -17,6 +19,8 @@
 // Not covered here: the transcript set-up row, which uses the same hook but needs a transcript
 // import to render.
 import { expect, test } from "@playwright/test";
+import { addFiles } from "./helpers/addFiles.mjs";
+import { openSourceTab, selectSource } from "./helpers/sources.mjs";
 import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -55,14 +59,18 @@ test("a layout chosen while the page loads is held, and one chosen after loading
   const dir = mkdtempSync(path.join(tmpdir(), "layout-check-"));
   const file = path.join(dir, "wide-layout.csv");
   writeFileSync(file, WIDE_CSV);
-  const form = page.locator("form", { has: page.locator('input[name="rawTableFiles"]') });
-  await openImport(page, form.locator('input[name="rawTableFiles"]'));
-  await form.locator('input[name="rawTableFiles"]').setInputFiles(file);
-  await form.getByRole("button", { name: "Upload", exact: true }).click();
+  await openImport(page, page.getByRole("button", { name: "Add files", exact: true }));
+  await addFiles(page, file, "Raw data");
   const layout = () => page.getByLabel(/How the file is laid out: wide-layout\.csv/);
+  const setup = async () => {
+    await selectSource(page, "wide-layout.csv");
+    await openSourceTab(page, "Setup");
+  };
+  await setup();
   await expect(layout()).toBeVisible({ timeout: 60_000 });
-  // The first-view "accept with defaults" save has landed once the row says Accepted.
-  await expect(page.getByText("Accepted", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  // The first-view "accept with defaults" save has landed once the source says Accepted.
+  const status = page.getByTestId("source-acceptance");
+  await expect(status).toHaveText("Setup: Accepted", { timeout: 60_000 });
 
   // 1. Reload with the app's scripts held back: the server-rendered control must be held.
   let release;
@@ -71,14 +79,17 @@ test("a layout chosen while the page loads is held, and one chosen after loading
     await held;
     await route.continue().catch(() => {});
   });
-  await page.goto(runUrl, { waitUntil: "commit" });
+  // The Import section by its link (a project opens on its overview), rendered on the server, so the
+  // control is there before the scripts load.
+  await page.goto(`${runUrl}?section=upload`, { waitUntil: "commit" });
   await expect(layout()).toBeAttached({ timeout: 60_000 });
   await expect(layout()).toBeDisabled();
-  await expect(page.getByTestId("setup-loading").first()).toBeVisible();
+  await expect(page.getByTestId("setup-loading").first()).toBeAttached();
 
   // 2. Let the scripts through: the control becomes usable and the note goes.
   release();
   await page.unrouteAll({ behavior: "wait" });
+  await setup();
   await expect(layout()).toBeEnabled({ timeout: 60_000 });
   await expect(page.getByTestId("setup-loading")).toHaveCount(0);
 
@@ -86,8 +97,9 @@ test("a layout chosen while the page loads is held, and one chosen after loading
   const saved = page.waitForResponse((r) => r.request().method() === "POST" && !!r.request().headers()["next-action"]);
   await layout().selectOption("columns_are_cases");
   expect((await saved).status()).toBe(200);
-  await expect(page.getByText("Needs review", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(status).toHaveText("Setup: Needs review", { timeout: 60_000 });
   await page.reload({ waitUntil: "networkidle" });
   await openImport(page, layout());
+  await setup();
   await expect(layout()).toHaveValue("columns_are_cases", { timeout: 60_000 });
 });

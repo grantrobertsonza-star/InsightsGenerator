@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
 import { loadResearchQualityView } from "@/lib/researchQualityView";
 import { buildResearchQualityDocx } from "@/lib/researchQualityExport";
 import { ResearchQualityError } from "@/lib/researchQualityTypes";
@@ -13,11 +13,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const context = await routeRequestContext();
   if (context instanceof Response) return context;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(context.tenantId, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
   const reviewId = new URL(request.url).searchParams.get("review");
   try {
     const view = await loadResearchQualityView(context.tenantId, runId, reviewId);
     if (!view.review || (reviewId && view.review.id !== reviewId)) return NextResponse.json({ error: "No such review." }, { status: 404 });
-    const name = await withTenantRead(context.tenantId, async (c) => (await c.query<{ project_name: string | null }>(`select project_name from runs where id = $1`, [runId])).rows[0]?.project_name ?? null);
+    const name = await withTenantRead(context.tenantId, async (c) => (await c.query<{ project_name: string | null }>(`select project_name from runs where id = $1 and tenant_id = $2`, [runId, context.tenantId])).rows[0]?.project_name ?? null);
     const { buffer, filename } = await buildResearchQualityDocx(view, name);
     return new NextResponse(new Uint8Array(buffer), {
       headers: {

@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { finishedToolInput } from "./modelToolResult";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -76,8 +77,10 @@ export async function regroundStatedFindings(tenantId: string, runId: string): P
       messages: [{ role: "user", content: chunk.map((c, k) => `[${k}] ${c.finding_text}`).join("\n") }],
     });
     await logApiUsage(tenantId, runId, "reground_claims", response.usage);
-    const tu = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-    const links = tu && Array.isArray((tu.input as { links?: unknown }).links) ? ((tu.input as { links: unknown[] }).links as Record<string, unknown>[]) : [];
+    // EC10K-F02: only a finished call is used; an unfinished one throws, and the links of earlier
+    // batches (each already written whole) stay.
+    const finished = finishedToolInput(response, "record_links", "The linking of report claims to computed facts");
+    const links = Array.isArray(finished.links) ? (finished.links as Record<string, unknown>[]) : [];
     for (const l of links) {
       const ci = typeof l.claim_index === "number" ? l.claim_index : -1;
       const fi = typeof l.fact_index === "number" ? l.fact_index : 0;

@@ -7,7 +7,7 @@
 //   truncated .sav / .dta: "Could not read this file:" is shown and still shown after reload, no
 //     table is stored, the file can be deleted, and the valid file uploaded instead calculates
 //     with no error shown after reload.
-// SAS is excluded by owner decision and not tested. processing_status is not used as a readiness
+// SAS is covered by data-file-formats.check.mjs. processing_status is not used as a readiness
 // signal (it stays null for raw files).
 import { expect, test } from "@playwright/test";
 import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
@@ -16,6 +16,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import pg from "pg";
+import { deleteFirstSource } from "./helpers/sources.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -75,8 +76,9 @@ test("SAV and DTA: valid files calculate; truncated files fail visibly and recov
       await expect(page.getByText(/^Could not read this file:/).first(), `truncated .${ext} error after reload`).toBeVisible({ timeout: 60_000 });
       const doc = (await db.query("select id from documents where run_id=$1", [badRun.id])).rows[0].id;
       expect(Number((await db.query("select count(*) from document_tables where document_id=$1", [doc])).rows[0].count)).toBe(0);
-      await page.getByRole("button", { name: "Delete document", exact: true }).first().click();
-      await expect.poll(async () => Number((await db.query("select count(*) from documents where id=$1", [doc])).rows[0].count), { timeout: 30_000 }).toBe(0);
+      await deleteFirstSource(page);
+      // Removal moves the file to the project's bin (batch 25), so it leaves this project.
+      await expect.poll(async () => Number((await db.query("select count(*) from documents where id=$1 and run_id=$2", [doc, badRun.id])).rows[0].count), { timeout: 30_000 }).toBe(0);
       badRun.files = [];
       await page.goto(badRun.url, { waitUntil: "networkidle" });
       await ui.upload(badRun, path.join(dir, `valid.${ext}`), "table");

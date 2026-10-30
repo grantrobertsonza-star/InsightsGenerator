@@ -1,8 +1,10 @@
+import { narrativeFingerprint, readFramingRecommendations, recordNarrativeInputs } from "./narrativeFreshness";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { loadInsightSupportOrUnchecked } from "./supportStatus";
 import { capWords } from "./text";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { NO_INVENTED_EXPLANATIONS_RULE, NO_DERIVED_FIGURES_RULE } from "./groundingRules";
 import { figureCheck, type FigureCheck } from "./numberTrace";
 import { figureCheckAvailable } from "./figureChecks";
@@ -17,17 +19,6 @@ type EvidenceInsight = {
   confidence_tier: ConfidenceTier;
   quality_tier: QualityTier;
   quality_score: number | null;
-};
-
-type EvidenceRecommendation = {
-  action_text: string;
-  owner_role: string;
-  timeline: string;
-  metric: string;
-  priority: "high" | "medium" | "low";
-  synthesized_insight_headline: string | null;
-  /** FND-001: the anchor insight, so a recommendation on an insight with invalid support is left out. */
-  synthesized_insight_id: string | null;
 };
 
 export type DeckPillar = {
@@ -200,6 +191,11 @@ export async function generateStoryNarrative(
   tenantId: string,
   runId: string,
 ): Promise<DeckNarrative> {
+  // CE-3: what this narrative is written against (including the accepted recommendations, EF-REP-F01),
+  // read before the model is asked. A change made while it is being written leaves the saved fingerprint
+  // older than the project, so the narrative reads as written for an earlier version
+  // (narrativeFreshness.ts), never as current. A failed generation saves neither narrative nor fingerprint.
+  const writtenFor = await withTenant(tenantId, (client) => narrativeFingerprint(client, runId));
   const { run, insights: acceptedInsights, recommendations: acceptedRecommendations } = await withTenant(
     tenantId,
     async (client) => {
@@ -225,20 +221,12 @@ export async function generateStoryNarrative(
         [runId],
       );
 
-      const recommendationsResult = await client.query<EvidenceRecommendation>(
-        `select r.action_text, r.owner_role, r.timeline, r.metric, r.priority, si.headline as synthesized_insight_headline,
-              si.id as synthesized_insight_id
-       from recommendations r
-       join synthesized_insights si on si.id = r.synthesized_insight_id
-       where r.run_id = $1 and r.status = 'accepted' and r.synthesized_insight_id is not null
-       order by si.quality_score desc nulls last, r.created_at`,
-        [runId],
-      );
-
+      // CE-3: the same reader the narrative fingerprint uses, so the recorded snapshot covers exactly
+      // the recommendations (and fields) given to the model.
       return {
         run: runResult.rows[0],
         insights: insightsResult.rows,
-        recommendations: recommendationsResult.rows,
+        recommendations: await readFramingRecommendations(client, runId),
       };
     },
   );
@@ -260,7 +248,7 @@ export async function generateStoryNarrative(
   );
   const insights = acceptedInsights.filter((insight) => support.statusOf(insight.id).status !== "invalid");
   const recommendations = acceptedRecommendations.filter(
-    (rec) => !rec.synthesized_insight_id || support.statusOf(rec.synthesized_insight_id).status !== "invalid",
+    (rec) => support.statusOf(rec.synthesized_insight_id).status !== "invalid",
   );
   if (acceptedInsights.length > 0 && insights.length === 0) {
     throw new Error(
@@ -359,7 +347,7 @@ export async function generateStoryNarrative(
   let lastUnsupported: FigureCheck["figures"] = [];
 
   const MAX_PILLAR_ATTEMPTS = 3;
-  let raw: {
+  type RawNarrative = {
     executive_summary?: unknown;
     situation?: unknown;
     complication?: unknown;
@@ -368,7 +356,8 @@ export async function generateStoryNarrative(
     pillars?: unknown;
     recommendations_intro?: unknown;
     caveats?: unknown;
-  } | null = null;
+  };
+  let raw: RawNarrative | null = null;
   let pillars: DeckPillar[] = [];
 
   const asText = (value: unknown, fallback: string) =>
@@ -492,24 +481,31 @@ export async function generateStoryNarrative(
 
     await logApiUsage(tenantId, runId, "story_narrative", response.usage);
 
-    const toolUse = response.content.find((block) => block.type === "tool_use");
-    if (!toolUse || toolUse.type !== "tool_use") {
-      if (attempt === MAX_PILLAR_ATTEMPTS) {
-        throw new Error("Claude did not return a structured narrative");
-      }
-      continue;
+    // Codex RR-F06: only a finished generation may replace the saved narrative. A cut-off one can
+    // carry well-shaped but unfinished prose; it, a refusal, a missing result or a missing required
+    // field throws here, before anything is written, so the previous narrative stays and the caller
+    // records the failure (story_narrative_error) for the Insights report section to show.
+    const what = "The report generation";
+    const input = finishedToolInput(response, "record_narrative", what);
+    // The narrative's contract (Codex batch12): the summary, situation, complication and governing
+    // thought are the report's content and must say something, so blank or whitespace-only text is a
+    // malformed result like a missing field; the question may be blank only when the project's
+    // decision statement stands in for it (as it does below); the recommendations intro and the
+    // caveats are optional and may be empty.
+    for (const field of ["executive_summary", "situation", "complication", "governing_thought"]) {
+      const v = input[field];
+      if (typeof v !== "string") throw new UnfinishedModelResultError("malformed", `${what} returned a result without ${field}, so nothing was saved. Try again.`);
+      if (!v.trim()) throw new UnfinishedModelResultError("malformed", `${what} returned an empty ${field}, so nothing was saved. Try again.`);
     }
-
-    raw = toolUse.input as {
-      executive_summary?: unknown;
-      situation?: unknown;
-      complication?: unknown;
-      question?: unknown;
-      governing_thought?: unknown;
-      pillars?: unknown;
-      recommendations_intro?: unknown;
-      caveats?: unknown;
-    };
+    for (const field of ["question", "recommendations_intro"]) {
+      if (typeof input[field] !== "string") throw new UnfinishedModelResultError("malformed", `${what} returned a result without ${field}, so nothing was saved. Try again.`);
+    }
+    if (!(input.question as string).trim() && !run.decision_statement?.trim())
+      throw new UnfinishedModelResultError("malformed", `${what} returned an empty question and the project has no decision statement to use, so nothing was saved. Try again.`);
+    for (const field of ["pillars", "caveats"]) {
+      if (!Array.isArray(input[field])) throw new UnfinishedModelResultError("malformed", `${what} returned a result without ${field}, so nothing was saved. Try again.`);
+    }
+    raw = input as RawNarrative;
 
     const rawPillars = Array.isArray(raw.pillars)
       ? (raw.pillars as RawPillar[])
@@ -679,7 +675,26 @@ export async function generateStoryNarrative(
     if (storeCheck) {
       await client.query("update deck_narratives set figure_check = $2 where run_id = $1", [runId, JSON.stringify(finalCheck)]);
     }
+    await recordNarrativeInputs(client, runId, writtenFor);
   });
 
   return narrative;
+}
+
+/**
+ * The latest failed generation that is newer than the saved narrative (Codex RR-F06): shown in the
+ * Insights report section whether or not an earlier narrative exists, so a failed regeneration is
+ * never mistaken for the report it left in place. Null when the latest attempt is the saved one.
+ */
+export async function latestNarrativeFailure(tenantId: string, runId: string): Promise<string | null> {
+  return withTenant(tenantId, async (client) => {
+    const r = await client.query<{ message: string | null }>(
+      `select coalesce(detail->>'message', 'The report generation failed.') as message from trace
+        where run_id = $1 and event = 'story_narrative_error'
+          and occurred_at > coalesce((select generated_at from deck_narratives where run_id = $1), '-infinity'::timestamptz)
+        order by occurred_at desc, id desc limit 1`,
+      [runId],
+    );
+    return r.rows[0]?.message ?? null;
+  });
 }

@@ -347,6 +347,35 @@ export function codeStability(
  */
 export const MIN_TURNS_TO_JUDGE = 10;
 
+export type HeadlineAgreement = {
+  /** Equal-weight average over eligible themes of consistent / usedTurns; null when no theme is eligible. */
+  value: number | null;
+  /** Themes that came up in MIN_TURNS_TO_JUDGE turns or more: the headline's denominator. */
+  eligible: number;
+  /** Themes that came up at least once but in fewer turns, left out of the headline. */
+  belowMinimum: number;
+};
+
+/**
+ * The stability headline (Codex STAB-F04, batch 61). Per theme: of the turns where the original or any
+ * other run gave the theme, the share where every run gave it; then the plain average over themes. It
+ * counts consistent positive codings only, so it is stricter than pairwise agreement or kappa, which
+ * also count turns every run left uncoded.
+ *
+ * Only themes with at least MIN_TURNS_TO_JUDGE turns count. When none has that many, there is no
+ * headline (value null). The minimum is never relaxed: it used to fall back to every used theme, so a
+ * theme seen in one turn could give a 100% headline while being marked too few to judge.
+ */
+export function headlineCodeAgreement(perCode: { used: number; consistent: number }[]): HeadlineAgreement {
+  const used = perCode.filter((u) => u.used > 0);
+  const eligible = used.filter((u) => u.used >= MIN_TURNS_TO_JUDGE);
+  return {
+    value: eligible.length === 0 ? null : eligible.reduce((a, u) => a + u.consistent / u.used, 0) / eligible.length,
+    eligible: eligible.length,
+    belowMinimum: used.length - eligible.length,
+  };
+}
+
 /**
  * Cohen's kappa for two yes/no codings of the same turns: agreement beyond
  * what the two coders' own rates of saying yes would produce by chance.
@@ -398,6 +427,35 @@ export function codeKappas(
       code,
       kappa: ks.length === 0 ? null : ks.reduce((x, y) => x + y, 0) / ks.length,
     });
+  }
+  return out;
+}
+
+/**
+ * Per code: pairwise agreement between runs (batch 61, Grant 28 October 2026). For every turn and every
+ * pair of runs (the original included), whether the two runs made the same yes/no decision on the code;
+ * the share of those comparisons that agree. Turns where neither run gave the code count as agreement,
+ * as in codeKappas, so this is the uncorrected companion of the kappa: the within-model analogue of
+ * intra-coder percentage agreement. `turns` holds, per turn, the codes each run gave, and must cover
+ * only complete, comparable decisions (the stability check leaves out incomplete passes). `comparisons`
+ * is the denominator: turns times run pairs.
+ */
+export function codePairwiseAgreement(
+  turns: number[][][],
+  codeCount: number,
+): { code: number; agreement: number | null; comparisons: number }[] {
+  const runCount = turns.reduce((m, t) => Math.max(m, t.length), 0);
+  const out: { code: number; agreement: number | null; comparisons: number }[] = [];
+  for (let code = 1; code <= codeCount; code++) {
+    let same = 0;
+    let comparisons = 0;
+    for (const t of turns)
+      for (let i = 0; i < runCount; i++)
+        for (let j = i + 1; j < runCount; j++) {
+          comparisons += 1;
+          if ((t[i] ?? []).includes(code) === (t[j] ?? []).includes(code)) same += 1;
+        }
+    out.push({ code, agreement: comparisons === 0 ? null : same / comparisons, comparisons });
   }
   return out;
 }

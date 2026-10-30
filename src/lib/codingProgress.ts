@@ -50,9 +50,40 @@ export function clearCodingLabel(documentId: string): void {
   pendingLabels.delete(documentId);
 }
 
+/**
+ * One "Code themes" run per transcript on this server (Codex IR-07, 2026-10-20). The claim covers the
+ * whole action, including the steps before the first model pass that have no bar of their own, and
+ * shows as "Preparing coding" so a page opened meanwhile sees the transcript as busy. Like the bars it
+ * is process memory: it stops a second start on the same server instance (a double click, a second
+ * tab, a remounted card), not on another instance of a multi-instance deployment, and it is cleared
+ * by a restart. An abandoned claim lapses with the bars, after STALE_AFTER_MS.
+ */
+const claims = (((globalThis as unknown as { __codingClaims?: Map<string, { runId: string; at: number }> }).__codingClaims ??= new Map()));
+
+/** True when this call now holds the transcript's run; false when another run already holds it. */
+export function claimCodingRun(runId: string, documentId: string): boolean {
+  const held = claims.get(documentId);
+  if (held && Date.now() - held.at <= STALE_AFTER_MS) return false;
+  claims.set(documentId, { runId, at: Date.now() });
+  return true;
+}
+
+export function releaseCodingRun(documentId: string): void {
+  claims.delete(documentId);
+}
+
 export function getRunCodingProgress(runId: string): CodingProgressView[] {
   const now = Date.now();
   const out: CodingProgressView[] = [];
+  for (const [id, c] of claims) {
+    if (now - c.at > STALE_AFTER_MS) {
+      claims.delete(id);
+      continue;
+    }
+    if (c.runId === runId && !entries.has(id)) {
+      out.push({ runId, documentId: id, label: "Preparing coding", done: 0, total: 1, startedAt: c.at, updatedAt: c.at, estimatedRemainingMs: null });
+    }
+  }
   for (const [id, e] of entries) {
     if (now - e.updatedAt > STALE_AFTER_MS) {
       entries.delete(id);

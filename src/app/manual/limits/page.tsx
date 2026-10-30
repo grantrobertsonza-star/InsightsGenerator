@@ -12,8 +12,9 @@ export default function LimitsPage() {
 
       <H2>Initial import exclusions</H2>
       <P>
-        SAS files and columns-as-cases workbooks with a separate Codebook declaring weights or
-        multiple-response sets are excluded pending verification. The latter combination is refused
+        Columns-as-cases workbooks with a separate Codebook declaring weights or multiple-response
+        sets are excluded pending verification; SAS value labels kept in a separate format catalog
+        (.sas7bcat) are not read, so SAS coded answers show as numbers. The workbook combination is refused
         before analytical results are produced. Re-export with one row per respondent, retain the
         Codebook definitions, upload again and verify the weight and multiple-response setup.
         Removing those definitions to bypass the check is not a supported recovery.
@@ -35,23 +36,24 @@ export default function LimitsPage() {
         today covers extraction, verification, insight generation, synthesis, and recommendations.
       </P>
 
-      <H2>No genuine stratified survey-design statistics, yet</H2>
+      <H2>Survey design is modelled only where you name it</H2>
       <P>
-        Every statistical check today, margin of error, significance tests, base-size flags, assumes a
-        simple random or quota sample. If your data actually comes from a stratified probability sample
-        with design weights, that detail isn&apos;t recovered: results are still computed and still
-        useful, but they&apos;re computed as though the simpler sampling assumption held, and tagged{" "}
-        <code>sampling_assumed_random</code> to say so. A genuine stratified-design statistical path is
-        scoped for later, not approximated now.
+        Cross tabs and the Net Promoter Score take a survey design into account when you name a PSU
+        (cluster) variable, and ideally a strata variable, for the data file: their variances use Taylor
+        series linearisation and the result is tagged <code>survey_design_modelled</code>. Without a named
+        design, and in the automatic scan of an aggregated table or a banner plan against raw data, every
+        check (margin of error, significance tests, base-size flags) assumes a simple random or quota
+        sample. Results are still computed and still useful, and they are tagged{" "}
+        <code>sampling_assumed_random</code> to say so.
       </P>
 
-      <H2>No automatic correction for testing many things at once</H2>
+      <H2>Correction for testing many things at once is not applied everywhere</H2>
       <P>
-        When several comparisons are tested together, whether in an exploratory scan of an aggregated
-        table or a banner plan against raw data, no statistical correction (like a Bonferroni adjustment)
-        is applied to account for the fact that testing more things increases the odds something looks
-        significant by chance. The risk is disclosed, via the{" "}
-        <code>uncorrected_multiple_comparisons</code> caveat, every time it applies, rather than
+        Cross tabs built in the app correct their column tests for the many comparisons in a table, with
+        a false discovery rate correction by default (the setting is under Table settings). The
+        automatic scan of an aggregated table and a banner plan against raw data apply no such
+        correction: the risk that testing more things makes something look significant by chance is
+        disclosed every time, via the <code>uncorrected_multiple_comparisons</code> caveat, rather than
         corrected away.
       </P>
 

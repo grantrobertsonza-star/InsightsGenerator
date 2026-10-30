@@ -1,3 +1,5 @@
+import { isBrowserNetworkErrorMessage } from "../../../components/connectionError";
+
 /**
  * Runs a server action from a client control and turns a failure into text the control can show.
  *
@@ -21,10 +23,10 @@
 export const CONNECTION_LOST_MESSAGE =
   "The connection to the server was interrupted, so this may not have been saved. Your changes are still here: check your connection and try again. Reloading the page shows what was saved.";
 
-const NETWORK_FAILURE = /^(Failed to fetch|NetworkError when attempting to fetch resource\.?|Load failed|fetch failed|Network request failed)$/i;
-
+// The wordings are shared with the Research assistant (components/connectionError.ts). Only a
+// TypeError counts here: a server error that happens to read "fetch failed" is the server's message.
 function isConnectionFailure(error: unknown): boolean {
-  return error instanceof TypeError && NETWORK_FAILURE.test(error.message.trim());
+  return error instanceof TypeError && isBrowserNetworkErrorMessage(error.message);
 }
 
 export function actionFailureMessage(error: unknown): string {
@@ -39,6 +41,24 @@ export function actionFailureMessage(error: unknown): string {
 export async function attempt(run: () => Promise<unknown>): Promise<string | null> {
   try {
     await run();
+    return null;
+  } catch (error) {
+    return actionFailureMessage(error);
+  }
+}
+
+/**
+ * Like attempt, for an action that can also refuse by returning `{ ok: false, error }` (an edit
+ * conflict, a duplicate objective): that refusal is a failure too, so the control keeps the draft
+ * and shows it. Never throws.
+ */
+export async function attemptResult(run: () => Promise<unknown>): Promise<string | null> {
+  try {
+    const result = await run();
+    if (result && typeof result === "object" && "ok" in result && (result as { ok: unknown }).ok === false) {
+      const error = (result as { error?: unknown }).error;
+      return typeof error === "string" && error ? error : "The server refused this. Try again.";
+    }
     return null;
   } catch (error) {
     return actionFailureMessage(error);

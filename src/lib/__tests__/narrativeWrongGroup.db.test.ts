@@ -11,7 +11,7 @@ import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type 
 const TENANT = "00000000-0000-4000-8000-0000000000d1";
 // soWhat is the pillar's "so what" for every draft; queue, when not empty, supplies one per attempt
 // first (the generator retries a draft whose figures are unsupported). prompts records each request.
-const model = vi.hoisted(() => ({ soWhat: "", queue: [] as string[], prompts: [] as string[] }));
+const model = vi.hoisted(() => ({ soWhat: "", queue: [] as string[], prompts: [] as string[], stop: "tool_use" as string, patch: null as null | ((input: Record<string, unknown>) => Record<string, unknown>) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/deckSlides", async () => await import("../deckSlides"));
@@ -42,14 +42,15 @@ vi.mock("../anthropic", () => ({
       create: vi.fn(async (req: { tool_choice?: { name?: string }; messages?: unknown }) => {
         model.prompts.push(JSON.stringify(req.messages ?? ""));
         const soWhat = model.queue.length > 0 ? model.queue.shift()! : model.soWhat;
+        const draft = (input: Record<string, unknown>) => (model.patch ? model.patch(input) : input);
         return {
-        stop_reason: "tool_use",
+        stop_reason: model.stop,
         usage: {},
         content: [
           {
             type: "tool_use",
             name: req.tool_choice?.name,
-            input: {
+            input: draft({
               executive_summary: "Leadership NPS is 25.",
               situation: "Leaders were surveyed.",
               complication: "Advocacy is modest.",
@@ -58,7 +59,7 @@ vi.mock("../anthropic", () => ({
               pillars: [{ theme: "Advocacy", headline: "Leadership NPS is 25.", so_what: soWhat, insight_indices: [0] }],
               recommendations_intro: "The actions follow.",
               caveats: ["Only one insight is available."],
-            },
+            }),
           },
         ],
         };
@@ -175,6 +176,125 @@ describe.skipIf(!TEST_DATABASE_URL)("narrative wrong-group grounding, generator 
     expect(model.prompts.length).toBe(3);
     expect(await stored(run)).toEqual(before);
     expect(await q(`select count(*)::int as n from deck_narratives where run_id = $1`, [run])).toEqual([{ n: 1 }]);
+  });
+
+  // Codex RR-F06: a cut-off, refused or malformed generation never replaces a complete saved report.
+  it("an unfinished or malformed generation leaves the saved narrative unchanged and is shown until a finished one", async () => {
+    const run = await one(`insert into runs (tenant_id, decision_statement, project_name) values ($1, 'Decide', 'Cut-off') returning id`, [TENANT]);
+    const f = await one(`insert into findings (tenant_id, run_id, origin, finding_text, status, theme) values ($1, $2, 'stated', 'Leadership NPS is 25 (base 200).', 'accepted', 'T') returning id`, [TENANT, run]);
+    await q(`insert into verdicts (tenant_id, finding_id, verdict_tier, rationale, statistical_checks, verification_method, corroboration_level, due_care) values ($1, $2, 'robust', 'Checked.', '{}', 'single_pass', 'single_source', '{}')`, [TENANT, f]);
+    const pi = await one(`insert into insights (tenant_id, run_id, finding_id, headline, observation, tension, implication) values ($1, $2, $3, 'Leadership NPS is 25', 'Leadership NPS is 25 (base 200).', 't', 'i') returning id`, [TENANT, run, f]);
+    const si = await one(
+      `insert into synthesized_insights (tenant_id, run_id, headline, observation, tension, implication, triangulation_count, source_theme_count, review_status, action_plan_status)
+       values ($1, $2, 'Leadership NPS is 25', 'Leadership NPS is 25 (base 200).', 't', 'i', 1, 1, 'accepted', 'has_action') returning id`,
+      [TENANT, run],
+    );
+    await q(`insert into synthesized_insight_sources (tenant_id, synthesized_insight_id, pre_insight_id) values ($1, $2, $3)`, [TENANT, si, pi]);
+    const { generateStoryNarrative, latestNarrativeFailure } = await import("../storyNarrative");
+    const summary = async () => (await q<{ executive_summary: string }>(`select executive_summary from deck_narratives where run_id = $1`, [run]))[0]?.executive_summary;
+    const recordFailure = (message: string) => q(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'story_narrative_error', $3)`, [TENANT, run, JSON.stringify({ message })]);
+
+    model.soWhat = "Leadership NPS is 25.";
+    model.stop = "tool_use";
+    model.patch = null;
+    await generateStoryNarrative(TENANT, run);
+    expect(await summary()).toBe("Leadership NPS is 25.");
+
+    try {
+      const cases: [string, string, ((i: Record<string, unknown>) => Record<string, unknown>) | null, RegExp][] = [
+        ["cut off", "max_tokens", (i) => ({ ...i, executive_summary: "Incomplete summary stopping mid" }), /cut off before it finished/],
+        ["refused", "refusal", null, /declined/],
+        ["no summary", "tool_use", (i) => { const { executive_summary: _drop, ...rest } = i; void _drop; return rest; }, /without executive_summary/],
+        ["pillars not a list", "tool_use", (i) => ({ ...i, pillars: "Advocacy" }), /without pillars/],
+        // Codex batch12: a finished but blank required section is malformed too.
+        ["a whitespace-only summary", "tool_use", (i) => ({ ...i, executive_summary: "   " }), /empty executive_summary/],
+        ["an empty situation", "tool_use", (i) => ({ ...i, situation: "" }), /empty situation/],
+      ];
+      for (const [label, stop, patch, message] of cases) {
+        model.stop = stop;
+        model.patch = patch;
+        const err = await generateStoryNarrative(TENANT, run).catch((e) => e);
+        expect(err?.message, label).toMatch(message);
+        expect(await summary(), label).toBe("Leadership NPS is 25.");
+        await recordFailure(err.message);
+        expect(await latestNarrativeFailure(TENANT, run), label).toBe(err.message);
+      }
+    } finally {
+      model.stop = "tool_use";
+      model.patch = null;
+    }
+    // A blank question is filled from the decision statement; with none, it is malformed.
+    model.patch = (i) => ({ ...i, question: " " });
+    try {
+      await generateStoryNarrative(TENANT, run);
+      expect((await q<{ question: string }>(`select question from deck_narratives where run_id = $1`, [run]))[0].question).toBe("Decide");
+      await q(`update runs set decision_statement = null where id = $1`, [run]);
+      await expect(generateStoryNarrative(TENANT, run)).rejects.toThrow(/empty question and the project has no decision statement/);
+      expect(await summary()).toBe("Leadership NPS is 25.");
+    } finally {
+      model.patch = null;
+      await q(`update runs set decision_statement = 'Decide' where id = $1`, [run]);
+    }
+    // A finished generation replaces it, and the shown failure goes.
+    model.patch = (i) => ({ ...i, executive_summary: "Leaders give an NPS of 25." });
+    try {
+      await generateStoryNarrative(TENANT, run);
+    } finally {
+      model.patch = null;
+    }
+    expect(await summary()).toBe("Leaders give an NPS of 25.");
+    expect(await latestNarrativeFailure(TENANT, run)).toBeNull();
+  });
+
+  // CE-3 (evidence chain): the saved narrative records what it was written for. Editing the business
+  // problem, accepting a new objective, or a new accepted insight qualifies it wherever it is read
+  // (before, the narrative read as current after any of them); regenerating clears it; a narrative saved
+  // before its inputs were recorded reads as not known to be current.
+  it("CE-3: a narrative written before the business problem, objectives or insights changed says so, and regenerating clears it", async () => {
+    model.soWhat = "Leadership NPS is 25.";
+    const run = await runWithInsight("Leadership NPS is 25 (95% interval 14.4 to 35.6, base 200).");
+    const { generateStoryNarrative } = await import("../storyNarrative");
+    const { narrativeFreshnessNote } = await import("../narrativeFreshness");
+    const note = async () => {
+      const client = await db.pool.connect();
+      try {
+        return await narrativeFreshnessNote(client, run);
+      } finally {
+        client.release();
+      }
+    };
+    await generateStoryNarrative(TENANT, run);
+    expect(await note()).toBeNull();
+    await q("update runs set business_problem = 'Members are leaving' where id = $1", [run]);
+    expect(await note()).toMatch(/^Written for an earlier version of the project: the business problem changed after this report narrative was generated/);
+    await q("insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status) values ($1, $2, 'Understand advocacy', 'r', 'researcher_authored', 'accepted')", [TENANT, run]);
+    expect(await note()).toMatch(/the business problem and the objectives changed/);
+    await generateStoryNarrative(TENANT, run);
+    expect(await note()).toBeNull();
+    await q("update deck_narratives set inputs = null where run_id = $1", [run]);
+    expect(await note()).toMatch(/^Not known to be current/);
+    // A malformed record is unknown too, never current.
+    await q(`update deck_narratives set inputs = '"broken"'::jsonb where run_id = $1`, [run]);
+    expect(await note()).toMatch(/^Not known to be current/);
+
+    // B37-F03 (Codex): before migration 0121 (no inputs column) an existing narrative was given no note,
+    // the same as current. It is unknown, naming the update; a project with no narrative still has none.
+    const bare = await runWithInsight("Leadership NPS is 25 (95% interval 14.4 to 35.6, base 200).");
+    await q("alter table deck_narratives rename column inputs to inputs_moved");
+    try {
+      expect(await note()).toMatch(/^Not known to be current: what this report narrative was written for cannot be checked until a database update \(migration 0121\)/);
+      const client = await db.pool.connect();
+      try {
+        expect(await narrativeFreshnessNote(client, bare)).toBeNull();
+      } finally {
+        client.release();
+      }
+    } finally {
+      await q("alter table deck_narratives rename column inputs_moved to inputs");
+    }
+    // Recovery: after the update, regenerating records the inputs and the note clears.
+    await generateStoryNarrative(TENANT, run);
+    expect(await note()).toBeNull();
   });
 });
 describe.skipIf(!!TEST_DATABASE_URL)("narrative wrong-group grounding, generator retry, rounding and invented ranges (real database)", () => { it.skip(DISPOSABLE_DB_SKIP_REASON, () => {}); });

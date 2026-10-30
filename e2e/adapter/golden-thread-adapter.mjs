@@ -16,6 +16,7 @@
 // - Limits are recorded on the test as annotations rather than passed over: see
 //   `note(...)` calls below.
 import { expect } from "@playwright/test";
+import { addFiles } from "../ui/helpers/addFiles.mjs";
 import JSZip from "jszip";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -34,7 +35,7 @@ const STEP_TIMEOUT = 180_000;
 // an export gets a longer wait, a failed export is reported at once with its HTTP status (see
 // exportFile), and the time taken is recorded on the test.
 const EXPORT_TIMEOUT = 600_000;
-const SECTION_NAMES = ["Findings", "Insights", "Recommendations", "Insights report", "Import data", "Analytics"];
+const SECTION_NAMES = ["Findings", "Insights", "Recommendations", "Insights report", "Import data", "Cross tabs", "Analytics"];
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const squash = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
@@ -70,23 +71,99 @@ export async function bind({ page, target, testInfo }) {
       .getByRole("button", { name: new RegExp(`^${escapeRegExp(name)}(\\s*\\d+)?$`) })
       .first()
       .click();
+    // Findings, Insights, Recommendations and the Insights report open on an overview (2026-10-21);
+    // the journeys work in the review list or the narrative.
+    const reviewTab = {
+      Findings: "findings-tab-review",
+      Insights: "insights-tab-review",
+      Recommendations: "rec-tab-review",
+      "Insights report": "report-tab-narrative",
+    }[name];
+    if (reviewTab) {
+      const tab = page.getByTestId(reviewTab).filter({ visible: true });
+      if (await tab.count()) await tab.first().click();
+    }
   }
 
   const findingCard = (finding) => page.locator(`[data-testid="finding-card"][data-finding-id="${finding.id}"]`);
   const insightCard = (insight) => page.locator(`[data-testid="synthesized-insight-card"][data-insight-id="${insight.id}"]`);
 
-  // Runs a click that triggers a Next.js server action and waits for that action's response.
-  // The cards update optimistically, so the visible state alone does not mean the change was
-  // stored; reloading before the response arrives can abort the save.
-  async function viaServerAction(click) {
-    const done = page.waitForResponse(
-      (r) => r.request().method() === "POST" && Boolean(r.request().headers()["next-action"]),
-      { timeout: STEP_TIMEOUT },
-    );
+  // Runs a click that triggers a Next.js server action and waits until that action's response has fully
+  // arrived. The cards update optimistically, so the visible state alone does not mean the change was
+  // stored, and reloading before the response arrives can read the page as it was before the save.
+  // Other server actions (section loads, progress reads) run at the same time, so the wait is tied to
+  // the action this click sends, recognised by `isClickedAction(request)` (Codex review of batches 54
+  // to 65: waiting for any action let a background read satisfy the wait while a rejection was still
+  // being written, and the reload showed the finding as accepted).
+  async function viaServerAction(click, isClickedAction) {
+    if (typeof isClickedAction !== "function") throw new Error("viaServerAction needs a test that recognises the clicked action");
+    const isIt = (request) => request.method() === "POST" && Boolean(request.headers()["next-action"]) && isClickedAction(request);
+    // "requestfinished" fires once the whole response body has arrived; "requestfailed" when that request never will.
+    // (Playwright's response.finished() did not settle for some streamed action responses, so it is not used.)
+    const done = new Promise((resolve, reject) => {
+      const stop = () => {
+        page.off("requestfinished", onFinished);
+        page.off("requestfailed", onFailed);
+        clearTimeout(timer);
+      };
+      const onFinished = (request) => {
+        if (!isIt(request)) return;
+        stop();
+        resolve(request);
+      };
+      // Next often aborts its own action request once it has read the result (seen on the disposable stack:
+      // "net::ERR_ABORTED" after a 200 response), so an aborted request whose response arrived counts as
+      // done. One aborted before any response is noted and the wait continues: the page may send it again,
+      // and the reload and its assertions decide what was stored.
+      const aborted = [];
+      const onFailed = async (request) => {
+        if (!isIt(request)) return;
+        if (await request.response()) {
+          stop();
+          resolve(request);
+        } else {
+          aborted.push(request.failure()?.errorText ?? "unknown");
+        }
+      };
+      const timer = setTimeout(() => {
+        stop();
+        reject(new Error(`The clicked server action did not finish in time${aborted.length ? ` (requests aborted before any response: ${aborted.join(", ")})` : ""}`));
+      }, STEP_TIMEOUT);
+      page.on("requestfinished", onFinished);
+      page.on("requestfailed", onFailed);
+    });
     await click();
-    const response = await done;
-    if (!response.ok()) throw new Error(`The server action answered HTTP ${response.status()}`);
+    const request = await done;
+    const response = await request.response();
+    if (!response || !response.ok()) throw new Error(`The server action answered HTTP ${response?.status() ?? "none"}`);
   }
+  // An action called with plain arguments sends them in its body as Next serialises them.
+  const withArguments = (...values) => (request) => {
+    const body = request.postData() ?? "";
+    return values.length > 0 && values.every((v) => v && body.includes(v));
+  };
+  // Every server action id the page has sent, so a click's own action can be told from the page's background reads.
+  const seenActionIds = new Set();
+  page.on("request", (r) => {
+    const id = r.headers()["next-action"];
+    if (id) seenActionIds.add(id);
+  });
+  // Run synthesis is a <form action> bound to the run: its request body is only the run id, which background
+  // reads also send, and React exposes no action id on the form. Its request is the first, after the click,
+  // with that body and an action id the page had not sent before; that id is remembered for later runs.
+  let synthesisActionId = null;
+  const synthesisSubmission = (runId) => {
+    const before = new Set(seenActionIds);
+    const body = JSON.stringify([runId]);
+    return (request) => {
+      const id = request.headers()["next-action"];
+      if ((request.postData() ?? "") !== body) return false;
+      if (synthesisActionId) return id === synthesisActionId;
+      if (before.has(id)) return false;
+      synthesisActionId = id;
+      return true;
+    };
+  };
 
   async function settle() {
     await page.waitForLoadState("networkidle", { timeout: STEP_TIMEOUT });
@@ -107,46 +184,48 @@ export async function bind({ page, target, testInfo }) {
   }
 
   async function upload(run, file, kind) {
-    const input = { table: "rawTableFiles", report: "reportFiles" }[kind];
-    if (!input) throw new Error(`Adapter upload kind must be "table" or "report", got "${kind}"`);
+    const type = { table: "Raw data", report: "Report", brief: "Brief", proposal: "Proposal" }[kind];
+    if (!type) throw new Error(`Adapter upload kind must be "table", "report", "brief" or "proposal", got "${kind}"`);
     await openSection("Import data");
     const name = path.basename(file);
-    const listed = page.getByRole("heading", { name: /^Your files \(\d+\)$/ });
-    const countNow = async () => ((await listed.count()) ? Number(/\((\d+)\)/.exec(await listed.first().innerText())[1]) : 0);
+    const countNow = () => page.getByTestId("source-row").count();
     const before = await countNow();
-    const form = page.locator("form", { has: page.locator(`input[name="${input}"]`) });
-    await form.locator(`input[name="${input}"]`).setInputFiles(file);
-    await form.getByRole("button", { name: "Upload", exact: true }).click();
-    // Done when the project lists one more file, under this name. The form's own message is not
-    // used: the first upload switches the page to its populated layout, which remounts the form.
-    // A rejected upload shows the form's error line instead, which stops the thread here.
-    const rejected = page.locator("form > div.border-danger");
+    await addFiles(page, file, type);
+    // Done when the project lists one more file, under this name. The panel's own message is not
+    // used: the first upload switches the page to its populated layout. A rejected upload shows
+    // the panel's error line instead, which stops the thread here.
+    const rejected = page.getByTestId("add-files-error");
     await expect
       .poll(async () => ((await rejected.count()) ? `rejected: ${squash(await rejected.first().innerText())}` : await countNow()), { timeout: STEP_TIMEOUT })
       .toBe(before + 1);
-    await expect(page.getByRole("paragraph").filter({ hasText: new RegExp(`^${escapeRegExp(name)}$`) }).first()).toBeAttached();
+    // The file name as its own text.
+    await expect(page.getByText(name, { exact: true }).first()).toBeAttached();
     await settle();
     run.files = [...(run.files ?? []), { kind, name: path.basename(file) }];
   }
 
+  // The first data file in the Import list, selected; its Data quality tab once the file is read, or
+  // its Preview tab, which holds the recovery notice when the stored preview cannot be verified.
   async function selectTableDocument() {
     await openSection("Import data");
-    const table = page.getByText(/\.(xlsx|xls|csv|sav)$/i).first();
-    await table.click();
+    await page.getByRole("button", { name: /^Select .*\.(xlsx|xls|csv|tsv|txt|sav|dta|sas7bdat|xpt|rds|rdata|rda|parquet)$/i }).first().click();
   }
 
+  /** The selected data file's Data quality tab panel. */
   function importQuality() {
-    // The data-quality block for the selected table document (a <details> group).
-    return page.locator("details", { has: page.locator(":scope > summary", { hasText: /^Data quality$/ }) }).first();
+    return page.getByRole("tabpanel", { name: "Data quality", exact: true });
   }
 
   async function expectReadyOrActionableRecovery() {
-    const block = importQuality();
-    if (!(await block.isVisible())) await selectTableDocument();
-    await expect(block).toBeVisible({ timeout: STEP_TIMEOUT });
-    if (!(await block.getAttribute("open"))) await block.locator(":scope > summary").click();
-    const ready = block.getByTestId("import-quality-table");
-    const recovery = block.getByTestId("import-preview-recovery");
+    await selectTableDocument();
+    const quality = page.getByRole("tab", { name: "Data quality", exact: true });
+    const preview = page.getByRole("tab", { name: "Preview", exact: true });
+    await expect(quality.or(preview).first()).toBeVisible({ timeout: STEP_TIMEOUT });
+    await expect.poll(async () => (await quality.count()) > 0 || (await page.getByTestId("import-preview-recovery").count()) > 0, { timeout: STEP_TIMEOUT }).toBe(true);
+    if (await quality.count()) await quality.click();
+    else await preview.click();
+    const ready = page.getByTestId("import-quality-table").filter({ visible: true });
+    const recovery = page.getByTestId("import-preview-recovery").filter({ visible: true });
     await expect(ready.or(recovery).first()).toBeVisible({ timeout: STEP_TIMEOUT });
     if (await recovery.isVisible()) {
       // A preview failure is the actionable path: it must say what to do, not be blank.
@@ -158,13 +237,21 @@ export async function bind({ page, target, testInfo }) {
   // ----- crosstab ---------------------------------------------------------------------------
 
   async function workspace() {
-    const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-    if (!(await dialog.isVisible())) {
-      await openSection("Analytics");
-      await page.getByRole("button", { name: /^Crosstabs/ }).click();
-    }
+    // Cross tabs opens straight into the workspace (2026-10-20), so there is no tile to click.
+    const dialog = page.getByTestId("crosstab-workspace").filter({ visible: true });
+    if (!(await dialog.isVisible())) await openSection("Cross tabs");
+    await showTab(dialog, "Build table");
     await expect(dialog.getByRole("button", { name: /Add table to set/ })).toBeVisible({ timeout: STEP_TIMEOUT });
     return dialog;
+  }
+
+  // The page's two tabs (2026-10-27): Build table holds the variable list and the choices, View tables
+  // the tables; adding a table switches to View tables by itself.
+  async function showTab(dialog, name) {
+    const tab = dialog.getByRole("tab", { name });
+    await expect(tab).toBeVisible({ timeout: STEP_TIMEOUT });
+    if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+    await expect(tab).toHaveAttribute("aria-selected", "true");
   }
 
   // Finds a variable's row by its exact name. The list hides some variable types until their
@@ -172,6 +259,7 @@ export async function bind({ page, target, testInfo }) {
   // listed under "Text answers"), so each filter is tried in turn and the one that held the
   // variable is recorded.
   async function pickVariable(dialog, name, axis, on = true) {
+    await showTab(dialog, "Build table");
     const search = dialog.getByPlaceholder("Search name or label");
     const filter = dialog.getByLabel("Variable type");
     const options = await filter.evaluate((s) => [...s.options].map((o) => o.value));
@@ -239,6 +327,7 @@ export async function bind({ page, target, testInfo }) {
   // all tables: a result can contain a nested descriptive-statistics table, which an earlier
   // "last matching table" selector picked instead of the result itself.
   async function resultTableFor(dialog, row, { hasText = null } = {}) {
+    await showTab(dialog, /^View tables \d+$/);
     const all = dialog.locator('table[data-testid="crosstab-result-table"]');
     let found = -1;
     await expect
@@ -440,15 +529,13 @@ export async function bind({ page, target, testInfo }) {
     const dialog = table.dialog;
     await dialog.getByRole("button", { name: /^Commit \d+ table/ }).click();
     await expect(dialog.getByText(/Committed \d+ table\(s\)\. [1-9]\d* finding\(s\) generated\./)).toBeVisible({ timeout: STEP_TIMEOUT });
-    await page.keyboard.press("Escape");
-    if (await dialog.isVisible()) await dialog.getByRole("button", { name: /^(Close|Done)$/ }).first().click();
     await page.reload({ waitUntil: "networkidle", timeout: STEP_TIMEOUT });
     await openSection("Findings");
     const card = page.getByTestId("finding-card").filter({ hasText: new RegExp(`On ${escapeRegExp(table.rowVariable)}, the most common answer`) });
     await expect(card).toHaveCount(1, { timeout: STEP_TIMEOUT });
     const finding = { id: await card.getAttribute("data-finding-id"), text: null };
     finding.text = squash(await findingCard(finding).locator("text=/the most common answer/").first().innerText());
-    await viaServerAction(() => findingCard(finding).getByRole("button", { name: "Accept", exact: true }).click());
+    await viaServerAction(() => findingCard(finding).getByRole("button", { name: "Accept", exact: true }).click(), withArguments(finding.id, "accepted"));
     await expect(findingCard(finding)).toHaveAttribute("data-review-status", "accepted", { timeout: STEP_TIMEOUT });
     // Confirm the stored state, not the optimistic one.
     await page.reload({ waitUntil: "networkidle", timeout: STEP_TIMEOUT });
@@ -463,7 +550,7 @@ export async function bind({ page, target, testInfo }) {
     const card = findingCard(finding);
     await card.getByRole("button", { name: "+ Add note", exact: true }).click();
     await card.getByRole("textbox").fill(text);
-    await viaServerAction(() => card.getByRole("button", { name: "Save", exact: true }).click());
+    await viaServerAction(() => card.getByRole("button", { name: "Save", exact: true }).click(), withArguments(finding.id));
     // The note shows at once; only a reload proves it was stored.
     await expect(findingResearcherNote(finding)).toContainText(text);
     await page.waitForLoadState("networkidle");
@@ -486,8 +573,9 @@ export async function bind({ page, target, testInfo }) {
     const wanted = run.independentEvidence ? 2 : 1;
     const accepted = page.locator('[data-testid="synthesized-insight-card"][data-review-status="accepted"]');
     for (let attempt = 0; attempt < 12 && ((await citing.count()) === 0 || (await accepted.count()) < wanted); attempt++) {
-      await page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).click();
-      await expect(page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ })).toBeEnabled({ timeout: STEP_TIMEOUT });
+      // Waits for the synthesis action itself: once it has insights the section shows its overview,
+      // so the button may no longer be on screen when it finishes.
+      await viaServerAction(() => page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).click(), synthesisSubmission(run.id));
       await page.reload({ waitUntil: "networkidle", timeout: STEP_TIMEOUT });
       await openSection("Insights");
       if ((await citing.count()) === 0) await page.waitForTimeout(5_000);
@@ -551,7 +639,7 @@ export async function bind({ page, target, testInfo }) {
 
   async function rejectFinding(finding) {
     await openSection("Findings");
-    await viaServerAction(() => findingCard(finding).getByRole("button", { name: "Reject", exact: true }).click());
+    await viaServerAction(() => findingCard(finding).getByRole("button", { name: "Reject", exact: true }).click(), withArguments(finding.id, "rejected"));
     await expect(findingCard(finding)).toHaveAttribute("data-review-status", "rejected", { timeout: STEP_TIMEOUT });
     await page.reload({ waitUntil: "networkidle", timeout: STEP_TIMEOUT });
     await openSection("Findings");

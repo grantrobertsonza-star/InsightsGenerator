@@ -17,7 +17,8 @@
 //      database): the browser reports it and the page stays (the links are downloads, not
 //      navigations); a retry gives one good file; no recommendation changed.
 import { expect, test } from "@playwright/test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
@@ -81,6 +82,7 @@ test("GT-007 main Recommendations list: native Excel and Slides exports agree wi
     const openRecommendations = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });
       await page.getByRole("button", { name: /^Recommendations(\s*\d+)?$/ }).first().click();
+      { const t = page.getByTestId("rec-tab-review"); if (await t.count()) await t.click(); } // the section opens on an overview
       await page.waitForTimeout(500);
     };
     await openRecommendations();
@@ -128,7 +130,9 @@ test("GT-007 main Recommendations list: native Excel and Slides exports agree wi
     const excel = (file) => XLSX.utils.sheet_to_json(XLSX.read(readFileSync(file), { type: "buffer" }).Sheets.Recommendations, { defval: "" });
     const slidesText = (file) => {
       const dir = path.dirname(file);
-      const conv = spawnSync("soffice", ["--headless", "--convert-to", "pdf", "--outdir", dir, file], { encoding: "utf8", timeout: 180_000 });
+      // A profile of its own (V-B36-02): never LibreOffice's shared default one.
+      const profile = pathToFileURL(mkdtempSync(path.join(tmpdir(), "lo-profile-"))).href;
+      const conv = spawnSync("soffice", [`-env:UserInstallation=${profile}`, "--headless", "--convert-to", "pdf", "--outdir", dir, file], { encoding: "utf8", timeout: 180_000 });
       expect(conv.status, conv.stderr).toBe(0);
       return squash(spawnSync("pdftotext", [file.replace(/\.pptx$/, ".pdf"), "-"], { encoding: "utf8" }).stdout);
     };

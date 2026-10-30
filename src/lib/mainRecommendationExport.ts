@@ -19,6 +19,7 @@
 import { withTenantRead } from "./db";
 import { recommendationDecisionContextAvailable, recommendationDecisionStateSql } from "./decisionContext";
 import { decisionsWrittenFor, decisionTag, type RecommendationDecisionRow } from "./recommendationQualification";
+import { loadRecommendationDecisions, servedDecisionsText, type ServedDecision } from "./recommendationDecisions";
 import { loadInsightSupportOrUnchecked } from "./supportStatus";
 import { SUPPORT_STATUS_LABEL, summariseSupport, type InsightSupport } from "./supportStatusShared";
 
@@ -45,10 +46,14 @@ export type MainRecommendationRow = RecommendationDecisionRow & {
   edited: boolean;
   evidence_headlines: string[];
   evidence_finding_ids: string[];
+  /** CE-2: the decisions it serves; undefined before migration 0120 (cannot be said). */
+  served_decisions?: ServedDecision[];
 };
 
 export type MainRecommendationExport = {
   run: { project_name: string | null; decision_statement: string | null; audience: string | null };
+  /** CE-2: false before migration 0120, when which decision a recommendation serves is not recorded. */
+  decisionsRecorded: boolean;
   scope: MainRecommendationScope;
   rows: MainRecommendationRow[];
   supportOf: (row: MainRecommendationRow) => InsightSupport;
@@ -79,7 +84,12 @@ export async function loadMainRecommendations(tenantId: string, runId: string, s
        order by si.quality_score desc nulls last, r.created_at, r.id`,
       [runId],
     );
-    return { run: run.rows[0], rows: rows.rows };
+    const served = await loadRecommendationDecisions(client, runId, rows.rows.map((r) => r.id));
+    return {
+      run: run.rows[0],
+      decisionsRecorded: served !== undefined,
+      rows: rows.rows.map((r) => (served ? { ...r, served_decisions: served.get(r.id) ?? [] } : r)),
+    };
   });
   if (!loaded) return null;
   const support = await loadInsightSupportOrUnchecked(tenantId, runId, Array.from(new Set(loaded.rows.map((r) => r.synthesized_insight_id))));
@@ -113,6 +123,7 @@ export function exportFields(row: MainRecommendationRow, support: InsightSupport
     ["Assumptions & risks", row.assumptions_and_risks],
     ["Alternatives considered", row.alternatives_considered],
     ["Decisions written for", decisionsWrittenFor(row)],
+    ["Decision served", servedDecisionsText(row.served_decisions, row.served_decisions !== undefined)],
     ["Support", supportText(support)],
     ["From insight", row.insight_headline],
     ["Insight review", cap(row.insight_review_status)],

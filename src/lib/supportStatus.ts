@@ -8,7 +8,24 @@
 // calculated table, that table's recorded design/corrections snapshots compared with the data
 // file's CURRENT settings - resolved with the same unchanged helpers the Findings table and the
 // cross-tab list already use (resolveCurrentDesignSnapshotStatus, loadVariableOverrides), so the
-// three cannot disagree about what "current settings" means.
+// three cannot disagree about what "current settings" means. For a finding read from a report
+// with a recorded quote, also whether that quote appears in the report's current stored text
+// (withQuoteGrounding, GT100-F02).
+//
+// Snapshot (Codex GTR-02): each loader reads its insight/link/finding rows, their quotes and the
+// report texts those quotes are checked against inside one REPEATABLE READ transaction
+// (withTenantRepeatableRead), so every statement sees the same committed state. Under READ
+// COMMITTED each statement took its own snapshot: a document deleted, or a quote and its text
+// replaced together, between the two reads produced a state belonging to neither version. The
+// per-data-file settings lookups in classifyRows run afterwards on their own connections, and the
+// two loaders (synthesized insights, pre-insights) are separate snapshots: an export that calls
+// several loaders is not one atomic read.
+//
+// Driver findings (GT1000-F01): a finding posted from a saved driver analysis is tied to its data
+// file (source_document_id, or for one posted before that was recorded its saved analysis's file)
+// and to its saved analysis. A missing analysis or file is no longer valid; the variable
+// corrections the result was calculated with are compared with the file's current ones, as a
+// calculated table's are (survey design does not enter a driver analysis); not recorded is unknown.
 //
 // Missing migration: detected with a catalog pre-check (no failing statement, so the read
 // transaction is never left aborted). Without 0096 every link is "not recorded" (unknown);
@@ -19,9 +36,25 @@
 // loadInsightSupportOrUnchecked, which turns a failed check into "unknown" WITH the error
 // attached - visible and qualified, never silently "current" and never an empty success.
 import type { PoolClient } from "pg";
-import { withTenantRead } from "./db";
+import { withTenantRepeatableRead } from "./db";
 import { designFreshnessStatus, resolveCurrentDesignSnapshotStatus } from "./crosstabs";
 import { loadVariableOverrides } from "./variableOverrides";
+import { quoteGroundingChecker } from "./quoteMatch";
+import { driverAnalysesPresent } from "./driverFindingSource";
+import { driverRequestVariables, parseDriverRequest } from "./driverRequest";
+
+/**
+ * R1000-01: the variables a driver finding's support depends on come from its saved analysis's
+ * checked request (driverRequestVariables), never from a list recorded with the finding, which a
+ * caller could have shortened. When the request cannot be read (the analysis table is absent, or the
+ * request no longer parses) the answer is null, which compares every correction of the data file:
+ * any change then reads as changed, never as current.
+ */
+function driverDependencyVariables(request: unknown): string[] | null {
+  if (request === null || request === undefined) return null;
+  const checked = parseDriverRequest(request);
+  return checked.ok ? driverRequestVariables(checked.request) : null;
+}
 import {
   classifyInsightSupport,
   correctionsFor,
@@ -46,7 +79,83 @@ type RawRow = {
   design_snapshot: SupportLinkRow["designSnapshot"];
   overrides_snapshot: unknown;
   saved_request: unknown;
+  table_method: string | null;
+  table_source: string | null;
+  table_label_reader: string | null;
+  /** Set for a quoted report finding (see withQuoteGrounding); absent otherwise. */
+  quote_document_id: string | null;
+  source_quote: string | null;
+  quote_grounding?: SupportLinkRow["quoteGrounding"];
+  /** GT1000-F01 (DRIVER_COLUMNS): whether the finding came from a saved driver analysis, and its lineage. */
+  is_driver: boolean | null;
+  driver_document_id: string | null;
+  driver_analysis_present: boolean | null;
+  driver_provenance: { overridesSnapshot?: unknown; variables?: unknown } | null;
+  /** R1000-01: the saved analysis's own request, the authority for which variables it used. */
+  driver_request?: unknown;
 };
+
+/**
+ * GT1000-F01: the driver-analysis lineage of each finding, and the join that supplies it. A driver
+ * finding's data file is its source_document_id or, posted before that was recorded, its saved
+ * analysis's file. When driver_analyses does not exist (0072 not applied) presence is unknown.
+ */
+function driverLineage(present: boolean): { columns: string; join: string } {
+  return present
+    ? {
+        columns: `f.pattern_type = 'driver' as is_driver,
+              case when f.pattern_type = 'driver' then coalesce(f.source_document_id, da.document_id) end as driver_document_id,
+              case when f.pattern_type = 'driver' then da.id is not null end as driver_analysis_present,
+              case when f.pattern_type = 'driver' then f.stated_stats->'provenance' end as driver_provenance,
+              case when f.pattern_type = 'driver' then da.request end as driver_request`,
+        join: `left join driver_analyses da on f.pattern_type = 'driver' and da.id::text = f.stated_stats->>'analysisId'`,
+      }
+    : {
+        columns: `f.pattern_type = 'driver' as is_driver,
+              case when f.pattern_type = 'driver' then f.source_document_id end as driver_document_id,
+              null::boolean as driver_analysis_present,
+              case when f.pattern_type = 'driver' then f.stated_stats->'provenance' end as driver_provenance,
+              null::jsonb as driver_request`,
+        join: "",
+      };
+}
+
+/**
+ * GT100-F02: whether each quoted report finding's quote still appears in its report's CURRENT
+ * stored text. A re-read keeps a reviewed finding (its id, wording and fingerprint) even when the
+ * new text no longer contains its quote, so the fingerprint cannot see this. Called with the
+ * loader's REPEATABLE READ client, so the text read here is the version the link rows were read
+ * from (GTR-02); each report's text is fetched and normalised once, with the same quote rule as
+ * extraction (quoteMatch). Read-only.
+ *
+ * A failed or partial re-read still stores the newly read text before the model is called
+ * (extractFindings), so the check is against what the report says now; a re-read whose text read
+ * itself fails stores nothing and changes nothing here. A text too short to judge (the same
+ * threshold extraction refuses below) is "unreadable": unknown, never missing and never present.
+ */
+async function withQuoteGrounding(client: PoolClient, rows: RawRow[]): Promise<RawRow[]> {
+  const documentIds = Array.from(
+    new Set(rows.filter((r) => r.quote_document_id && r.source_quote?.trim()).map((r) => r.quote_document_id as string)),
+  );
+  if (documentIds.length === 0) return rows;
+  const texts = await client.query<{ id: string; extracted_text: string | null }>(
+    "select id, extracted_text from documents where id = any($1::uuid[])",
+    [documentIds],
+  );
+  const checkers = new Map(texts.rows.map((d) => [d.id, quoteGroundingChecker(d.extracted_text)]));
+  return rows.map((r) => {
+    if (!r.quote_document_id || !r.source_quote?.trim()) return r;
+    // A document deleted from the run takes its findings with it in the same transaction, and both
+    // reads share one snapshot, so a finding whose document row is absent here is not a deletion
+    // seen half-way: the text could not be read for this check, so unknown, not missing.
+    const check = checkers.get(r.quote_document_id);
+    return { ...r, quote_grounding: check ? check(r.source_quote) : "unreadable" };
+  });
+}
+
+/** The columns withQuoteGrounding needs: only a finding read from a report's text, never a table's. */
+const QUOTE_COLUMNS = `case when f.origin = 'stated' and f.source_table_id is null then f.source_document_id else null end as quote_document_id,
+              case when f.origin = 'stated' and f.source_table_id is null then f.source_quote else null end as source_quote`;
 
 /** Key-order-independent JSON, for comparing two corrections maps read from jsonb. */
 function stableJson(value: unknown): string {
@@ -105,16 +214,16 @@ export type InsightSupportResult = {
 };
 
 /**
- * Support status for every synthesized insight in a run (or just `insightIds`). One read
- * transaction for the insight/link/finding rows; the per-data-file settings lookups use their
- * existing helpers. Throws on failure.
+ * Support status for every synthesized insight in a run (or just `insightIds`). One REPEATABLE READ
+ * snapshot for the insight/link/finding rows and the report texts behind their quotes; the
+ * per-data-file settings lookups use their existing helpers afterwards. Throws on failure.
  */
 export async function loadInsightSupport(
   tenantId: string,
   runId: string,
   insightIds?: string[],
 ): Promise<InsightSupportResult> {
-  const { rows, snapshotsAvailable } = await withTenantRead(tenantId, async (client) => {
+  const { rows, snapshotsAvailable } = await withTenantRepeatableRead(tenantId, async (client) => {
     const probe = await client.query<{ available: boolean }>(
       `select (
          exists (
@@ -125,27 +234,42 @@ export async function loadInsightSupport(
        ) as available`,
     );
     const available = probe.rows[0]?.available === true;
+    // EC10K-F03: a synthesized insight reframes its pre-insights' wording, so a link's drafted-from
+    // support is the support its pre-insight was drafted from (insights.support_snapshot, 0103). Links
+    // written before batch 64 stored the finding's fingerprint at synthesis time instead, which hid a
+    // correction made between drafting the pre-insight and synthesis ("Support current" around older
+    // wording); reading the pre-insight's snapshot first qualifies those existing insights too, without
+    // rewriting any stored row. A pre-insight that recorded none falls back to the link's own snapshot
+    // (written null from batch 64, so "not checked"; a legacy link keeps what it stored).
+    const draftedFrom = available && (await preInsightSupportSnapshotAvailable(client));
     const snapshotColumns = available
-      ? "s.support_snapshot, case when f.id is null then null else finding_support_parts(f.id) end as current_parts"
+      ? `${draftedFrom ? "coalesce(i.support_snapshot, s.support_snapshot)" : "s.support_snapshot"} as support_snapshot, case when f.id is null then null else finding_support_parts(f.id) end as current_parts`
       : "null::jsonb as support_snapshot, null::jsonb as current_parts";
     const filter = insightIds ? "and si.id = any($2::uuid[])" : "";
+    const driver = driverLineage(await driverAnalysesPresent(client));
     const result = await client.query<RawRow>(
       `select si.id as insight_id, si.triangulation_count,
               s.pre_insight_id as link_id,
               f.id as finding_id, f.status as finding_status, f.finding_text,
               ${snapshotColumns},
               case when dt.crosstab is not null then dt.document_id else null end as calculated_table_document_id,
-              dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request
+              dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request,
+              dt.crosstab->'notes'->>'methodVersion' as table_method,
+              dt.crosstab->'provenance'->>'sourceFile' as table_source,
+              dt.crosstab->'notes'->>'labelReader' as table_label_reader,
+              ${QUOTE_COLUMNS},
+              ${driver.columns}
        from synthesized_insights si
        left join synthesized_insight_sources s on s.synthesized_insight_id = si.id
        left join insights i on i.id = s.pre_insight_id
        left join findings f on f.id = i.finding_id
        left join document_tables dt on dt.id = f.source_table_id
+       ${driver.join}
        where si.run_id = $1 ${filter}
        order by si.id, s.pre_insight_id`,
       insightIds ? [runId, insightIds] : [runId],
     );
-    return { rows: result.rows, snapshotsAvailable: available };
+    return { rows: await withQuoteGrounding(client, result.rows), snapshotsAvailable: available };
   });
 
   return classifyRows(tenantId, runId, rows, snapshotsAvailable);
@@ -162,12 +286,23 @@ async function classifyRows(tenantId: string, runId: string, rows: RawRow[], sna
       findingId: r.finding_id,
       findingStatus: r.finding_status,
       findingText: r.finding_text,
+      quoteGrounding: r.quote_grounding ?? null,
       recorded: r.support_snapshot,
       current: r.current_parts,
       calculatedTableDocumentId: r.calculated_table_document_id,
       designSnapshot: r.design_snapshot ?? null,
       overridesSnapshot: r.overrides_snapshot ?? null,
+      tableMethod: r.table_method ?? null,
+      tableSource: { sourceFile: r.table_source ?? null, labelReader: r.table_label_reader ?? null },
       tableVariables: tableVariablesFromSavedRequest(r.saved_request),
+      driver: r.is_driver
+        ? {
+            documentId: r.driver_document_id,
+            analysisPresent: r.driver_analysis_present,
+            overridesSnapshot: r.driver_provenance?.overridesSnapshot ?? null,
+            variables: driverDependencyVariables(r.driver_request),
+          }
+        : null,
     };
     const list = byInsight.get(row.insightId);
     if (list) list.push(row);
@@ -175,7 +310,11 @@ async function classifyRows(tenantId: string, runId: string, rows: RawRow[], sna
   }
 
   const documentIds = Array.from(
-    new Set(rows.map((r) => r.calculated_table_document_id).filter((id): id is string => id !== null)),
+    new Set(
+      rows
+        .flatMap((r) => [r.calculated_table_document_id, r.is_driver ? r.driver_document_id : null])
+        .filter((id): id is string => id !== null),
+    ),
   );
   const settings = new Map<string, DocumentSettingsCheck>();
   await Promise.all(
@@ -240,26 +379,33 @@ export async function preInsightSupportSnapshotAvailable(client: PoolClient): Pr
  * Throws on failure; exports use loadPreInsightSupportOrUnchecked.
  */
 export async function loadPreInsightSupport(tenantId: string, runId: string, insightIds?: string[]): Promise<InsightSupportResult> {
-  const { rows, snapshotsAvailable } = await withTenantRead(tenantId, async (client) => {
+  const { rows, snapshotsAvailable } = await withTenantRepeatableRead(tenantId, async (client) => {
     const available = await preInsightSupportSnapshotAvailable(client);
     const snapshotColumns = available
       ? "i.support_snapshot, finding_support_parts(f.id) as current_parts"
       : "null::jsonb as support_snapshot, null::jsonb as current_parts";
     const filter = insightIds ? "and i.id = any($2::uuid[])" : "";
+    const driver = driverLineage(await driverAnalysesPresent(client));
     const result = await client.query<RawRow>(
       `select i.id as insight_id, 1 as triangulation_count, i.id as link_id,
               f.id as finding_id, f.status as finding_status, f.finding_text,
               ${snapshotColumns},
               case when dt.crosstab is not null then dt.document_id else null end as calculated_table_document_id,
-              dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request
+              dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request,
+              dt.crosstab->'notes'->>'methodVersion' as table_method,
+              dt.crosstab->'provenance'->>'sourceFile' as table_source,
+              dt.crosstab->'notes'->>'labelReader' as table_label_reader,
+              ${QUOTE_COLUMNS},
+              ${driver.columns}
        from insights i
        join findings f on f.id = i.finding_id
        left join document_tables dt on dt.id = f.source_table_id
+       ${driver.join}
        where i.run_id = $1 ${filter}
        order by i.id`,
       insightIds ? [runId, insightIds] : [runId],
     );
-    return { rows: result.rows, snapshotsAvailable: available };
+    return { rows: await withQuoteGrounding(client, result.rows), snapshotsAvailable: available };
   });
   return classifyRows(tenantId, runId, rows, snapshotsAvailable);
 }

@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
-import { crossTranscriptThemes, getCodingAnalysis } from "@/lib/codingAnalysis";
+import { codingExportBlocker, crossTranscriptThemes, getCodingAnalysis } from "@/lib/codingAnalysis";
 import { kappaBand } from "@/lib/qualAudit";
+import { getTranscriptSetups } from "@/lib/transcriptSetup";
 import {
   cooccurrence,
   themesByAttribute,
   usableAttributes,
 } from "@/lib/qualCrosstab";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
+import { SET_ASIDE_REASON } from "@/lib/setAsideNotes";
 
 type Cell = string | number | boolean | null;
 
@@ -35,11 +37,13 @@ export async function GET(
   if (context instanceof Response) return context;
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(TENANT_ID, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
   const data = await withTenant(TENANT_ID, async (client) => {
     const run = await client.query<{ project_name: string | null }>(
-      "select project_name from runs where id = $1",
-      [runId],
+      "select project_name from runs where id = $1 and tenant_id = $2",
+      [runId, TENANT_ID],
     );
     if (run.rows.length === 0) return null;
     const books = await client.query<{
@@ -111,6 +115,9 @@ export async function GET(
   }
 
   const analysis = await getCodingAnalysis(TENANT_ID, runId);
+  // This workbook carries the set-aside notes sheet, so it also refuses when those cannot be read.
+  const blocked = codingExportBlocker(analysis, { setAsideNotes: true });
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 503 });
   const fileName = new Map(data.docs.map((d) => [d.id, d.source_filename]));
   const num = (v: unknown) => (typeof v === "number" ? v : 0);
 
@@ -155,42 +162,55 @@ export async function GET(
     const st = analysis.get(b.document_id)?.stability;
     if (!st) continue;
     const name = fileName.get(b.document_id) ?? b.document_id;
+    // Batch 61: the qualification of how the result was made travels with every row of it.
+    const checkNote = st.check.recorded
+      ? `${st.check.complete} of ${st.check.requested} passes complete and compared with the model's original coding, same method` +
+        (st.check.excluded.length > 0
+          ? `; left out: ${st.check.excluded.map((e) => `pass ${e.pass} ${e.reason}`).join("; ")}`
+          : "") +
+        (st.check.againstCurrentOriginal ? "" : "; the codebook has been applied again since, so this describes the earlier coding")
+      : "Checked before completeness and method were recorded: an incomplete pass may count as no theme and the first run may include hand changes. Run the check again.";
     for (const c of st.perCode) {
       reliabilityRows.push([
         name,
         c.name,
         st.runs,
         c.usedTurns,
-        c.usedTurns === 0 ? null : c.consistent,
-        c.usedTurns === 0 ? null : Number((c.consistent / c.usedTurns).toFixed(3)),
+        c.pairwise === null ? null : Number(c.pairwise.toFixed(3)),
         c.kappa === null ? null : Number(c.kappa.toFixed(3)),
         kappaBand(c.kappa, c.tooFew),
-        c.tooFew ? "Came up in too few turns for the figures to mean much. Left out of the averages." : "",
+        c.usedTurns === 0 ? null : c.consistent,
+        c.usedTurns === 0 ? null : Number((c.consistent / c.usedTurns).toFixed(3)),
+        [c.tooFew ? "Came up in too few turns for the figures to mean much. Left out of the averages." : "", checkNote]
+          .filter(Boolean)
+          .join(" "),
       ]);
     }
     reliabilityRows.push([
       name,
-      "All themes (average, themes with 10 or more turns)",
+      `All themes (average over the ${st.eligibleCodes} with 10 or more turns; ${st.belowMinimumCodes} left out)`,
       st.runs,
       null,
-      null,
-      st.codeAgreement === null ? null : Number(st.codeAgreement.toFixed(3)),
+      st.pairwiseAverage === null ? null : Number(st.pairwiseAverage.toFixed(3)),
       st.kappaAverage === null ? null : Number(st.kappaAverage.toFixed(3)),
       kappaBand(st.kappaAverage, false),
-      "",
+      null,
+      st.codeAgreement === null ? null : Number(st.codeAgreement.toFixed(3)),
+      st.eligibleCodes === 0 ? `No theme came up in 10 or more turns, so there is no average. ${checkNote}` : checkNote,
     ]);
   }
   if (reliabilityRows.length > 0) {
-    reliabilityRows.push([null, null, null, null, null, null, null, null, null]);
+    reliabilityRows.push([null, null, null, null, null, null, null, null, null, null]);
     for (const line of [
       "How to read this table",
       "Runs: how many times the codebook was applied to the same turns, the original included.",
-      "Same in every run: of the turns the theme came up in, how many had it in every run. This is a strict test and falls as runs are added.",
+      "Pairwise agreement: for each pair of runs, the share of turns on which both made the same yes or no decision on the theme. With kappa, the lead measure of repeatability.",
+      "Same in every run: of the turns the theme came up in, how many had it in every run. It counts consistent positive codings only, so it is stricter than pairwise agreement and falls as runs are added.",
       "Kappa: agreement between runs after removing what chance alone would give, averaged over every pair of runs. 0.80 or above is usually read as strong, 0.60 to 0.79 as moderate, below 0.60 as weak.",
       "Read it theme by theme. A low overall figure does not mean all of the coding is unreliable: it is an average, and a few fuzzy themes can pull it down while the rest are solid. Report strong themes with confidence and weak ones as tentative.",
       "These figures show consistency, not correctness. Runs share the model's blind spots, so a theme can be consistent and still wrong. Agreement with a human coder on an audit sample is the check on that.",
     ])
-      reliabilityRows.push([line, null, null, null, null, null, null, null, null]);
+      reliabilityRows.push([line, null, null, null, null, null, null, null, null, null]);
   }
   const agreementRows: Cell[][] = [];
   const calibrationRows: Cell[][] = [];
@@ -200,6 +220,7 @@ export async function GET(
   const readingRows: Cell[][] = [];
   const qualityRows: Cell[][] = [];
   const verbatimRows: Cell[][] = [];
+  const setAsideRows: Cell[][] = [];
   const meaningRows: Cell[][] = [];
   const changeRows: Cell[][] = [];
   const attrCrossRows: Cell[][] = [];
@@ -356,6 +377,21 @@ export async function GET(
           vb.note || null,
         ]);
       }
+    }
+    // COD5K-F02: notes whose turn is gone or changed, wording verbatim, one row each, with the words of
+    // the turn they were written on when those were kept ("Not kept" otherwise). No author is stored.
+    for (const o of v.orphanNotes ?? []) {
+      setAsideRows.push([
+        file,
+        o.formerIndex + 1,
+        o.segmentTextHash ?? "Not recorded",
+        o.turnText ?? "Not kept",
+        o.note,
+        "Not recorded",
+        o.writtenAt,
+        o.setAsideAt ?? "Found on reading (not yet moved)",
+        SET_ASIDE_REASON[o.reason],
+      ]);
     }
     for (const c of v.codes) {
       const m = v.meaningChecks[c.id];
@@ -706,14 +742,15 @@ export async function GET(
           "Theme",
           "Runs",
           "Turns it came up in",
-          "Same in every run",
-          "Share same in every run",
+          "Pairwise agreement",
           "Kappa between runs",
           "Band",
+          "Same in every run",
+          "Share same in every run (stricter)",
           "Note",
         ],
         reliabilityRows,
-        [28, 44, 8, 14, 14, 14, 14, 22, 60],
+        [28, 44, 8, 14, 14, 14, 22, 14, 14, 60],
       ),
     );
   add(
@@ -778,6 +815,23 @@ export async function GET(
     ),
   );
   add("Respondents by theme", sheet(matrixHeaders, matrixOut));
+  // Each coded transcript's wave as recorded on Import (migration 0107), so a reader of this file
+  // knows which round each transcript is. Blank when none was given. Themes are not compared
+  // across waves here, and this sheet says so rather than implying it.
+  const setups = await getTranscriptSetups(TENANT_ID, runId);
+  add(
+    "Transcripts",
+    sheet(
+      ["Transcript", "Wave", "Accepted for coding", "Note"],
+      data.books.map((b, i) => [
+        fileName.get(b.document_id) ?? b.document_id,
+        setups.get(b.document_id)?.wave ?? "",
+        setups.get(b.document_id)?.confirmed ? "Yes" : "No",
+        i === 0 ? "Waves are recorded for reference; themes are not yet compared across waves." : "",
+      ]),
+      [40, 16, 18, 60],
+    ),
+  );
   add(
     "Negative cases",
     sheet(
@@ -845,6 +899,24 @@ export async function GET(
       ],
       verbatimRows,
       [28, 34, 18, 22, 8, 8, 100, 40, 12, 10, 28, 60],
+    ),
+  );
+  add(
+    "Set-aside notes",
+    sheet(
+      [
+        "Transcript",
+        "Turn written on",
+        "Turn text fingerprint (md5)",
+        "Turn text when written",
+        "Researcher note",
+        "Written by",
+        "Written at",
+        "Set aside at",
+        "Why set aside",
+      ],
+      setAsideRows,
+      [28, 10, 34, 16, 80, 14, 24, 24, 44],
     ),
   );
   add(

@@ -31,7 +31,7 @@ vi.mock("../anthropic", () => ({
     messages: {
       create: vi.fn(async (req: { tool_choice: { name: string } }) => {
         if (req.tool_choice.name === "record_clusters") {
-          return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", input: { clusters: model.clusters } }] };
+          return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "record_clusters", input: { clusters: model.clusters } }] };
         }
         return {
           stop_reason: "tool_use",
@@ -39,6 +39,7 @@ vi.mock("../anthropic", () => ({
           content: [
             {
               type: "tool_use",
+              name: "record_synthesized_insight",
               input: {
                 headline: "Drafted insight",
                 observation: "o",
@@ -83,8 +84,10 @@ describe.skipIf(!TEST_DATABASE_URL)("synthesis publication (real database)", () 
       [TENANT, run, tableId ? "generated" : "stated", `Finding ${order}`, theme, tableId, docId],
     );
     return one(
-      `insert into insights (tenant_id, run_id, finding_id, headline, observation, tension, implication, created_at)
-       values ($1, $2, $3, $4, 'o', 't', 'i', now() + make_interval(secs => $5)) returning id`,
+      // The pre-insight records its drafted-from support, as insightGenerator.ts does (0103); the link
+      // copies it (EC10K-F03, batch 64).
+      `insert into insights (tenant_id, run_id, finding_id, headline, observation, tension, implication, created_at, support_snapshot)
+       values ($1, $2, $3, $4, 'o', 't', 'i', now() + make_interval(secs => $5), finding_support_parts($3)) returning id`,
       [TENANT, run, f, `Pre-insight ${order}`, order],
     );
   };
@@ -98,7 +101,7 @@ describe.skipIf(!TEST_DATABASE_URL)("synthesis publication (real database)", () 
     q<{ synthesized_insight_id: string; pre_insight_id: string; snapshot_matches: boolean; has_snapshot: boolean }>(
       `select s.synthesized_insight_id, s.pre_insight_id,
               s.support_snapshot is not null as has_snapshot,
-              s.support_snapshot = finding_support_parts(pi.finding_id) as snapshot_matches
+              s.support_snapshot = pi.support_snapshot as snapshot_matches
        from synthesized_insight_sources s
        join synthesized_insights si on si.id = s.synthesized_insight_id
        join insights pi on pi.id = s.pre_insight_id
