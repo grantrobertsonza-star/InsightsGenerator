@@ -7,6 +7,8 @@ import { RUN_NOT_AVAILABLE, runAccessible } from "./runOwnership";
 import { loadBrandOverview, type BrandOverview } from "./trackerOverview";
 import { loadBrandMoments } from "./trackerMoments";
 import { loadBrandAssociations } from "./trackerAssociations";
+import { loadMomentProfile, type MomentProfile } from "./trackerMomentProfile";
+import { loadMomentReach, type MomentReach } from "./trackerMomentReach";
 import { loadBrandAdvertising } from "./trackerAdvertising";
 import { loadBrandAudience } from "./trackerAudience";
 import { loadCategoryOverview } from "./trackerCategory";
@@ -52,6 +54,28 @@ export async function loadBrandMomentsAction(runId: string, documentId: string):
   if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
   try {
     return { ok: true, moments: await loadBrandMoments(ctx.tenantId, runId, documentId) };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** Page 02's Moment profile view: each brand's moment recall among those aware of it (computed, nothing saved). */
+export async function loadMomentProfileAction(runId: string, documentId: string): Promise<{ ok: true; profile: MomentProfile } | Fail> {
+  const ctx = await requireRequestContext();
+  if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
+  try {
+    return { ok: true, profile: await loadMomentProfile(ctx.tenantId, runId, documentId) };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** Page 02's Moment reach card: how widely each brand is linked to the moments (computed, nothing saved). */
+export async function loadMomentReachAction(runId: string, documentId: string): Promise<{ ok: true; reach: MomentReach } | Fail> {
+  const ctx = await requireRequestContext();
+  if (!(await runAccessible(ctx.tenantId, runId))) return { ok: false, error: RUN_NOT_AVAILABLE };
+  try {
+    return { ok: true, reach: await loadMomentReach(ctx.tenantId, runId, documentId) };
   } catch (e) {
     return { ok: false, error: message(e) };
   }

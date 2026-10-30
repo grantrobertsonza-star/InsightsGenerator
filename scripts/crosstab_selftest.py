@@ -983,6 +983,15 @@ check("D2b: driver columns drop 6 = Don't know", [r[0] for r in _dc["x"]] == [1.
 check("D2b: the scale top is the declared 5, unchosen, never the non-answer 6", _sat.get("scaleTop") == 5.0 and _sat.get("scaleStated") is True and _sat["max"] == 4.0, str(_sat))
 _dn = psf.driver_columns(_wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3], "q": [1, 2, 4]}), 0, True)}), "n.xlsx", {"outcome": "y", "predictors": ["q"]})["predictors"][0]
 check("D2b: without an answer list the scale top is the highest answer, said so", _dn.get("scaleTop") == 4.0 and _dn.get("scaleStated") is False, str(_dn))
+# Codex T2-F01 (30 October 2026): each predictor carries its answer domain, so the performance measure is read from the
+# declared scale, not from the answers that happen to be present. Declared 1 to 5 (and 6 = Don't know) answered 1 to 4
+# and 6: domain 1 to 5, five codes, declared. Declared 0 to 10 answered only 0 and 1: domain 0 to 10, eleven codes.
+# Without an answer list: the observed answers, said so.
+check("T2-F01: declared domain keeps the unchosen 5 and drops 6 = Don't know", _sat.get("answerDomain") == {"source": "declared", "min": 1.0, "max": 5.0, "count": 5, "integers": True}, str(_sat.get("answerDomain")))
+_lab3 = pd.DataFrame({"variable": ["nps"] * 11, "label": ["Recommend"] * 11, "value": list(range(11)), "value_label": [str(i) for i in range(11)]})
+_d10 = psf.driver_columns(_wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3, 4], "nps": [0, 1, 0, 1]}), 0, True), "Labels": (_lab3, 0, True)}), "d10.xlsx", {"outcome": "y", "predictors": ["nps"]})["predictors"][0]
+check("T2-F01: a declared 0 to 10 scale answered only 0 and 1 keeps its eleven-point domain", _d10.get("answerDomain") == {"source": "declared", "min": 0.0, "max": 10.0, "count": 11, "integers": True} and _d10["max"] == 1.0, str(_d10))
+check("T2-F01: without an answer list the domain is the observed answers, said so", _dn.get("answerDomain") == {"source": "observed", "min": 1.0, "max": 4.0, "count": 3, "integers": True}, str(_dn.get("answerDomain")))
 
 # Decision 9 (29 October 2026): title rows above a CSV, TSV or Excel header. First part: up to 14 leading rows holding
 # at most one written value are set aside by detection. Second part: the researcher's header row (headerRowsSkipped,
@@ -1077,6 +1086,55 @@ _pad = psf.read_table(_title_book([["Respondents"], ["Wave 1"], ["id", "score"],
 check("decision 9: a zero-padded identifier below two title rows keeps its own padding", [r["id"] for r in _pad["rows"]] == ["0007", "0012"], str(_pad["rows"]))
 _pad3 = psf.read_table(_title_book([["Respondents"], ["Prepared by", "Acme"], ["id", "score"], [7, 5], [12, 6]], id_format="0000"), "pad3.xlsx", {"headerRowsSkipped": 2})
 check("decision 9: a zero-padded identifier below a chosen header row keeps its own padding", [r["id"] for r in _pad3["rows"]] == ["0007", "0012"], str(_pad3["rows"]))
+
+# ---- Moment reach (page 02, 30 October 2026): the "linkCount" row item, hand-computed. Six respondents, three links
+# (codes 1 = linked, 0 = not, 9 = don't know), weights 1, 2, 1, 1, 3, 2:
+#   r1 1,1,0 -> 2 | r2 0,0,0 -> 0 | r3 1,blank,1 -> partly answered, out | r4 blank x3 -> none answered, out
+#   r5 1,0,0 -> 1 | r6 1,1,9 -> don't know (excludeDk default) leaves the count unknown, out
+# Base r1, r2, r5: weights 1 + 2 + 3 = 6; links 2*1 + 0*2 + 1*3 = 5; mean 5/6; linkers r1, r5 (weight 4): 66.67%;
+# per linker 5/4. Unweighted: mean 3/3 = 1, share 2/3, per linker 3/2. Fewer than 10 in the base is suppressed, so the
+# file is repeated 5 times (30 respondents; the same means and shares, bases and counts x5).
+_lc = pd.DataFrame({
+    "l1": [1, 0, 1, None, 1, 1], "l2": [1, 0, None, None, 0, 1], "l3": [0, 0, 1, None, 0, 9], "wt": [1.0, 2.0, 1.0, 1.0, 3.0, 2.0],
+})
+_lc = pd.concat([_lc] * 5, ignore_index=True)
+_lc_path = os.path.join(tmp, "lc.sav")
+pyreadstat.write_sav(_lc, _lc_path, variable_value_labels={v: {1: "Yes", 0: "No", 9: "Don't know"} for v in ("l1", "l2", "l3")})
+_lc_b = open(_lc_path, "rb").read()
+_lc_item = [{"key": "x", "label": "X", "kind": "linkCount", "vars": ["l1", "l2", "l3"], "selectedCodes": ["1", "1", "1"]}]
+_lcw = psf.crosstab(_lc_b, "lc.sav", {"columnVars": [], "rowItems": _lc_item, "weightVar": "wt"})["questions"][0]["linkCount"]
+check("moment reach: weighted link count (blank, partly answered and don't know outside the base, counted apart)",
+      _lcw["n"] == 15 and abs(_lcw["w"] - 30) < 1e-9 and _lcw["noneValid"] == 5 and _lcw["partlyValid"] == 10 and _lcw["eligible"] == 30
+      and abs(_lcw["meanExact"] - 5 / 6) < 1e-12 and abs(_lcw["anyPctExact"] - 400 / 6) < 1e-9 and abs(_lcw["perLinkerExact"] - 5 / 4) < 1e-12
+      and abs(_lcw["linksExact"] - 25) < 1e-9 and _lcw["linkers"] == 10, json.dumps(_lcw))
+_lcu = psf.crosstab(_lc_b, "lc.sav", {"columnVars": [], "rowItems": _lc_item, "weightVar": None})["questions"][0]["linkCount"]
+check("moment reach: unweighted link count", abs(_lcu["meanExact"] - 1) < 1e-12 and abs(_lcu["anyPctExact"] - 200 / 3) < 1e-9 and abs(_lcu["perLinkerExact"] - 1.5) < 1e-12, json.dumps(_lcu))
+_lcs = psf.crosstab(_lc_b, "lc.sav", {"columnVars": [], "rowItems": [{**_lc_item[0], "selectedCodes": ["0", "0", "0"]}], "weightVar": "wt"})["questions"][0]["linkCount"]
+check("moment reach: the caller's selected codes decide what is counted (code 0 here)", abs(_lcs["meanExact"] - (1 * 1 + 3 * 2 + 2 * 3) / 6) < 1e-12, json.dumps(_lcs))
+_lc_small = psf.crosstab(_lc_b, "lc.sav", {"columnVars": [], "rowItems": _lc_item, "weightVar": "wt", "filters": [{"variable": "wt", "op": "between", "min": 3, "max": 3}]})["questions"][0]["linkCount"]
+check("moment reach: an unweighted base under 10 is suppressed, its base kept", _lc_small["n"] == 5 and _lc_small["meanExact"] is None and _lc_small["anyPctExact"] is None, json.dumps(_lc_small))
+try:
+    psf.crosstab(_lc_b, "lc.sav", {"columnVars": [], "rowItems": [{**_lc_item[0], "selectedCodes": ["1"]}], "weightVar": "wt"})
+    _lc_msg = "built"
+except ValueError as exc:
+    _lc_msg = str(exc)
+check("moment reach: a link count without one selected code per variable is refused", "one selected code per variable" in _lc_msg, _lc_msg)
+# A weighted share of 100% in a filtered table: the selected sum ran over the filtered-out zero weights, the base sum did
+# not, so the share came out a hair above 1 and the standard error's sqrt failed the whole table (30 October 2026).
+# The repro: the BMW pack's first 60 respondents, weighted, filtered to those aware of BMW; a link no aware respondent
+# gave makes the "No" answer 100%.
+_h60 = pd.read_csv(os.path.join(HERE, "..", "fixtures", "tracker-packs", "bmw_car", "wave1_first60.csv"), usecols=["weight", "aware_b08"] + [f"cep_c{c:02d}_b08" for c in range(1, 13)])
+_h_path = os.path.join(tmp, "h60.sav")
+pyreadstat.write_sav(_h60.astype(float), _h_path, variable_value_labels={f"cep_c{c:02d}_b08": {0: "No", 1: "Yes"} for c in range(1, 13)})
+_hb = open(_h_path, "rb").read()
+try:
+    _hq = psf.crosstab(_hb, "h60.sav", {"columnVars": [], "rowItems": [{"key": f"cep_c{c:02d}_b08", "label": "L", "vars": [f"cep_c{c:02d}_b08"]} for c in range(1, 13)],
+                                      "weightVar": "weight", "filters": [{"variable": "aware_b08", "op": "between", "min": 1, "max": 1}]})["questions"]
+    _hund_ok = any(r["total"].get("pct") == 100.0 for q in _hq for r in q["rows"] if not r.get("isBase"))
+    _hund_msg = "built, but no 100% answer (the repro no longer covers the case)"
+except ValueError as exc:
+    _hund_ok, _hund_msg = False, str(exc)
+check("a weighted 100% share in a filtered table is built (no math domain error)", _hund_ok, _hund_msg)
 
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

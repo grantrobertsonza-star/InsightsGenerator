@@ -551,8 +551,10 @@ export type CrosstabRowItem = {
   label: string;
   stem?: string;
   vars: string[];
-  kind?: SetKind | "nets";
+  kind?: SetKind | "nets" | "linkCount";
   nets?: CrosstabNet[];
+  /** kind "linkCount" only: each variable's selected code, in the order of `vars` (read by the caller's own rule). */
+  selectedCodes?: string[];
   /** Groups of answer categories added as NET rows under a single-choice question. */
   groups?: CrosstabGroup[];
 };
@@ -624,6 +626,19 @@ export type Correction = "none" | "bonferroni" | "fdr";
 export type CategoryList = { variable: string; label: string; categories: { label: string; n: number }[] };
 
 export type CellBase = { n: number; w: number; nEff: number };
+export type LinkCountSummary = {
+  eligible: number;
+  n: number;
+  w: number;
+  nEff: number;
+  noneValid: number;
+  partlyValid: number;
+  meanExact: number | null;
+  anyPctExact: number | null;
+  linkers: number;
+  perLinkerExact: number | null;
+  linksExact: number | null;
+};
 /**
  * The NET column of one banner variable for one row: everyone with a valid answer
  * to the question and to that banner variable. Never tested, so no p, flag or letter.
@@ -809,7 +824,12 @@ export type CrosstabResult = {
   /** Base of the NET column of each banner variable. Absent on tables saved before 9 October 2026. */
   nets?: { block: number; blockLabel: string; n: number; w: number; nEff: number }[];
   total: CellBase;
-  questions: { key: string; label: string; kind: "single" | "multi" | "numeric" | "grid"; rows: CrosstabRow[]; tableTests?: TableTest[]; /** Mean, spread and range of the codes of a coded single choice question. */ desc?: CrosstabDesc;
+  questions: { key: string; label: string; kind: "single" | "multi" | "numeric" | "grid" | "linkCount"; rows: CrosstabRow[];
+    /** kind "linkCount" (Moment reach, 30 October 2026): the total column's unrounded figures of the per-respondent
+     * count of selected links. Base: respondents (within the filters, with a usable weight) with a valid answer to
+     * every link; `noneValid` and `partlyValid` count those left out. Means and the share are null on an unweighted
+     * base under 10 (`perLinkerExact` on fewer than 10 linkers). */
+    linkCount?: LinkCountSummary; tableTests?: TableTest[]; /** Mean, spread and range of the codes of a coded single choice question. */ desc?: CrosstabDesc;
     /** ANA-NPS-003: present only when this question is an 11-point 0-10 NPS scale and a sampling
      * design was supplied. The actual Taylor-linearised standard error (percentage points) of the
      * promoters-minus-detractors contrast itself, computed server-side from the per-case d_i =

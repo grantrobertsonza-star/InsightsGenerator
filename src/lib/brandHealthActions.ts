@@ -8,7 +8,7 @@ import { findingProvenanceAvailable, recordHumanReview } from "./findingProvenan
 import { loadVariableDictionary, loadVariableDictionaryWithStatus } from "./crosstabs";
 import { defaultWeight } from "./starterTables";
 import { runDistributionAction, type ChartSeries } from "./chartActions";
-import { runNpsAction } from "./npsActions";
+import { runNpsAction, type NpsUnavailableSegment } from "./npsActions";
 import type { VariableInfo, VariableSet, VariableDictionary } from "./parseStatsFile";
 import { defaultMetricForScale, summarizeSeries, type CsmMetric } from "./csmMetrics";
 import {
@@ -85,6 +85,10 @@ export type BrandHealthMapping = {
   positioning: { xVar: string | null; yVar: string | null };
 };
 
+/** A brand group without an NPS: the group's respondents, its valid answers (both unweighted, from the NPS tool) and
+ * why there is no score. */
+export type LoyaltyUnavailable = { brand: string; groupN: number; validAnswers: number; reason: string };
+
 export type BrandHealthDashboard = {
   documentId: string;
   waveLabel: string | null;
@@ -151,7 +155,15 @@ export type BrandHealthDashboard = {
     }[];
   }[];
   attributes: BrandHealthScore[];
-  loyalty: { variable: string; label: string; byBrand: { brand: string; nps: number; promoters: number; detractors: number; n: number }[] } | null;
+  loyalty: {
+    variable: string;
+    label: string;
+    byBrand: { brand: string; nps: number; promoters: number; detractors: number; n: number }[];
+    /** Brand groups with no NPS (Codex BH-F02), each with the NPS tool's counts and the reason, shown as "Not shown"
+     * rows instead of disappearing. Never a score: a suppressed group stays unavailable. Absent on a dashboard built
+     * before 30 October 2026. */
+    unavailable?: LoyaltyUnavailable[];
+  } | null;
   moments: BrandHealthScore[];
   positioning: {
     xVariable: string;
@@ -233,20 +245,21 @@ export async function loadBrandSetMembersAction(
  */
 type BrandGroups =
   | { kind: "variable"; variable: string }
-  | { kind: "set"; setKey: string; setLabel: string; members: (BrandSetMember & { selected: string })[] };
+  | { kind: "set"; setKey: string; setLabel: string; members: (BrandSetMember & { selected: string; hasRespondents: boolean })[] };
 
 async function resolveBrandSetGroups(
   runId: string,
   documentId: string,
   dict: VariableDictionary,
   setKey: string,
-  weightVar: string | null,
 ): Promise<Extract<BrandGroups, { kind: "set" }> | { error: string }> {
   const resolved = brandSetMembers(dict, setKey);
   if (!resolved.ok) return { error: resolved.error };
-  const members: (BrandSetMember & { selected: string })[] = [];
+  const members: (BrandSetMember & { selected: string; hasRespondents: boolean })[] = [];
   for (const m of resolved.members) {
-    const res = await runDistributionAction(runId, documentId, m.variable, weightVar, null, "compute");
+    // Read unweighted: only the codes, their labels and whether anyone gave the selected code are needed here, and
+    // an unweighted share of exactly 0 means nobody gave it (a weighted one could also be zero weights).
+    const res = await runDistributionAction(runId, documentId, m.variable, null, null, "compute");
     if (!res.ok) return { error: `The brand set member ${m.variable} (${m.brand}) could not be read: ${res.error}` };
     const bars = res.result.series[0]?.bars ?? [];
     const codes = bars.map((b) => b.rawCode).filter((c): c is string => c !== undefined);
@@ -255,7 +268,11 @@ async function resolveBrandSetGroups(
     if (selected === null) {
       return { error: `Which answer of ${m.variable} (${m.brand}) means the brand was selected cannot be told from its answers, so its brand group cannot be formed.` };
     }
-    members.push({ ...m, selected });
+    // Codex BH-F02: a member nobody selected has an empty brand group. The engine refuses a banner with one group, so
+    // figures split by this member are not requested; the group is reported empty instead. A suppressed share (null)
+    // still has respondents.
+    const selectedBar = bars.find((b) => b.rawCode === selected);
+    members.push({ ...m, selected, hasRespondents: selectedBar !== undefined && selectedBar.share !== 0 });
   }
   return { kind: "set", setKey, setLabel: resolved.set.label || resolved.set.key, members };
 }
@@ -288,6 +305,10 @@ async function scoreByBrand(
   } else {
     byBrand = [];
     for (const m of groups.members) {
+      if (!m.hasRespondents) {
+        byBrand.push({ brand: m.brand, value: null, exact: null, n: 0 });
+        continue;
+      }
       const res = await runDistributionAction(runId, documentId, variable, weightVar, m.variable, "compute");
       if (!res.ok) return { error: res.error };
       const s = res.result.series.find((x) => x.code === m.selected);
@@ -375,29 +396,59 @@ async function scoreSource(
   return scoreByBrand(runId, documentId, source.variable, v?.label || fallbackLabel, metric, weightVar, groups);
 }
 
-/** NPS within each brand's group, through the NPS tool (runNpsAction), split the same way as scoreByBrand. */
+/** Why a brand group has no NPS, from the NPS tool's counts for that group (never from rounded shares). */
+function loyaltyUnavailableReason(u: Pick<NpsUnavailableSegment, "groupN" | "rawN" | "reason">): string {
+  if (u.groupN === 0) return "No respondents in this brand's group.";
+  if (u.reason === "suppressed") return `Suppressed for a small base: ${u.rawN} valid answer${u.rawN === 1 ? "" : "s"} in this brand's group.`;
+  if (u.rawN === 0) return `None of the ${u.groupN} respondents in this brand's group gave a valid answer.`;
+  return "The valid answers in this brand's group carry no weight.";
+}
+
+/**
+ * NPS within each brand's group, through the NPS tool (runNpsAction), split the same way as scoreByBrand. A group the
+ * NPS tool could not score (Codex BH-F02: too few valid answers, none, or no respondents in the group) is kept in
+ * `unavailable` with the tool's counts and the reason, never dropped and never given a score.
+ */
 async function loyaltyByBrand(
   runId: string,
   documentId: string,
   variable: string,
   weightVar: string | null,
   groups: BrandGroups,
-): Promise<{ byBrand: NonNullable<BrandHealthDashboard["loyalty"]>["byBrand"] } | { error: string }> {
+): Promise<{ byBrand: NonNullable<BrandHealthDashboard["loyalty"]>["byBrand"]; unavailable: LoyaltyUnavailable[] } | { error: string }> {
+  const unavailableRow = (brand: string, u: Pick<NpsUnavailableSegment, "groupN" | "rawN" | "reason">): LoyaltyUnavailable => ({
+    brand,
+    groupN: u.groupN,
+    validAnswers: u.rawN,
+    reason: loyaltyUnavailableReason(u),
+  });
   if (groups.kind === "variable") {
     const nps = await runNpsAction(runId, documentId, variable, weightVar, groups.variable);
     if (!nps.ok) return { error: nps.error };
-    return { byBrand: (nps.result.segments ?? []).map((s) => ({ brand: s.name, nps: s.nps, promoters: s.promoters, detractors: s.detractors, n: s.n })) };
+    return {
+      byBrand: (nps.result.segments ?? []).map((s) => ({ brand: s.name, nps: s.nps, promoters: s.promoters, detractors: s.detractors, n: s.n })),
+      unavailable: (nps.result.unavailableSegments ?? []).map((u) => unavailableRow(u.name, u)),
+    };
   }
   const byBrand: NonNullable<BrandHealthDashboard["loyalty"]>["byBrand"] = [];
+  const unavailable: LoyaltyUnavailable[] = [];
   for (const m of groups.members) {
+    if (!m.hasRespondents) {
+      unavailable.push(unavailableRow(m.brand, { groupN: 0, rawN: 0, reason: "no_valid_answers" }));
+      continue;
+    }
     const nps = await runNpsAction(runId, documentId, variable, weightVar, m.variable, undefined, "compute");
     if (!nps.ok) return { error: nps.error };
-    // A brand group the NPS tool could not score (no base, or a suppressed point) has no segment and is left
-    // out, as a brand variable's empty category is.
     const s = (nps.result.segments ?? []).find((x) => x.code === m.selected);
-    if (s) byBrand.push({ brand: m.brand, nps: s.nps, promoters: s.promoters, detractors: s.detractors, n: s.n });
+    if (s) {
+      byBrand.push({ brand: m.brand, nps: s.nps, promoters: s.promoters, detractors: s.detractors, n: s.n });
+      continue;
+    }
+    // The member's selected code has no banner column when nobody gave it: the group has no respondents.
+    const u = (nps.result.unavailableSegments ?? []).find((x) => x.code === m.selected) ?? { groupN: 0, rawN: 0, reason: "no_valid_answers" as const };
+    unavailable.push(unavailableRow(m.brand, u));
   }
-  return { byBrand };
+  return { byBrand, unavailable };
 }
 
 /**
@@ -452,7 +503,7 @@ export async function buildBrandHealthDashboardAction(
     let allBrands: string[];
     let ourBrand: string;
     if (mapping.brandSet) {
-      const resolved = await resolveBrandSetGroups(runId, documentId, dict, mapping.brandSet, weightVar);
+      const resolved = await resolveBrandSetGroups(runId, documentId, dict, mapping.brandSet);
       if ("error" in resolved) return { ok: false, error: resolved.error };
       groups = resolved;
       allBrands = resolved.members.map((m) => m.brand);
@@ -509,7 +560,7 @@ export async function buildBrandHealthDashboardAction(
       if ("error" in nps) {
         withheld.push({ figure: v?.label || mapping.loyaltyVar, reason: nps.error });
       } else {
-        loyalty = { variable: mapping.loyaltyVar, label: v?.label || mapping.loyaltyVar, byBrand: nps.byBrand };
+        loyalty = { variable: mapping.loyaltyVar, label: v?.label || mapping.loyaltyVar, byBrand: nps.byBrand, unavailable: nps.unavailable };
         if (brands.length === 0) brands = loyalty.byBrand.map((b) => b.brand);
       }
     }

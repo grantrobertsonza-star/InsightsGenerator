@@ -10,6 +10,8 @@ For each brand YY, with w the weight column (weighted) or 1 (unweighted):
   wom:     all eligible = every respondent; for each code c in 1..5: 100 * sum(w * (wom == c)) / sum(w);
            unaware = 100 * sum(w * wom blank) / sum(w); base = count of respondents;
            exclusive = (no respondent with aware_bYY == 1 and wom blank) and (none with aware_bYY == 0 and a wom answer)
+           unknown_aware = count of respondents whose aware_bYY is answered but neither 0 nor 1 (the pack codes awareness
+           0 Not selected, 1 Selected, so any other answer is neither aware nor unaware)
 
   python3 advertising_reference.py shares <file.sav|file.csv>
       -> JSON {weighted: {recall: {bYY: [yes, not_sure, base]}, wom: {bYY: {"1": share, ..., "unaware": share,
@@ -20,6 +22,8 @@ For each brand YY, with w the weight column (weighted) or 1 (unweighted):
                 first respondent unaware of Ford is given a Ford word of mouth answer (1), so Ford's groups are not
                 exclusive
       no_advertising: every wom_*, adprompt_* and adrecall_* column removed
+      aware_dk: the first three respondents unaware of Ford (aware_b03 0, no word of mouth answer) get awareness
+                code 99 (the test's codebook labels it Don't know, or leaves it unlabelled)
 """
 import json
 import sys
@@ -58,6 +62,7 @@ def shares(path):
                 g["base"] = int(len(df))
                 aware = df[f"aware_{b}"]
                 g["exclusive"] = bool(not ((aware == 1) & x.isna()).any() and not ((aware == 0) & x.notna()).any())
+                g["unknown_aware"] = int((aware.notna() & ~aware.isin([0, 1])).sum())
                 wom[b] = g
         out[kind] = {"recall": recall, "wom": wom}
     print(json.dumps(out))
@@ -68,6 +73,14 @@ def variant(src, dst, kind):
     if kind == "no_advertising":
         df.drop(columns=[c for c in df.columns if c.startswith(("wom_", "adprompt_", "adrecall_"))]).to_csv(dst, index=False)
         print(json.dumps({}))
+        return
+    if kind == "aware_dk":
+        rows = df.index[(df["aware_b03"] == 0) & df["wom_b03"].isna()][:3]
+        if len(rows) < 3:
+            raise SystemExit("the file has too few respondents unaware of Ford for this variant")
+        df.loc[rows, "aware_b03"] = 99
+        df.to_csv(dst, index=False)
+        print(json.dumps({"aware_dk": [int(i) for i in rows]}))
         return
     if kind != "boundary":
         raise SystemExit(f"unknown variant {kind}")

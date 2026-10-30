@@ -87,6 +87,8 @@ async function detectTablesAcrossPages(
         "of cell values in that same column order, using numbers where a cell is numeric and strings " +
         "otherwise. When a group row spans several columns above the column headers (a banner such as " +
         "Wave 1 over Yes and No), give each column's group in column_groups, in the same order. " +
+        "When a table runs on over more than one page, give the page it starts on as page_number and the last " +
+        "page it appears on among these pages as last_page_number. " +
         "Skip anything with fewer than 2 data rows. Do not summarize, reformat, or invent " +
         "values; the numbers in your rows must match what's on the page exactly, since a statistical " +
         "check runs against them afterward.",
@@ -103,7 +105,11 @@ async function detectTablesAcrossPages(
                 items: {
                   type: "object",
                   properties: {
-                    page_number: { type: "integer", description: "The page this table appears on." },
+                    page_number: { type: "integer", description: "The page this table appears on (where it starts)." },
+                    last_page_number: {
+                      type: "integer",
+                      description: "The last of these pages the table appears on, when it runs on past page_number.",
+                    },
                     label: {
                       type: "string",
                       description: "The table's caption or title, if the page has one.",

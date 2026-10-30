@@ -15,6 +15,7 @@
 // the figures are weighted. Nothing is saved here: no table, no finding.
 import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
+import { isNonAnswerLabel } from "./nonAnswerLabel";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
 import type { CrosstabResult, CrosstabRow } from "./parseStatsFile";
 import type { ResolvedDashboard } from "./trackerDashboard";
@@ -53,7 +54,7 @@ export type BrandOverviewFigures = {
 export function selectedCode(v: Pick<RoleVariable, "valueLabels">, observedCodes: string[]): string | null {
   const labels = v.valueLabels;
   if (labels && Object.keys(labels).length > 0) {
-    const yes = Object.entries(labels).filter(([, l]) => /^(selected|yes|mentioned|chosen|ticked|checked)\b/i.test(l.trim()));
+    const yes = Object.entries(labels).filter(([, l]) => SELECTED_LABEL.test(l.trim()));
     if (yes.length === 1) return yes[0][0];
     // No positive label (Codex D3A-F02): code 1 counts as selected only when the labels say what 0 is, as the
     // opposite of selected ("No", "Not selected", "Not mentioned"), leave 1 unlabelled, and the data holds no code
@@ -65,13 +66,63 @@ export function selectedCode(v: Pick<RoleVariable, "valueLabels">, observedCodes
       Object.keys(labels).length === 1 &&
       labels["0"] !== undefined &&
       labels["1"] === undefined &&
-      /^(no|not (selected|mentioned|chosen|ticked|checked))$/i.test(labels["0"].trim()) &&
+      NOT_SELECTED_LABEL.test(labels["0"].trim()) &&
       observedCodes.every((c) => c === "0" || c === "1")
     )
       return "1";
     return null;
   }
   return observedCodes.length > 0 && observedCodes.every((c) => c === "0" || c === "1") ? "1" : null;
+}
+
+/**
+ * An answer label that says "selected" ("Yes", "Selected", "Mentioned", ...). Awareness questions are often labelled
+ * "Aware" / "Not aware" or "Heard of" / "Never heard of" instead (Grant, 30 October 2026: aware and not aware make up
+ * everyone with a known answer), so those count too. Anchored at the start, so "Not aware" or "Don't know" never match.
+ */
+const SELECTED_LABEL = /^(selected|yes|mentioned|chosen|ticked|checked|aware|heard of)\b/i;
+
+/**
+ * An answer label that says "not selected": the opposite of selected ("No", "Not selected", "Not mentioned", and for
+ * awareness "Not aware", "Unaware", "Not heard of (it)", "Never heard of (it)"). Whole label only, so "Not applicable"
+ * or "No answer" stay unknown, never counted as not selected.
+ */
+const NOT_SELECTED_LABEL = /^(no|unaware|not (selected|mentioned|chosen|ticked|checked|aware)|(not|never) heard of( (it|this brand|the brand))?)$/i;
+
+/** Why an answer of a yes/no variable is neither its selected code nor an explicit not selected one. */
+export type UnknownAnswerKind = "non_answer" | "unlabelled" | "other_label";
+
+/**
+ * Every observed code of a yes/no variable sorted into selected (selectedCode), explicitly not selected, and unknown.
+ * Codex D3E-F01: "not the selected code" is not the same as "not selected". A code is not selected only when the
+ * answer list says so: its label is the opposite of selected (NOT_SELECTED_LABEL, the rule selectedCode already
+ * uses), or the variable has no labels and holds only 0 and 1 (0 is then not selected, as selectedCode reads 1 as
+ * selected). Every other code is unknown, never counted on either side: a non-answer label by the engine's rule
+ * (nonAnswerLabel.ts, don't know, refused, ...), a code the answer list does not label, or a label that is neither
+ * (for example "Maybe"). Null when the selected code itself cannot be told.
+ */
+export function answerSides(
+  v: Pick<RoleVariable, "valueLabels">,
+  observedCodes: string[],
+): { selected: string; notSelected: string[]; unknown: { code: string; kind: UnknownAnswerKind; label: string | null }[] } | null {
+  const selected = selectedCode(v, observedCodes);
+  if (selected === null) return null;
+  const labels = v.valueLabels && Object.keys(v.valueLabels).length > 0 ? v.valueLabels : null;
+  const notSelected: string[] = [];
+  const unknown: { code: string; kind: UnknownAnswerKind; label: string | null }[] = [];
+  for (const code of observedCodes) {
+    if (code === selected) continue;
+    if (!labels) {
+      // selectedCode reads an unlabelled variable only when it holds nothing but 0 and 1.
+      notSelected.push(code);
+      continue;
+    }
+    const label = labels[code]?.trim();
+    if (label === undefined || label === "") unknown.push({ code, kind: "unlabelled", label: null });
+    else if (NOT_SELECTED_LABEL.test(label)) notSelected.push(code);
+    else unknown.push({ code, kind: isNonAnswerLabel(label) ? "non_answer" : "other_label", label });
+  }
+  return { selected, notSelected, unknown };
 }
 
 /** The per-brand questions of one shape the dashboard maps to a stage (the recogniser's stage, or the researcher's

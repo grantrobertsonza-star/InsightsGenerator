@@ -14,6 +14,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from "react-dom";
 import { loadBrandAdvertisingAction, loadBrandAssociationsAction, loadBrandAudienceAction, loadCategoryOverviewAction, loadBrandMomentsAction, loadBrandOverviewAction, resetTrackerChoicesAction, saveTrackerChoicesAction } from "@/lib/trackerDashboardActions";
 import type { BrandMoments } from "@/lib/trackerMoments";
+import { MomentByBrandCard } from "./MomentProfileView";
+import { MomentReachCard } from "./MomentReachCard";
 import type { BrandAssociations } from "@/lib/trackerAssociations";
 import type { BrandAdvertising } from "@/lib/trackerAdvertising";
 import type { BrandAudience, ProfileRow } from "@/lib/trackerAudience";
@@ -851,15 +853,26 @@ export default function TrackerDashboardPanel({
                   </ol>
                 )}
               </Card>
-              <Card
-                title="Moment x brand recall"
-                subtitle={
+              {/* The moment by brand card: "Recall table" (below) or "Moment profile" (MomentProfileView.tsx). */}
+              <MomentByBrandCard
+                runId={runId}
+                documentId={documentId}
+                moments={m}
+                brands={dashboard.brands}
+                focal={focal?.code ?? null}
+                compared={columns}
+                frame={(subtitle, body) => (
+                  <Card title="Moment x brand recall" subtitle={subtitle} testId="tracker-moments-recall">
+                    {body}
+                  </Card>
+                )}
+                recallSubtitle={
                   m.recall.status === "ok"
                     ? `Cue-specific recall, not personal relevance. All eligible, ${nText(m.recall.rows.flatMap((r) => r.cells.filter((c) => columns.includes(c.code)).map((c) => c.base)))}. ${weighting}.`
                     : "Cue-specific recall, not personal relevance."
                 }
-                testId="tracker-moments-recall"
-              >
+                recallBody={
+                  <>
                 {comparatorPicker}
                 {m.recall.status !== "ok" ? (
                   <UnavailableNote state={m.recall} testId="tracker-moments-recall-unavailable" />
@@ -920,7 +933,21 @@ export default function TrackerDashboardPanel({
                     );
                   })()
                 )}
-              </Card>
+                  </>
+                }
+              />
+              <MomentReachCard
+                runId={runId}
+                documentId={documentId}
+                moments={m}
+                brands={dashboard.brands}
+                focal={focal?.code ?? null}
+                frame={(subtitle, body) => (
+                  <Card title="Moment reach" subtitle={subtitle} testId="tracker-moment-reach" className="xl:col-span-2">
+                    {body}
+                  </Card>
+                )}
+              />
             </div>
           )
         )}

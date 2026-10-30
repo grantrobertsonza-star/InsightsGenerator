@@ -65,6 +65,24 @@ export type BrandAssociations = {
     | Unavailable;
 };
 
+/**
+ * The awareness question each brand's aware base comes from (the one the dashboard maps as awareness, as page 01), or
+ * why it cannot be defined. `figures` names what is based on it, for the reason ("association", "moment profile").
+ * Never all respondents instead: without one awareness question the base is unknown.
+ */
+export function awarenessForBases(rec: TrackerRecognition, dashboard: ResolvedDashboard, figures: string): { status: "ok"; awareness: TrackerRecognition["measures"][number] } | Unavailable {
+  const { shown, unresolved } = overviewMeasures(rec, dashboard);
+  if (unresolved.includes("awareness"))
+    return { status: "mapping_needed", reason: `Two questions could be awareness, and each brand's ${figures} base is those aware of it. Choose the awareness question under Customise.` };
+  const awareness = shown.find((s) => s.stage === "awareness")?.measure;
+  if (!awareness)
+    return {
+      status: "mapping_needed",
+      reason: `No question is mapped as awareness, so the base of each brand's ${figures} figures (those aware of it) cannot be defined. Choose the awareness question under Customise.`,
+    };
+  return { status: "ok", awareness };
+}
+
 /** The associations grid and the awareness question the page needs, or why the page cannot be shown. */
 export function associationParts(
   rec: TrackerRecognition,
@@ -73,16 +91,8 @@ export function associationParts(
   const grid = rec.grids.find((g) => g.kind === "associations");
   if (!grid || grid.items.length === 0) return { status: "not_measured", reason: "This file has no brand association question (\"<brand> associated with <attribute>\")." };
   if (dashboard.brands.length === 0) return { status: "not_measured", reason: "No brand list was found in this file, so associations cannot be shown by brand." };
-  const { shown, unresolved } = overviewMeasures(rec, dashboard);
-  if (unresolved.includes("awareness"))
-    return { status: "mapping_needed", reason: "Two questions could be awareness, and each brand's association base is those aware of it. Choose the awareness question under Customise." };
-  const awareness = shown.find((s) => s.stage === "awareness")?.measure;
-  if (!awareness)
-    return {
-      status: "mapping_needed",
-      reason: "No question is mapped as awareness, so the base of each brand's associations (those aware of it) cannot be defined. Choose the awareness question under Customise.",
-    };
-  return { status: "ok", grid, awareness };
+  const aw = awarenessForBases(rec, dashboard, "association");
+  return aw.status === "ok" ? { status: "ok", grid, awareness: aw.awareness } : aw;
 }
 
 /**
@@ -105,16 +115,20 @@ export function awareBasesFromResult(result: CrosstabResult | null, awareness: T
   });
 }
 
-/** A brand's association cells, one per attribute of the grid, from that brand's aware-only table. Pure. */
+/**
+ * A brand's cells, one per item of a brand grid, from that brand's aware-only table. Pure. Used for the associations
+ * grid (page 03) and for the moments grid (page 02's Moment profile); `itemWord` names the grid's items in a reason.
+ */
 export function associationCellsFromResult(
   result: CrosstabResult | null,
   grid: BrandGrid,
   base: AwareBase,
   variables: Map<string, RoleVariable>,
+  itemWord: "attribute" | "moment" = "attribute",
 ): AssociationCell[] {
   return grid.items.map((it): AssociationCell => {
     const variable = it.byBrand.find((b) => b.code === base.code)?.variable;
-    if (!variable) return { code: base.code, variable: "", share: null, base: null, reason: "Not asked about this brand for this attribute." };
+    if (!variable) return { code: base.code, variable: "", share: null, base: null, reason: `Not asked about this brand for this ${itemWord}.` };
     if (base.reason) return { code: base.code, variable, share: null, base: null, reason: base.reason };
     if (base.n === 0) return { code: base.code, variable, share: null, base: 0, reason: "No respondent is aware of this brand." };
     if (!result) return { code: base.code, variable, share: null, base: null, reason: "No figures were calculated." };
@@ -124,6 +138,78 @@ export function associationCellsFromResult(
 
 /** How many brand tables are computed at once (each is one engine request). */
 const BRANDS_AT_ONCE = 4;
+
+/**
+ * The owner of the aware-base rule (D3d): each listed brand's aware base, and for each brand with someone aware one
+ * Cross tab of that brand's grid variables (`varsOf`) among the respondents aware of it. Used by page 03 (associations)
+ * and page 02's Moment profile, so both pages define "aware of X" the same way.
+ *   - One table of the awareness variables (all respondents) gives each brand's selected awareness code and the
+ *     unweighted count aware (`awareBasesFromResult`).
+ *   - Each brand table is restricted by an engine filter on the raw awareness code (from the code to itself), never
+ *     by an answer label, with the dashboard's weight (`weightVar`, null unweighted) and the file's survey design.
+ *   - `excludeDk` is the grid's own don't know rule (associations keep a don't know code in the base, the pack's
+ *     rule; the moments grid reads as the recall table does).
+ * Computed, not saved. Throws with the reason when the file's dictionary, set-up or a table cannot be read; the
+ * effective base of each brand's aware respondents is set from its table when weighted.
+ */
+export async function awareBrandTables(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  args: {
+    awareness: TrackerRecognition["measures"][number];
+    brands: { code: string }[];
+    variables: Map<string, RoleVariable>;
+    weightVar: string | null;
+    varsOf: (brandCode: string) => string[];
+    excludeDk: boolean;
+  },
+): Promise<{ bases: AwareBase[]; tables: Map<string, CrosstabResult> }> {
+  const { awareness, brands, variables, weightVar, varsOf, excludeDk } = args;
+  const brandCodes = new Set(brands.map((b) => b.code));
+  const awareVars = awareness.byBrand.filter((b) => brandCodes.has(b.code)).map((b) => b.variable);
+  let bases = awareBasesFromResult(null, awareness, brands, variables);
+  const tables = new Map<string, CrosstabResult>();
+  if (awareVars.length === 0) return { bases, tables };
+  const [dict, setup] = await Promise.all([loadVariableDictionaryWithStatus(tenantId, runId, documentId), loadDataSetupWithStatus(tenantId, documentId)]);
+  if (!dict.ok) throw new Error(`The data file's variables could not be read: ${dict.error}`);
+  if (!setup.ok) throw new Error(`The data file's set-up could not be read: ${setup.error}`);
+  const design = resolveSurveyDesign(dict.dictionary, effectiveDesignChoice(setup.setup.design, undefined)).design ?? undefined;
+  const labelOf = new Map(dict.dictionary.variables.map((v) => [v.name, v.label]));
+  const rowItems = (vars: string[]): CrosstabRequest["rowItems"] => vars.map((v) => ({ key: v, label: labelOf.get(v) || v, vars: [v] }));
+  // Computed, not saved (computeCrosstab): opening the page adds no table to the file.
+  const awareTable = (await computeCrosstab(tenantId, runId, documentId, { columnVars: [], rowItems: rowItems(awareVars), weightVar, design })).result;
+  bases = awareBasesFromResult(awareTable, awareness, brands, variables);
+  const todo = bases
+    .filter((b) => !b.reason && b.n !== null && b.n > 0)
+    .map((b) => ({ base: b, vars: varsOf(b.code) }))
+    .filter((t) => t.vars.length > 0);
+  for (let i = 0; i < todo.length; i += BRANDS_AT_ONCE) {
+    await Promise.all(
+      todo.slice(i, i + BRANDS_AT_ONCE).map(async ({ base, vars }) => {
+        const code = Number(base.awareCode);
+        const result = (
+          await computeCrosstab(tenantId, runId, documentId, {
+            columnVars: [],
+            rowItems: rowItems(vars),
+            weightVar,
+            design,
+            excludeDk,
+            // Aware of this brand, by the raw awareness code (from the code to itself), never by its label.
+            filters: [{ variable: base.variable!, op: "between", min: code, max: code }],
+          })
+        ).result;
+        tables.set(base.code, result);
+        base.effectiveBase = weightVar ? (result.total?.nEff ?? null) : null;
+      }),
+    );
+  }
+  return { bases, tables };
+}
+
+/** A brand grid's variables for one brand, in the grid's order (the items not asked about it left out). */
+export const gridVarsOf = (grid: BrandGrid, brandCode: string): string[] =>
+  grid.items.map((it) => it.byBrand.find((x) => x.code === brandCode)?.variable).filter((v): v is string => !!v);
 
 /**
  * The Brand associations page for one data file. Throws with the reason when the file's dictionary, set-up or a
@@ -138,47 +224,8 @@ export async function loadBrandAssociations(tenantId: string, runId: string, doc
   if (parts.status !== "ok") return { ...out, profile: parts };
   const { grid, awareness } = parts;
   const variables = new Map(input.variables.map((v) => [v.name, v]));
-  const brandCodes = new Set(dashboard.brands.map((b) => b.code));
-  const awareVars = awareness.byBrand.filter((b) => brandCodes.has(b.code)).map((b) => b.variable);
-
-  let bases = awareBasesFromResult(null, awareness, dashboard.brands, variables);
-  const tables = new Map<string, CrosstabResult>();
-  if (awareVars.length > 0) {
-    const [dict, setup] = await Promise.all([loadVariableDictionaryWithStatus(tenantId, runId, documentId), loadDataSetupWithStatus(tenantId, documentId)]);
-    if (!dict.ok) throw new Error(`The data file's variables could not be read: ${dict.error}`);
-    if (!setup.ok) throw new Error(`The data file's set-up could not be read: ${setup.error}`);
-    const design = resolveSurveyDesign(dict.dictionary, effectiveDesignChoice(setup.setup.design, undefined)).design ?? undefined;
-    const labelOf = new Map(dict.dictionary.variables.map((v) => [v.name, v.label]));
-    const rowItems = (vars: string[]): CrosstabRequest["rowItems"] => vars.map((v) => ({ key: v, label: labelOf.get(v) || v, vars: [v] }));
-    // Computed, not saved (computeCrosstab): opening the page adds no table to the file.
-    const awareTable = (await computeCrosstab(tenantId, runId, documentId, { columnVars: [], rowItems: rowItems(awareVars), weightVar, design })).result;
-    bases = awareBasesFromResult(awareTable, awareness, dashboard.brands, variables);
-    const todo = bases
-      .filter((b) => !b.reason && b.n !== null && b.n > 0)
-      .map((b) => ({ base: b, vars: grid.items.map((it) => it.byBrand.find((x) => x.code === b.code)?.variable).filter((v): v is string => !!v) }))
-      .filter((t) => t.vars.length > 0);
-    for (let i = 0; i < todo.length; i += BRANDS_AT_ONCE) {
-      await Promise.all(
-        todo.slice(i, i + BRANDS_AT_ONCE).map(async ({ base, vars }) => {
-          const code = Number(base.awareCode);
-          const result = (
-            await computeCrosstab(tenantId, runId, documentId, {
-              columnVars: [],
-              rowItems: rowItems(vars),
-              weightVar,
-              design,
-              // Don't know stays in the base (the pack's rule); blanks and declared missing values stay outside.
-              excludeDk: false,
-              // Aware of this brand, by the raw awareness code (from the code to itself), never by its label.
-              filters: [{ variable: base.variable!, op: "between", min: code, max: code }],
-            })
-          ).result;
-          tables.set(base.code, result);
-          base.effectiveBase = weightVar ? (result.total?.nEff ?? null) : null;
-        }),
-      );
-    }
-  }
+  // Don't know stays in the base (the pack's rule); blanks and declared missing values stay outside.
+  const { bases, tables } = await awareBrandTables(tenantId, runId, documentId, { awareness, brands: dashboard.brands, variables, weightVar, varsOf: (code) => gridVarsOf(grid, code), excludeDk: false });
   const attributes = grid.items.map((it) => ({ group: it.group, item: it.item, cells: [] as AssociationCell[] }));
   for (const base of bases) {
     const cells = associationCellsFromResult(tables.get(base.code) ?? null, grid, base, variables);

@@ -1,0 +1,35 @@
+{
+ "cookies": [
+  {
+   "name": "ie-access",
+   "value": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiI0NzhhOTJhYi1hOGZmLTRhM2MtYmZhMy1kMDVkZTZkMTMyNGEiLCJleHAiOjE3OTMzNjM3MjYsImVtYWlsIjoicmVzZWFyY2hlckBlMmUudGVzdCJ9.af5b4601ee1f4bd2e07fc3be62c84cee",
+   "domain": "127.0.0.1",
+   "path": "/",
+   "expires": -1,
+   "httpOnly": true,
+   "secure": false,
+   "sameSite": "Lax"
+  },
+  {
+   "name": "ie-refresh",
+   "value": "bd310cb137f88eb97265e5cbaa2b6a52031124cbbff7d412",
+   "domain": "127.0.0.1",
+   "path": "/",
+   "expires": -1,
+   "httpOnly": true,
+   "secure": false,
+   "sameSite": "Lax"
+  },
+  {
+   "name": "ie-organisation",
+   "value": "4c86a89a-d688-4965-b6f2-464590487f1a",
+   "domain": "127.0.0.1",
+   "path": "/",
+   "expires": -1,
+   "httpOnly": true,
+   "secure": false,
+   "sameSite": "Lax"
+  }
+ ],
+ "origins": []
+}

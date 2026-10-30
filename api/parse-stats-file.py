@@ -4963,10 +4963,20 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         # D3AR-F01): with an answer list, the highest declared substantive answer or observed answer, so a declared
         # top nobody chose still counts and a non-answer (6 = Don't know) never does; without one, the highest answer
         # observed, said so (scaleStated false).
-        declared = [float(n) for n in (_num_or_none(k) for k in vl.keys()) if n is not None and float(n) not in non_answers(var)]
+        excluded = non_answers(var)
+        declared = [float(n) for n in (_num_or_none(k) for k in vl.keys()) if n is not None and float(n) not in excluded]
         top = max(declared + [float(finite.max())]) if declared else float(finite.max())
+        # The answer domain (claude/answer-domain.md; Codex T2-F01): with an answer list, every declared substantive
+        # code (non-answers left out by _non_answer_codes, as above) together with every observed answer, so a scale
+        # point nobody chose still sets the scale's range and length; without one, the observed answers only, said so
+        # (source "observed"). Summarised (range, number of codes, whole numbers) rather than listed, since a long
+        # numeric variable can have thousands of codes. driverPerformance.ts reads the performance measure from it.
+        domain = sorted(set(declared) | set(codes)) if declared else codes
+        answer_domain = {"source": "declared" if declared else "observed", "min": domain[0], "max": domain[-1],
+                         "count": len(domain), "integers": all(float(c).is_integer() for c in domain)}
         return {"name": var, "label": labels.get(var) or var, "min": float(finite.min()), "max": float(finite.max()),
-                "distinct": len(codes), "valueLabels": shown, "scaleTop": top, "scaleStated": bool(declared)}
+                "distinct": len(codes), "valueLabels": shown, "scaleTop": top, "scaleStated": bool(declared),
+                "answerDomain": answer_domain}
 
     skipped = []
     y_arr, why = numeric(outcome)
@@ -5669,7 +5679,11 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 yk = (sel_mask & vm).astype(float)
                 tk = dsg.totals(np.where(vm, wv * (yk - pj) / sw, 0.0))
             if not math.isnan(pj) and n >= MIN_BASE_SUPPRESS and n_eff > 0:
-                se_k = math.sqrt(dsg.var_totals(tk)) if (dsg is not None and tk is not None) else math.sqrt(pj * (1 - pj) / n_eff)
+                # max(.., 0): a share where every valid case gave this answer can come out a hair above 1 (the selected
+                # sum runs over zero weights of filtered-out cases, the base sum does not, so floating-point rounding
+                # differs), and sqrt of the tiny negative variance failed the whole table (found 30 October 2026 on a
+                # weighted table filtered to one brand's aware respondents). _pooled_prop_se has the same guard.
+                se_k = math.sqrt(dsg.var_totals(tk)) if (dsg is not None and tk is not None) else math.sqrt(max(pj * (1 - pj), 0.0) / n_eff)
                 ses.append(round(se_k * 100, 2))
                 ses_exact.append(se_k * 100)
             else:
@@ -6097,6 +6111,74 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             if rows:
                 questions.append({"key": it["key"], "label": it["label"], "kind": "grid",
                                   "rows": base_rows("Base: answered any of these items", base_src(grid_valid)) + rows})
+            continue
+        if it.get("kind") == "linkCount":
+            # Moment reach (page 02 of the brand tracking dashboard, 30 October 2026): per respondent, how many of
+            # these yes/no links they selected (e.g. one brand's links to every moment). The caller gives each
+            # variable's selected code (`selectedCodes`, read by its own rule), so "selected" is never guessed here.
+            # A respondent is in the base only with a valid answer to EVERY link: a blank, a declared missing value,
+            # or (with excludeDk, the default) a don't know code leaves the count unknown, and an unknown link is
+            # never counted as not linked. Those left out are counted apart: no valid link at all, or some.
+            # Figures (total, unrounded, in `linkCount`): the weighted mean count (moments per person), the weighted
+            # share with a count of 1 or more, the weighted mean count among them, and the weighted sum of counts
+            # (links); a mean or share on an unweighted base under MIN_BASE_SUPPRESS is None.
+            codes = it.get("selectedCodes") or []
+            if len(codes) != len(vars_) or not vars_:
+                raise ValueError(f'The link count "{it.get("label") or it["key"]}" needs one selected code per variable.')
+            complete = np.ones(n_rows, dtype=bool)
+            any_valid = np.zeros(n_rows, dtype=bool)
+            count = np.zeros(n_rows, dtype=float)
+            for ov, code in zip(vars_, codes):
+                col = df[ov]
+                xs = pd.to_numeric(col, errors="coerce")
+                try:
+                    code_num = float(code)
+                except (TypeError, ValueError):
+                    code_num = None
+                valid = col.notna().to_numpy().copy()
+                xs_num = xs.to_numpy(dtype=float)
+                col_text = col.astype(str).to_numpy()
+                for na in _non_answer_codes(vlabels.get(ov), (getattr(meta, "missing_ranges", None) or {}).get(ov), exclude_dk):
+                    try:
+                        valid &= xs_num != float(na)
+                    except (TypeError, ValueError):
+                        valid &= col_text != str(na)
+                sel = (xs_num == code_num) if code_num is not None else (col_text == str(code))
+                sel = sel & valid
+                complete &= valid
+                any_valid |= valid
+                count += sel.astype(float)
+            base_mask = complete & w_ok
+            n_base, w_base, ne_base = base_stats(complete)
+            linkers = base_mask & (count >= 1)
+            n_link, w_link, _ = base_stats(linkers)
+            links = float((wv[base_mask] * count[base_mask]).sum())
+            ok = n_base >= MIN_BASE_SUPPRESS and w_base > 0
+            summary = {
+                "eligible": int(w_ok.sum()),
+                "n": n_base, "w": w_base, "nEff": ne_base,
+                "noneValid": int((w_ok & ~any_valid).sum()),
+                "partlyValid": int((w_ok & any_valid & ~complete).sum()),
+                "meanExact": (links / w_base) if ok else None,
+                "anyPctExact": (w_link / w_base * 100) if ok else None,
+                "linkers": n_link,
+                "perLinkerExact": (links / w_link) if (n_link >= MIN_BASE_SUPPRESS and w_link > 0) else None,
+                "linksExact": links if w_base > 0 else None,
+            }
+            rows = base_rows("Base: answered every one of these links", base_src(complete))
+            mrow = mean_row(None, x_in=count, valid_in=complete)
+            if mrow is not None:
+                mrow.update({"label": "Mean number linked", "isMean": True, "linkStat": "mean"})
+                rows.append(mrow)
+            arow = prop_row(count >= 1, complete)
+            add_row_pct(arow, block_of_col)
+            arow.update({"label": "Linked to at least one", "linkStat": "any"})
+            rows.append(arow)
+            lrow = mean_row(None, x_in=count, valid_in=complete & (count >= 1))
+            if lrow is not None:
+                lrow.update({"label": "Mean number linked among those linking at least one", "isMean": True, "linkStat": "perLinker"})
+                rows.append(lrow)
+            questions.append({"key": it["key"], "label": it["label"], "kind": "linkCount", "rows": rows, "linkCount": summary})
             continue
         if len(vars_) > 1:
             # Multiple response: every option is kept, each on its own base.

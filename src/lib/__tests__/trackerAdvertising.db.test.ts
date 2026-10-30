@@ -13,6 +13,9 @@
 //   3. Unknown: awareness unmapped is "Mapping needed" for word of mouth while recall still shows; a file without the
 //      recall and word of mouth questions is "Not measured" for both.
 //   4. Failure: a file that cannot be read rejects with the reason, never an empty page.
+//   5. Codex D3E-F01, unknown awareness: three respondents unaware of Ford given awareness code 99, labelled Don't
+//      know in the codebook, then unlabelled: Ford's groups are not shown, with the count (never 99 counted as
+//      Unaware); every other brand still equals the reference.
 // Skipped, with the reason, without a test database or python3 + pandas/pyreadstat.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -48,7 +51,7 @@ vi.setConfig({ testTimeout: 240_000, hookTimeout: 180_000 });
 const PYTHON_OK = spawnSync(PYTHON, ["-c", "import pandas, pyreadstat, openpyxl"], { encoding: "utf8" }).status === 0;
 const packPath = (n: string) => path.join(process.cwd(), "fixtures", "tracker-packs", "bmw_car", n);
 const REFERENCE = path.join(process.cwd(), "src", "lib", "__tests__", "helpers", "advertising_reference.py");
-type Wom = Record<string, number> & { base: number; exclusive: boolean };
+type Wom = Record<string, number> & { base: number; exclusive: boolean; unknown_aware: number };
 type Ref = Record<"weighted" | "unweighted", { recall: Record<string, [number, number, number]>; wom: Record<string, Wom> }>;
 function reference(file: string): Ref {
   const r = spawnSync(PYTHON, ["-I", REFERENCE, "shares", file], { encoding: "utf8", maxBuffer: 1 << 24 });
@@ -116,10 +119,10 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("Advertising & WOM figures aga
   }
   const newRun = async (name: string) => (await q("insert into runs (tenant_id, project_name) values ($1, $2) returning id", [tenant, name]))[0].id as string;
   /** A CSV of the pack with metadata.json linked as its codebook, in a project of its own. */
-  async function csvWithCodebook(file: string) {
+  async function csvWithCodebook(file: string, codebookBytes: Buffer = readFileSync(packPath("metadata.json"))) {
     const run = await newRun("BMW car tracker");
     const { readInstrumentItems, suggestInstrumentLinks, confirmInstrumentLinks } = await import("../instruments");
-    const codebook = await stored(run, "instrument", "metadata.json", readFileSync(packPath("metadata.json")), "codebook");
+    const codebook = await stored(run, "instrument", "metadata.json", codebookBytes, "codebook");
     const data = await stored(run, "table", "Car_Brand_Tracker_Wave_1.csv", readFileSync(file));
     await readInstrumentItems(tenant, run, codebook);
     await suggestInstrumentLinks(tenant, run, codebook, data);
@@ -209,6 +212,30 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("Advertising & WOM figures aga
     const none = await loadBrandAdvertising(tenant, run, data);
     expect(none.recall).toMatchObject({ status: "not_measured" });
     expect(none.wom).toMatchObject({ status: "not_measured" });
+  });
+
+  it("Codex D3E-F01: an awareness answer of Don't know, labelled or unlabelled, is not Unaware; other brands unchanged", async () => {
+    const file = variant("aware_dk", dir);
+    const ref = reference(file);
+    // The reference's own reading: three Ford awareness answers that are neither 0 nor 1, no other brand affected.
+    expect(ref.weighted.wom.b03.unknown_aware).toBe(3);
+    expect(Object.entries(ref.weighted.wom).filter(([, w]) => w.unknown_aware > 0).map(([b]) => b)).toEqual(["b03"]);
+    const meta = JSON.parse(readFileSync(packPath("metadata.json"), "utf8"));
+    const labelled = { ...meta, labels: [...meta.labels, ["aware_b03", "Prompted resolved recognition Ford", 99, "Don't know"]] };
+    const { loadBrandAdvertising } = await import("../trackerAdvertising");
+    for (const [codebook, expected] of [
+      [Buffer.from(JSON.stringify(labelled)), `"Don't know" (code 99): 3 respondents`],
+      [readFileSync(packPath("metadata.json")), "code 99, which the answer list does not label: 3 respondents"],
+    ] as const) {
+      const { run, data } = await csvWithCodebook(file, codebook);
+      const m = await loadBrandAdvertising(tenant, run, data);
+      if (m.wom.status !== "ok") throw new Error(m.wom.reason);
+      const ford = m.wom.brands.find((b) => b.code === "3")!;
+      expect(ford.groups, expected).toBeNull();
+      expect(ford.base).toBe(60);
+      expect(ford.reason).toBe(`3 respondents gave an awareness answer that is neither aware nor unaware (${expected}). They cannot be counted as Unaware, so the exclusive groups are not shown.`);
+      expect(expectReference(m, ref.weighted, ["3"]).groups).toBe(54);
+    }
   });
 
   it("failure: a file that cannot be read rejects with the reason; once readable again the page returns", async () => {

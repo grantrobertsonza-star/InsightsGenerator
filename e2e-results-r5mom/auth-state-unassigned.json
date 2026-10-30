@@ -1,0 +1,25 @@
+{
+ "cookies": [
+  {
+   "name": "ie-access",
+   "value": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJiOTMxMWRlMy1mMTQ1LTQ4YjQtYmVlYi1hMzMzYWY5MDFmZTIiLCJleHAiOjE3OTMzNjM3MjYsImVtYWlsIjoibm8tb3JnQGUyZS50ZXN0In0.ddc1ce413b657734aacdee8ecb3927e6",
+   "domain": "127.0.0.1",
+   "path": "/",
+   "expires": -1,
+   "httpOnly": true,
+   "secure": false,
+   "sameSite": "Lax"
+  },
+  {
+   "name": "ie-refresh",
+   "value": "4797e83319f9114e41d63eff788309ebd6759503c37f7946",
+   "domain": "127.0.0.1",
+   "path": "/",
+   "expires": -1,
+   "httpOnly": true,
+   "secure": false,
+   "sameSite": "Lax"
+  }
+ ],
+ "origins": []
+}
