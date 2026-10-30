@@ -1,0 +1,194 @@
+{
+  "status": "frozen",
+  "files": {
+    "banking/CSM_Combined_Reference_Metrics.xlsx": {
+      "bytes": 261517,
+      "sha256": "c0e4ced82e71036345edc9cd4eab3acce42a9b186ca05e15ebfd40f063b955f5"
+    },
+    "banking/Combined_Codebook.csv": {
+      "bytes": 82841,
+      "sha256": "72eada6ce637c6cb8142bf85c484f813cafae0a33811d7e9ad274743e305afb5"
+    },
+    "banking/Combined_Labels.csv": {
+      "bytes": 134090,
+      "sha256": "2b1ed58e671ac994957c54ac0549bf8319867f095bc7d65cc9c101119080f798"
+    },
+    "banking/Combined_MR_Sets.csv": {
+      "bytes": 4235,
+      "sha256": "1bc5daae607029451f563c91e5f0bcc16326894f534cfbf023c859ec8c4c6c34"
+    },
+    "banking/Master_Combined_CSM_Codebook.xlsx": {
+      "bytes": 111738,
+      "sha256": "1e970284f2a0276694b2f3762316480b17ceab340f4d736093a9a7bfc9bc2ef2"
+    },
+    "banking/data/Banking_CSM_Combined_All_Waves.csv": {
+      "bytes": 2870299,
+      "sha256": "07b7360dcb7fa975fd39fa9156838833cb4a47090a7e37690e7b69b775e236a9"
+    },
+    "banking/data/Banking_CSM_Combined_All_Waves.xlsx": {
+      "bytes": 4035091,
+      "sha256": "2ac251e1402b39cba92cfe74d65b48d40d577419cf7bf71f25b25a7ff8d091cc"
+    },
+    "banking/data/Banking_CSM_Combined_Wave_1.csv": {
+      "bytes": 963110,
+      "sha256": "29adf7ace5e570dff18374187edd7d492e26921178419b659466dc6dede60cb3"
+    },
+    "banking/data/Banking_CSM_Combined_Wave_1.xlsx": {
+      "bytes": 1433876,
+      "sha256": "d0221122b17f3a7194422b420061c1346e069ba667c631761c01185e7889750b"
+    },
+    "banking/data/Banking_CSM_Combined_Wave_2.csv": {
+      "bytes": 972465,
+      "sha256": "8fdb42714085f28d20e66d4bde77e902d1429342147471c8df43ba6365e08420"
+    },
+    "banking/data/Banking_CSM_Combined_Wave_2.xlsx": {
+      "bytes": 1438116,
+      "sha256": "f0c6618b43033dfae766a06787a62d72fa08f3a59a729741e5fe35053f36ed98"
+    },
+    "banking/data/Banking_CSM_Combined_Wave_3.csv": {
+      "bytes": 951700,
+      "sha256": "73a6e11155cf7c30c3fb8e1a9d27b14cb140226d90e9bc9a773520f8686d91b3"
+    },
+    "banking/data/Banking_CSM_Combined_Wave_3.xlsx": {
+      "bytes": 1423336,
+      "sha256": "1d053c273d6d8c2e135f4e33df7bc99bf8c2c91ed7d21c83fd8f14c854226f60"
+    },
+    "banking/reference/Reference_Metrics.csv": {
+      "bytes": 510123,
+      "sha256": "dcca370c34b3da2c5aafdf4636a42f281c40441683b909ba6588da4c07272283"
+    },
+    "banking/reference/Source_to_Combined_Map.csv": {
+      "bytes": 45578,
+      "sha256": "df9ec04bfa31e0390e71e0dd0a863defc49e10a0a5700f8096701e5302d36a0a"
+    },
+    "banking/supplemental_noncustomers/Banking_CSM_Noncustomer_Wave_1.csv": {
+      "bytes": 76528,
+      "sha256": "d12703654a73f79485d3ed405fc2affe1cfc7383830997f400a8cb2745820094"
+    },
+    "banking/supplemental_noncustomers/Banking_CSM_Noncustomer_Wave_1.xlsx": {
+      "bytes": 78023,
+      "sha256": "95eea5abe8cde21a2868e58be2156b677d00460273afc0857c80d9975e6fb63a"
+    },
+    "banking/supplemental_noncustomers/Banking_CSM_Noncustomer_Wave_2.csv": {
+      "bytes": 76449,
+      "sha256": "2d9fe55a0d49da058df3bdd8ebfcbce50fab828c60987fe37cb808658add9b66"
+    },
+    "banking/supplemental_noncustomers/Banking_CSM_Noncustomer_Wave_2.xlsx": {
+      "bytes": 77735,
+      "sha256": "be84e0d36e29b36a4a7e4889286a7efa42a7a689ad5f9ed7be62b6ae5932eae1"
+    },
+    "banking/supplemental_noncustomers/Banking_CSM_Noncustomer_Wave_3.csv": {
+      "bytes": 76616,
+      "sha256": "85377eafba4c7ed8e65c9a465adbb68bebe4300996cc32213cb26e69f8ea7561"
+    },
+    "banking/supplemental_noncustomers/Banking_CSM_Noncustomer_Wave_3.xlsx": {
+      "bytes": 77824,
+      "sha256": "aeb2c99f0eb2952fd3727261326ca7af38293f4230bb56ab489223ccaa67f983"
+    },
+    "banking/supplemental_noncustomers/Noncustomer_Codebook.csv": {
+      "bytes": 3833,
+      "sha256": "a209cc1cb914b304d6d23ac6c458316968252202837899084930637cc073c7d0"
+    },
+    "banking/supplemental_noncustomers/Noncustomer_Labels.csv": {
+      "bytes": 11724,
+      "sha256": "758ea989db58638f3fbade5fd7e3cdd83b8c687823f34b8e1e5e89f70339e8cf"
+    },
+    "mobile/CSM_Combined_Reference_Metrics.xlsx": {
+      "bytes": 231210,
+      "sha256": "b8355dfb19c0178bfe2fd3e2f4541cc37426ca710d4b121914031e871939d5fb"
+    },
+    "mobile/Combined_Codebook.csv": {
+      "bytes": 83346,
+      "sha256": "aae428080e253c0577675a4a43a21da432af560f45c1d8088882d24f42c00d69"
+    },
+    "mobile/Combined_Labels.csv": {
+      "bytes": 136057,
+      "sha256": "a6b2b0cfa09b6f5afc90a8c236f58354081edefdbd9ee3052fe7a44af70949cb"
+    },
+    "mobile/Combined_MR_Sets.csv": {
+      "bytes": 4240,
+      "sha256": "9f0aaedf7cf9ae247d1ea2613eb33d231430c4713649aca9527dcffb7622743c"
+    },
+    "mobile/Master_Combined_CSM_Codebook.xlsx": {
+      "bytes": 111828,
+      "sha256": "427c2fe9fb3b50bc8519cd86b53d56f13ff97df9345cce1d043d1c2208cec22d"
+    },
+    "mobile/data/Mobile_CSM_Combined_All_Waves.csv": {
+      "bytes": 2816846,
+      "sha256": "b95a600f9fc449cbc1164e2a3d4ff8c337548d6d2ad4707c27b9a299a0ce026b"
+    },
+    "mobile/data/Mobile_CSM_Combined_All_Waves.xlsx": {
+      "bytes": 4017881,
+      "sha256": "6fb252d1154e692177ec5e7f59c83f200f49d6eecf09efe38f93d0185a4c38cc"
+    },
+    "mobile/data/Mobile_CSM_Combined_Wave_1.csv": {
+      "bytes": 939656,
+      "sha256": "92ea38c95eec7d8d93ff3e885b63a815d8df4dbe1c7e1c2ea8f810309030bd2d"
+    },
+    "mobile/data/Mobile_CSM_Combined_Wave_1.xlsx": {
+      "bytes": 1425977,
+      "sha256": "e01e171ffc4e789b59a9b46e55dabd84a0f84d6828aa54ccb043308eb82fc2d3"
+    },
+    "mobile/data/Mobile_CSM_Combined_Wave_2.csv": {
+      "bytes": 940297,
+      "sha256": "4ebe01ec02fd5bb356e984107c19ade059d120c6799d5b01f7fc3c89ad9b5175"
+    },
+    "mobile/data/Mobile_CSM_Combined_Wave_2.xlsx": {
+      "bytes": 1428319,
+      "sha256": "202eb6ff8b1b79db7ac1a9d9a5a5f38cd0510d605bf874490397dd48eaa046ac"
+    },
+    "mobile/data/Mobile_CSM_Combined_Wave_3.csv": {
+      "bytes": 953869,
+      "sha256": "c4604dbb6ca015597403f0972a485cd5e4f34de730ffe803cec14c47859c890d"
+    },
+    "mobile/data/Mobile_CSM_Combined_Wave_3.xlsx": {
+      "bytes": 1429948,
+      "sha256": "b92c28c6ede12298ec846f65671c051f99a2a72f74875e252ef839b9b94ecdfd"
+    },
+    "mobile/reference/Reference_Metrics.csv": {
+      "bytes": 449020,
+      "sha256": "db440d85da7a3555b275fec9a684c81653b39e203cd4c9dfbaa7fb799bef1255"
+    },
+    "mobile/reference/Source_to_Combined_Map.csv": {
+      "bytes": 45578,
+      "sha256": "df9ec04bfa31e0390e71e0dd0a863defc49e10a0a5700f8096701e5302d36a0a"
+    },
+    "mobile/supplemental_noncustomers/Mobile_CSM_Noncustomer_Wave_1.csv": {
+      "bytes": 76421,
+      "sha256": "01dee53600e2e74e12a139909f3406f1b834b51089228509a8bb4eb62415fbfe"
+    },
+    "mobile/supplemental_noncustomers/Mobile_CSM_Noncustomer_Wave_1.xlsx": {
+      "bytes": 77917,
+      "sha256": "dac04ff3009fd6a82a252688930e31a80cbc84393dfc95ca2932882fd3d32edf"
+    },
+    "mobile/supplemental_noncustomers/Mobile_CSM_Noncustomer_Wave_2.csv": {
+      "bytes": 76438,
+      "sha256": "a76cb44a96ef0f5b4b993352ab9abccacf82ddde15a0409e61e63a959b15d034"
+    },
+    "mobile/supplemental_noncustomers/Mobile_CSM_Noncustomer_Wave_2.xlsx": {
+      "bytes": 77684,
+      "sha256": "1d9b9db2613c4fa7a46f0878000e416193da37058ad42cb06df5f2cb2f782809"
+    },
+    "mobile/supplemental_noncustomers/Mobile_CSM_Noncustomer_Wave_3.csv": {
+      "bytes": 76481,
+      "sha256": "eb2a64dce849173c941e2e26bc351ed1cab21cef9e0223c0e62c1686e07b0949"
+    },
+    "mobile/supplemental_noncustomers/Mobile_CSM_Noncustomer_Wave_3.xlsx": {
+      "bytes": 77548,
+      "sha256": "191498333cafd98e46fab394d1b58de5ad18d39438e85ca1878ccf8de888609e"
+    },
+    "mobile/supplemental_noncustomers/Noncustomer_Codebook.csv": {
+      "bytes": 3877,
+      "sha256": "cb4d2db258e0dc688c5ec84de8ff8c33b108db24e73a41556dc3ed2612b975c8"
+    },
+    "mobile/supplemental_noncustomers/Noncustomer_Labels.csv": {
+      "bytes": 11865,
+      "sha256": "0fb5c735696be1bb27ecdf4574635bb6bbdcf84a1dcea98c8d7b59bb59fb2d89"
+    },
+    "quality_checks/source_sha256_manifest.csv": {
+      "bytes": 8653,
+      "sha256": "9c0b3ee15d62dbff22165d7623b7dd177f8a697a2335aed6e79270b6e7393532"
+    }
+  },
+  "frozen_date": "2026-10-30"
+}

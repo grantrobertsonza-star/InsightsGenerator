@@ -1,0 +1,615 @@
+{
+  "status": "passed",
+  "scope": "Combined data, schema, route and reference-arithmetic checks. Not dashboard application acceptance.",
+  "xlsx_checked": true,
+  "source_preservation_checked": true,
+  "sectors": {
+    "banking": [
+      {
+        "wave": 1,
+        "customer_rows": 1000,
+        "columns": 400,
+        "channel_blocks_populated": 1615,
+        "channel_counts": {
+          "1": 360,
+          "2": 285,
+          "3": 751,
+          "4": 219
+        },
+        "no_channel_customers": 95,
+        "unused_channel_cells_blank": 178875,
+        "noncustomer_rows": 500,
+        "weight_sum": 1000.0,
+        "reference_metrics_recalculated": 1102,
+        "new_diagnostic_special_codes": {
+          "call_agent_contact": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "queue_wait_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 1
+          },
+          "total_call_time_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 3
+          },
+          "agent_overall_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 8
+          },
+          "correct_person_first_transfer": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_ownership5": {
+            "9": 0,
+            "98": 0,
+            "99": 6
+          },
+          "agent_promise_made": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_promises_kept5": {
+            "9": 20,
+            "98": 0,
+            "99": 2
+          },
+          "agent_patience5": {
+            "9": 0,
+            "98": 0,
+            "99": 3
+          },
+          "urgency_need": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_urgency5": {
+            "9": 0,
+            "98": 1,
+            "99": 1
+          },
+          "ivr_availability5": {
+            "9": 0,
+            "98": 9,
+            "99": 3
+          },
+          "ivr_response_speed5": {
+            "9": 0,
+            "98": 5,
+            "99": 4
+          },
+          "ivr_information_accuracy5": {
+            "9": 0,
+            "98": 4,
+            "99": 2
+          },
+          "ivr_ease5": {
+            "9": 0,
+            "98": 3,
+            "99": 3
+          }
+        }
+      },
+      {
+        "wave": 2,
+        "customer_rows": 1000,
+        "columns": 400,
+        "channel_blocks_populated": 1653,
+        "channel_counts": {
+          "1": 336,
+          "2": 293,
+          "3": 765,
+          "4": 259
+        },
+        "no_channel_customers": 85,
+        "unused_channel_cells_blank": 176025,
+        "noncustomer_rows": 500,
+        "weight_sum": 1000.00000003,
+        "reference_metrics_recalculated": 1102,
+        "new_diagnostic_special_codes": {
+          "call_agent_contact": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "queue_wait_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 5
+          },
+          "total_call_time_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 6
+          },
+          "agent_overall_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 10
+          },
+          "correct_person_first_transfer": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_ownership5": {
+            "9": 0,
+            "98": 0,
+            "99": 3
+          },
+          "agent_promise_made": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_promises_kept5": {
+            "9": 17,
+            "98": 0,
+            "99": 0
+          },
+          "agent_patience5": {
+            "9": 0,
+            "98": 0,
+            "99": 2
+          },
+          "urgency_need": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_urgency5": {
+            "9": 0,
+            "98": 1,
+            "99": 3
+          },
+          "ivr_availability5": {
+            "9": 0,
+            "98": 7,
+            "99": 3
+          },
+          "ivr_response_speed5": {
+            "9": 0,
+            "98": 6,
+            "99": 5
+          },
+          "ivr_information_accuracy5": {
+            "9": 0,
+            "98": 10,
+            "99": 2
+          },
+          "ivr_ease5": {
+            "9": 0,
+            "98": 6,
+            "99": 4
+          }
+        }
+      },
+      {
+        "wave": 3,
+        "customer_rows": 1000,
+        "columns": 400,
+        "channel_blocks_populated": 1569,
+        "channel_counts": {
+          "1": 330,
+          "2": 261,
+          "3": 744,
+          "4": 234
+        },
+        "no_channel_customers": 88,
+        "unused_channel_cells_blank": 182325,
+        "noncustomer_rows": 500,
+        "weight_sum": 999.99999987,
+        "reference_metrics_recalculated": 1102,
+        "new_diagnostic_special_codes": {
+          "call_agent_contact": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "queue_wait_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 4
+          },
+          "total_call_time_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 4
+          },
+          "agent_overall_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 4
+          },
+          "correct_person_first_transfer": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_ownership5": {
+            "9": 0,
+            "98": 0,
+            "99": 2
+          },
+          "agent_promise_made": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_promises_kept5": {
+            "9": 19,
+            "98": 0,
+            "99": 0
+          },
+          "agent_patience5": {
+            "9": 0,
+            "98": 0,
+            "99": 6
+          },
+          "urgency_need": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_urgency5": {
+            "9": 0,
+            "98": 0,
+            "99": 3
+          },
+          "ivr_availability5": {
+            "9": 0,
+            "98": 1,
+            "99": 4
+          },
+          "ivr_response_speed5": {
+            "9": 0,
+            "98": 9,
+            "99": 0
+          },
+          "ivr_information_accuracy5": {
+            "9": 0,
+            "98": 7,
+            "99": 3
+          },
+          "ivr_ease5": {
+            "9": 0,
+            "98": 3,
+            "99": 2
+          }
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "wave": 1,
+        "customer_rows": 1000,
+        "columns": 400,
+        "channel_blocks_populated": 1498,
+        "channel_counts": {
+          "1": 365,
+          "2": 193,
+          "3": 697,
+          "4": 243
+        },
+        "no_channel_customers": 120,
+        "unused_channel_cells_blank": 187650,
+        "noncustomer_rows": 500,
+        "weight_sum": 999.99999999,
+        "reference_metrics_recalculated": 969,
+        "new_diagnostic_special_codes": {
+          "call_agent_contact": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "queue_wait_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 3
+          },
+          "total_call_time_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 11
+          },
+          "agent_overall_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 8
+          },
+          "correct_person_first_transfer": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_ownership5": {
+            "9": 0,
+            "98": 0,
+            "99": 5
+          },
+          "agent_promise_made": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_promises_kept5": {
+            "9": 18,
+            "98": 0,
+            "99": 0
+          },
+          "agent_patience5": {
+            "9": 0,
+            "98": 0,
+            "99": 11
+          },
+          "urgency_need": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_urgency5": {
+            "9": 0,
+            "98": 4,
+            "99": 3
+          },
+          "ivr_availability5": {
+            "9": 0,
+            "98": 8,
+            "99": 5
+          },
+          "ivr_response_speed5": {
+            "9": 0,
+            "98": 8,
+            "99": 2
+          },
+          "ivr_information_accuracy5": {
+            "9": 0,
+            "98": 6,
+            "99": 4
+          },
+          "ivr_ease5": {
+            "9": 0,
+            "98": 5,
+            "99": 4
+          }
+        }
+      },
+      {
+        "wave": 2,
+        "customer_rows": 1000,
+        "columns": 400,
+        "channel_blocks_populated": 1501,
+        "channel_counts": {
+          "1": 382,
+          "2": 222,
+          "3": 653,
+          "4": 244
+        },
+        "no_channel_customers": 121,
+        "unused_channel_cells_blank": 187425,
+        "noncustomer_rows": 500,
+        "weight_sum": 999.99999994,
+        "reference_metrics_recalculated": 969,
+        "new_diagnostic_special_codes": {
+          "call_agent_contact": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "queue_wait_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 12
+          },
+          "total_call_time_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 3
+          },
+          "agent_overall_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 5
+          },
+          "correct_person_first_transfer": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_ownership5": {
+            "9": 0,
+            "98": 0,
+            "99": 5
+          },
+          "agent_promise_made": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_promises_kept5": {
+            "9": 24,
+            "98": 0,
+            "99": 1
+          },
+          "agent_patience5": {
+            "9": 0,
+            "98": 0,
+            "99": 4
+          },
+          "urgency_need": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_urgency5": {
+            "9": 0,
+            "98": 0,
+            "99": 2
+          },
+          "ivr_availability5": {
+            "9": 0,
+            "98": 7,
+            "99": 4
+          },
+          "ivr_response_speed5": {
+            "9": 0,
+            "98": 6,
+            "99": 4
+          },
+          "ivr_information_accuracy5": {
+            "9": 0,
+            "98": 10,
+            "99": 4
+          },
+          "ivr_ease5": {
+            "9": 0,
+            "98": 4,
+            "99": 3
+          }
+        }
+      },
+      {
+        "wave": 3,
+        "customer_rows": 1000,
+        "columns": 400,
+        "channel_blocks_populated": 1577,
+        "channel_counts": {
+          "1": 393,
+          "2": 217,
+          "3": 698,
+          "4": 269
+        },
+        "no_channel_customers": 99,
+        "unused_channel_cells_blank": 181725,
+        "noncustomer_rows": 500,
+        "weight_sum": 1000.00000012,
+        "reference_metrics_recalculated": 969,
+        "new_diagnostic_special_codes": {
+          "call_agent_contact": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "queue_wait_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 10
+          },
+          "total_call_time_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 6
+          },
+          "agent_overall_csat5": {
+            "9": 0,
+            "98": 0,
+            "99": 6
+          },
+          "correct_person_first_transfer": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_ownership5": {
+            "9": 0,
+            "98": 0,
+            "99": 7
+          },
+          "agent_promise_made": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_promises_kept5": {
+            "9": 13,
+            "98": 0,
+            "99": 4
+          },
+          "agent_patience5": {
+            "9": 0,
+            "98": 0,
+            "99": 9
+          },
+          "urgency_need": {
+            "9": 0,
+            "98": 0,
+            "99": 0
+          },
+          "agent_urgency5": {
+            "9": 0,
+            "98": 1,
+            "99": 0
+          },
+          "ivr_availability5": {
+            "9": 0,
+            "98": 9,
+            "99": 7
+          },
+          "ivr_response_speed5": {
+            "9": 0,
+            "98": 4,
+            "99": 6
+          },
+          "ivr_information_accuracy5": {
+            "9": 0,
+            "98": 2,
+            "99": 2
+          },
+          "ivr_ease5": {
+            "9": 0,
+            "98": 7,
+            "99": 11
+          }
+        }
+      }
+    ]
+  },
+  "authoritative_zip_sha256": "490de8e1a87ca8fa22086fc321c65197942e02a0c6d64547360349efe7a48523",
+  "source_files_verified_against_archive": 75,
+  "disposable_boundary_tests": {
+    "banking": {
+      "ivr_only_route": "passed",
+      "staff_or_agent_items_skipped": 16,
+      "call_wide_or_ivr_items_retained": 11,
+      "zero_queue_wait_still_asks_satisfaction": true,
+      "pending_9_excluded_from_mean_and_top_two_box": true,
+      "delivered_data_modified": false
+    },
+    "mobile": {
+      "ivr_only_route": "passed",
+      "staff_or_agent_items_skipped": 16,
+      "call_wide_or_ivr_items_retained": 11,
+      "zero_queue_wait_still_asks_satisfaction": true,
+      "pending_9_excluded_from_mean_and_top_two_box": true,
+      "delivered_data_modified": false
+    }
+  },
+  "pooled": {
+    "banking": {
+      "rows": 3000,
+      "columns": 400,
+      "exact_wave_concatenation": true,
+      "wave_weights_preserved": true
+    },
+    "mobile": {
+      "rows": 3000,
+      "columns": 400,
+      "exact_wave_concatenation": true,
+      "wave_weights_preserved": true
+    }
+  },
+  "checks": {
+    "assertions": 10173493,
+    "xlsx_cells_compared": 6363324,
+    "source_values_compared": 1358323
+  }
+}

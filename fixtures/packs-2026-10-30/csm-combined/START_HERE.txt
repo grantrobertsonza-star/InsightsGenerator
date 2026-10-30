@@ -1,0 +1,16 @@
+Banking and telecommunications combined CSM testing base
+
+Use banking/ for banking and mobile/ for telecommunications. The mobile folder retains the established sector name.
+
+Each sector now has ONE combined company-and-channel questionnaire, THREE combined 1,000-customer wave files, and ONE additional 3,000-customer all-waves file. XLSX and matching CSV are included. Each customer occupies one row per wave with company and channel responses together. No separate company or channel customer datasets are required.
+
+Read Combined_CSM_Analysis_and_Import_Guide.docx for the common method, then the sector brief and combined questionnaire. The noncustomer supplement is optional and stays outside the main customer import. The master codebook and embedded workbook metadata are sufficient; JSON is optional QA material.
+
+The new negative-emotion and routed live-agent/IVR modules are included for feature testing. All earlier source answers are preserved, and the old separated versions remain unchanged. Nothing has been changed in an app and Claude has not been contacted. The implementation documents are a written handoff only.
+
+Validation
+  python quality_checks/validate_combined_pack.py .
+  python quality_checks/validate_combined_pack.py . --xlsx
+  python quality_checks/validate_combined_pack.py . --xlsx --source-separated /path/to/Banking_and_Telecoms_CSM_Separated
+
+CSV checks use Python standard libraries. Optional XLSX readback requires openpyxl. Read QA_REPORT.txt for the checks and limits, and manifest.json for file hashes. Do not import reference metrics, source maps, codebooks or optional noncustomers as customer rows.

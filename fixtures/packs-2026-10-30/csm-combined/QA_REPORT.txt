@@ -1,0 +1,51 @@
+Combined banking and telecommunications CSM quality checks
+
+Result: passed for the delivered research files and numerical fixtures.
+
+Delivered structure
+  Two sectors, each with one combined company-and-channel questionnaire.
+  Three customer wave datasets per sector, each exactly 1000 rows and 400 fields.
+  One pooled 3000-row dataset per sector, an exact concatenation of its waves.
+  Eight combined customer XLSX files and eight matching CSV files in total.
+  Two master codebooks, two reference metrics workbooks, sector briefs and
+  analysis guides, written Claude instructions, and one common import guide.
+  Optional noncustomers remain in separate supplemental folders.
+
+Independent numerical checks
+  9413 original latest used-channel records reconstructed without loss.
+  All 1358323 original company, channel and noncustomer values preserved.
+  6363324 XLSX cells checked against CSV/source counterparts.
+  All 6213 reference results independently recalculated, including all 4143
+  original results and 2070 results for the new testing fields.
+  All 75 source files remain byte-identical to the authoritative source ZIP.
+  All 10173493 assertions in the final independent validation passed.
+
+New diagnostic and emotion routes, allowed codes, negative-emotion intensity,
+pending promise code 9, unchanged weights, text IDs, dates, unused-channel
+blanks and pooled-file identity were checked. Disposable boundary cases
+confirmed IVR-only routing and valid queue satisfaction after zero waiting.
+No delivered record was changed for boundary testing.
+
+Visual and document checks
+  All nine new DOCX documents were rendered and their pages visually reviewed.
+  Data and metadata worksheet previews were rendered and inspected; pooled
+  wave boundaries and final rows were also inspected. Data and metadata were
+  fully read back after XLSX export and conservative lossless pooling.
+  The two noncustomer questionnaires are unchanged source copies.
+
+Import safeguards
+  Choose either the three individual wave files OR the one pooled file,
+  never both. Choose either combined-format OR separate-format customer
+  inputs, never both representations. The combined questionnaire, codebook
+  and dataset suffice; optional JSON is not an import requirement.
+
+Scope
+  These are synthetic testing observations, not actual market findings.
+  The checks establish file integrity, stated routing and reference arithmetic.
+  They do not establish survey psychometric validity or dashboard application
+  acceptance. No app changes or communication with Claude were performed.
+  Multiple channels used by one customer are dependent observations, not
+  independent customers. Wave samples are repeated cross-sections, not a panel.
+
+See quality_checks/INDEPENDENT_QA_REPORT.md, validation_results.json,
+frozen_data_hashes.json and source_sha256_manifest.csv for details.

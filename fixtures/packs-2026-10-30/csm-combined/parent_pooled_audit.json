@@ -1,0 +1,21 @@
+{
+  "status": "PASS",
+  "checks": [
+    {
+      "sector": "banking",
+      "pooled_rows": 3000,
+      "fields": 400,
+      "exact_wave_concatenation": true,
+      "unique_text_ids": true,
+      "codebook_header_match": true
+    },
+    {
+      "sector": "mobile",
+      "pooled_rows": 3000,
+      "fields": 400,
+      "exact_wave_concatenation": true,
+      "unique_text_ids": true,
+      "codebook_header_match": true
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "status": "Ready within requested reference scope",
+  "source": "Updated301026/V2/Banking_and_Telecoms_CSM_Combined_Testing_Base/Banking_and_Telecoms_CSM_Combined",
+  "sectors": {
+    "banking": {
+      "rows": 3000,
+      "results": 288,
+      "scope_inventory_fields": 37,
+      "comparisons": 672,
+      "maximum_absolute_value_difference": 2.842170943040401e-14,
+      "differences_outside_tolerance": []
+    },
+    "mobile": {
+      "rows": 3000,
+      "results": 252,
+      "scope_inventory_fields": 37,
+      "comparisons": 588,
+      "maximum_absolute_value_difference": 2.842170943040401e-14,
+      "differences_outside_tolerance": []
+    }
+  },
+  "reference_comparisons": 1260,
+  "not_measured": "No channel-specific NPS, continuing-use intention or switching likelihood. These are company-wide questions. Whole-task and complaint satisfaction are distinct scopes in the inventory.",
+  "source_checks": "Each wave 1000 unique customers; pooled CSV exactly concatenates waves; all-waves XLSX Respondents equals CSV, identifiers exact as text; master codebook and labels equal CSV metadata."
+}

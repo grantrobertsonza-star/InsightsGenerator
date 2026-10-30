@@ -1,0 +1,1543 @@
+﻿variable,label,value,value_label
+wave,Wave,1,February 2026
+wave,Wave,2,June 2026
+wave,Wave,3,October 2026
+company,Main company,1,FNB
+company,Main company,2,Standard Bank
+company,Main company,3,Absa
+company,Main company,4,Nedbank
+company,Main company,5,Capitec
+company,Main company,6,Discovery Bank
+company,Main company,7,GoTyme Bank (formerly TymeBank)
+age_band,Age group,1,18–24
+age_band,Age group,2,25–34
+age_band,Age group,3,35–49
+age_band,Age group,4,50–69
+gender,Gender,1,Man
+gender,Gender,2,Woman
+gender,Gender,3,Another identity
+gender,Gender,4,Prefer not to say
+province,Province,1,Gauteng
+province,Province,2,KwaZulu-Natal
+province,Province,3,Western Cape
+province,Province,4,Eastern Cape
+province,Province,5,Limpopo
+province,Province,6,Mpumalanga
+province,Province,7,North West
+province,Province,8,Free State
+province,Province,9,Northern Cape
+income,Monthly household income,1,"Below R15,000"
+income,Monthly household income,2,"R15,000–R29,999"
+income,Monthly household income,3,"R30,000–R49,999"
+income,Monthly household income,4,"R50,000–R79,999"
+income,Monthly household income,5,"R80,000 or more"
+income,Monthly household income,99,Prefer not to say
+settlement,Settlement,1,Metro or city
+settlement,Settlement,2,Town
+settlement,Settlement,3,Rural area
+segment,Synthetic demonstration segment,1,Segment 1
+segment,Synthetic demonstration segment,2,Segment 2
+segment,Synthetic demonstration segment,3,Segment 3
+company_csat5,Overall company satisfaction,1,Very dissatisfied
+company_csat5,Overall company satisfaction,2,Dissatisfied
+company_csat5,Overall company satisfaction,3,Neither satisfied nor dissatisfied
+company_csat5,Overall company satisfaction,4,Satisfied
+company_csat5,Overall company satisfaction,5,Very satisfied
+company_csat5,Overall company satisfaction,99,Do not know
+company_expectations5,Company versus expectations,1,Much worse
+company_expectations5,Company versus expectations,2,Worse
+company_expectations5,Company versus expectations,3,As expected
+company_expectations5,Company versus expectations,4,Better
+company_expectations5,Company versus expectations,5,Much better
+company_expectations5,Company versus expectations,99,Do not know
+fairness5,Treats customers fairly,1,Strongly disagree
+fairness5,Treats customers fairly,2,Disagree
+fairness5,Treats customers fairly,3,Neither agree nor disagree
+fairness5,Treats customers fairly,4,Agree
+fairness5,Treats customers fairly,5,Strongly agree
+fairness5,Treats customers fairly,99,Do not know
+trust5,Trustworthy,1,Strongly disagree
+trust5,Trustworthy,2,Disagree
+trust5,Trustworthy,3,Neither agree nor disagree
+trust5,Trustworthy,4,Agree
+trust5,Trustworthy,5,Strongly agree
+trust5,Trustworthy,99,Do not know
+recommend_0to10,Likelihood to recommend,0,0
+recommend_0to10,Likelihood to recommend,1,1
+recommend_0to10,Likelihood to recommend,2,2
+recommend_0to10,Likelihood to recommend,3,3
+recommend_0to10,Likelihood to recommend,4,4
+recommend_0to10,Likelihood to recommend,5,5
+recommend_0to10,Likelihood to recommend,6,6
+recommend_0to10,Likelihood to recommend,7,7
+recommend_0to10,Likelihood to recommend,8,8
+recommend_0to10,Likelihood to recommend,9,9
+recommend_0to10,Likelihood to recommend,10,10
+recommend_0to10,Likelihood to recommend,99,Do not know
+continue5,Intend to continue as main provider,1,Definitely not
+continue5,Intend to continue as main provider,2,Probably not
+continue5,Intend to continue as main provider,3,Might or might not
+continue5,Intend to continue as main provider,4,Probably yes
+continue5,Intend to continue as main provider,5,Definitely yes
+continue5,Intend to continue as main provider,99,Do not know
+switch_0to10,Likelihood of switching main provider,0,0
+switch_0to10,Likelihood of switching main provider,1,1
+switch_0to10,Likelihood of switching main provider,2,2
+switch_0to10,Likelihood of switching main provider,3,3
+switch_0to10,Likelihood of switching main provider,4,4
+switch_0to10,Likelihood of switching main provider,5,5
+switch_0to10,Likelihood of switching main provider,6,6
+switch_0to10,Likelihood of switching main provider,7,7
+switch_0to10,Likelihood of switching main provider,8,8
+switch_0to10,Likelihood of switching main provider,9,9
+switch_0to10,Likelihood of switching main provider,10,10
+switch_0to10,Likelihood of switching main provider,99,Do not know
+price_switch5,Would switch for better price,1,Strongly disagree
+price_switch5,Would switch for better price,2,Disagree
+price_switch5,Would switch for better price,3,Neither agree nor disagree
+price_switch5,Would switch for better price,4,Agree
+price_switch5,Would switch for better price,5,Strongly agree
+price_switch5,Would switch for better price,99,Do not know
+grow_business5,Intend to use more services,1,Strongly disagree
+grow_business5,Intend to use more services,2,Disagree
+grow_business5,Intend to use more services,3,Neither agree nor disagree
+grow_business5,Intend to use more services,4,Agree
+grow_business5,Intend to use more services,5,Strongly agree
+grow_business5,Intend to use more services,99,Do not know
+complaint3m,Complaint in past 3 months,0,No
+complaint3m,Complaint in past 3 months,1,Yes
+company_driver_d01,Services work accurately and reliably,1,Very poor
+company_driver_d01,Services work accurately and reliably,2,Poor
+company_driver_d01,Services work accurately and reliably,3,Adequate
+company_driver_d01,Services work accurately and reliably,4,Good
+company_driver_d01,Services work accurately and reliably,5,Excellent
+company_driver_d01,Services work accurately and reliably,98,Not applicable
+company_driver_d01,Services work accurately and reliably,99,Do not know
+importance_d01,Importance of Services work accurately and reliably,1,Not important
+importance_d01,Importance of Services work accurately and reliably,2,Slightly important
+importance_d01,Importance of Services work accurately and reliably,3,Moderately important
+importance_d01,Importance of Services work accurately and reliably,4,Very important
+importance_d01,Importance of Services work accurately and reliably,5,Extremely important
+importance_d01,Importance of Services work accurately and reliably,99,Do not know
+company_driver_d02,Help is provided promptly,1,Very poor
+company_driver_d02,Help is provided promptly,2,Poor
+company_driver_d02,Help is provided promptly,3,Adequate
+company_driver_d02,Help is provided promptly,4,Good
+company_driver_d02,Help is provided promptly,5,Excellent
+company_driver_d02,Help is provided promptly,98,Not applicable
+company_driver_d02,Help is provided promptly,99,Do not know
+importance_d02,Importance of Help is provided promptly,1,Not important
+importance_d02,Importance of Help is provided promptly,2,Slightly important
+importance_d02,Importance of Help is provided promptly,3,Moderately important
+importance_d02,Importance of Help is provided promptly,4,Very important
+importance_d02,Importance of Help is provided promptly,5,Extremely important
+importance_d02,Importance of Help is provided promptly,99,Do not know
+company_driver_d03,I feel confident about security,1,Very poor
+company_driver_d03,I feel confident about security,2,Poor
+company_driver_d03,I feel confident about security,3,Adequate
+company_driver_d03,I feel confident about security,4,Good
+company_driver_d03,I feel confident about security,5,Excellent
+company_driver_d03,I feel confident about security,98,Not applicable
+company_driver_d03,I feel confident about security,99,Do not know
+importance_d03,Importance of I feel confident about security,1,Not important
+importance_d03,Importance of I feel confident about security,2,Slightly important
+importance_d03,Importance of I feel confident about security,3,Moderately important
+importance_d03,Importance of I feel confident about security,4,Very important
+importance_d03,Importance of I feel confident about security,5,Extremely important
+importance_d03,Importance of I feel confident about security,99,Do not know
+company_driver_d04,The bank understands my needs,1,Very poor
+company_driver_d04,The bank understands my needs,2,Poor
+company_driver_d04,The bank understands my needs,3,Adequate
+company_driver_d04,The bank understands my needs,4,Good
+company_driver_d04,The bank understands my needs,5,Excellent
+company_driver_d04,The bank understands my needs,98,Not applicable
+company_driver_d04,The bank understands my needs,99,Do not know
+importance_d04,Importance of The bank understands my needs,1,Not important
+importance_d04,Importance of The bank understands my needs,2,Slightly important
+importance_d04,Importance of The bank understands my needs,3,Moderately important
+importance_d04,Importance of The bank understands my needs,4,Very important
+importance_d04,Importance of The bank understands my needs,5,Extremely important
+importance_d04,Importance of The bank understands my needs,99,Do not know
+company_driver_d05,Banking channels are easy to access,1,Very poor
+company_driver_d05,Banking channels are easy to access,2,Poor
+company_driver_d05,Banking channels are easy to access,3,Adequate
+company_driver_d05,Banking channels are easy to access,4,Good
+company_driver_d05,Banking channels are easy to access,5,Excellent
+company_driver_d05,Banking channels are easy to access,98,Not applicable
+company_driver_d05,Banking channels are easy to access,99,Do not know
+importance_d05,Importance of Banking channels are easy to access,1,Not important
+importance_d05,Importance of Banking channels are easy to access,2,Slightly important
+importance_d05,Importance of Banking channels are easy to access,3,Moderately important
+importance_d05,Importance of Banking channels are easy to access,4,Very important
+importance_d05,Importance of Banking channels are easy to access,5,Extremely important
+importance_d05,Importance of Banking channels are easy to access,99,Do not know
+company_driver_d06,Fees represent good value,1,Very poor
+company_driver_d06,Fees represent good value,2,Poor
+company_driver_d06,Fees represent good value,3,Adequate
+company_driver_d06,Fees represent good value,4,Good
+company_driver_d06,Fees represent good value,5,Excellent
+company_driver_d06,Fees represent good value,98,Not applicable
+company_driver_d06,Fees represent good value,99,Do not know
+importance_d06,Importance of Fees represent good value,1,Not important
+importance_d06,Importance of Fees represent good value,2,Slightly important
+importance_d06,Importance of Fees represent good value,3,Moderately important
+importance_d06,Importance of Fees represent good value,4,Very important
+importance_d06,Importance of Fees represent good value,5,Extremely important
+importance_d06,Importance of Fees represent good value,99,Do not know
+product_p01,Transactional account,0,No
+product_p01,Transactional account,1,Yes
+product_p02,Savings or investment account,0,No
+product_p02,Savings or investment account,1,Yes
+product_p03,Credit card,0,No
+product_p03,Credit card,1,Yes
+product_p04,Loan or credit facility,0,No
+product_p04,Loan or credit facility,1,Yes
+complaint_reason_r01,Fees or charges,0,No
+complaint_reason_r01,Fees or charges,1,Yes
+complaint_reason_r02,Payment or access failure,0,No
+complaint_reason_r02,Payment or access failure,1,Yes
+complaint_reason_r03,Fraud or security concern,0,No
+complaint_reason_r03,Fraud or security concern,1,Yes
+complaint_reason_r04,Poor service,0,No
+complaint_reason_r04,Poor service,1,Yes
+complaint_reason_r05,Unclear information,0,No
+complaint_reason_r05,Unclear information,1,Yes
+complaint_reason_r06,Other,0,No
+complaint_reason_r06,Other,1,Yes
+complaint_resolution,Complaint resolution,1,Fully
+complaint_resolution,Complaint resolution,2,Partly
+complaint_resolution,Complaint resolution,3,Unresolved
+complaint_resolution,Complaint resolution,9,In progress
+complaint_handling_csat5,Complaint handling satisfaction,1,Very dissatisfied
+complaint_handling_csat5,Complaint handling satisfaction,2,Dissatisfied
+complaint_handling_csat5,Complaint handling satisfaction,3,Neither satisfied nor dissatisfied
+complaint_handling_csat5,Complaint handling satisfaction,4,Satisfied
+complaint_handling_csat5,Complaint handling satisfaction,5,Very satisfied
+complaint_handling_csat5,Complaint handling satisfaction,99,Do not know
+channel_used_c01,Call centre,0,No
+channel_used_c01,Call centre,1,Yes
+channel_used_c02,Branch,0,No
+channel_used_c02,Branch,1,Yes
+channel_used_c03,Digital self service,0,No
+channel_used_c03,Digital self service,1,Yes
+channel_used_c04,Messaging or live chat,0,No
+channel_used_c04,Messaging or live chat,1,Yes
+channel_none,No channel used in past 30 days,0,No
+channel_none,No channel used in past 30 days,1,Yes
+experience_preference5,Recent experiences give a reason to choose this provider over another,1,Strongly disagree
+experience_preference5,Recent experiences give a reason to choose this provider over another,2,Disagree
+experience_preference5,Recent experiences give a reason to choose this provider over another,3,Neither agree nor disagree
+experience_preference5,Recent experiences give a reason to choose this provider over another,4,Agree
+experience_preference5,Recent experiences give a reason to choose this provider over another,5,Strongly agree
+experience_preference5,Recent experiences give a reason to choose this provider over another,99,Do not know
+stay_reason_r01,Genuine preference for this provider,0,Not selected
+stay_reason_r01,Genuine preference for this provider,1,Selected
+stay_reason_r02,Habit or familiarity,0,Not selected
+stay_reason_r02,Habit or familiarity,1,Selected
+stay_reason_r03,Contractual restriction or exit charge,0,Not selected
+stay_reason_r03,Contractual restriction or exit charge,1,Selected
+stay_reason_r04,Time effort or inconvenience of switching,0,Not selected
+stay_reason_r04,Time effort or inconvenience of switching,1,Selected
+stay_reason_r05,Lack of suitable alternatives,0,Not selected
+stay_reason_r05,Lack of suitable alternatives,1,Selected
+stay_reason_r06,Other reason,0,Not selected
+stay_reason_r06,Other reason,1,Selected
+stay_none,No stated reason for continuing current use,0,Not selected
+stay_none,No stated reason for continuing current use,1,Selected
+stay_dk,Do not know reason for current use,0,Not selected
+stay_dk,Do not know reason for current use,1,Selected
+stay_primary,Main reason for continuing current use,1,Genuine preference for this provider
+stay_primary,Main reason for continuing current use,2,Habit or familiarity
+stay_primary,Main reason for continuing current use,3,Contractual restriction or exit charge
+stay_primary,Main reason for continuing current use,4,Time effort or inconvenience of switching
+stay_primary,Main reason for continuing current use,5,Lack of suitable alternatives
+stay_primary,Main reason for continuing current use,6,Other reason
+stay_primary,Main reason for continuing current use,97,None of these
+stay_primary,Main reason for continuing current use,99,Do not know
+journey_recent30,Attempted a specific service task with main provider in past 30 days,0,No
+journey_recent30,Attempted a specific service task with main provider in past 30 days,1,Yes
+journey_task,Task attempted in anchored journey,1,Payment or transfer
+journey_task,Task attempted in anchored journey,2,Account balance or information
+journey_task,Task attempted in anchored journey,3,Account or personal detail change
+journey_task,Task attempted in anchored journey,4,Problem complaint or fraud concern
+journey_task,Task attempted in anchored journey,5,Product advice or application
+journey_task,Task attempted in anchored journey,6,Other
+journey_channel_c01,Same task used Call centre,0,Not used
+journey_channel_c01,Same task used Call centre,1,Used
+journey_channel_c02,Same task used Branch,0,Not used
+journey_channel_c02,Same task used Branch,1,Used
+journey_channel_c03,Same task used Digital self service,0,Not used
+journey_channel_c03,Same task used Digital self service,1,Used
+journey_channel_c04,Same task used Messaging or live chat,0,Not used
+journey_channel_c04,Same task used Messaging or live chat,1,Used
+journey_digital_mode,Digital mode used in anchored journey,1,App
+journey_digital_mode,Digital mode used in anchored journey,2,Website
+journey_digital_mode,Digital mode used in anchored journey,3,Both app and website
+journey_multichannel,Used at least two distinct channels on the same task,0,One channel
+journey_multichannel,Used at least two distinct channels on the same task,1,Multiple channels
+journey_transferred,Transferred or directed between teams or channels on this task,0,No
+journey_transferred,Transferred or directed between teams or channels on this task,1,Yes
+journey_transferred,Transferred or directed between teams or channels on this task,99,Do not know
+journey_repeat_info,Required to repeat information already provided on this task,0,No
+journey_repeat_info,Required to repeat information already provided on this task,1,Yes
+journey_repeat_info,Required to repeat information already provided on this task,99,Do not know
+journey_status,Outcome of the same anchored task at interview,1,Completed
+journey_status,Outcome of the same anchored task at interview,2,Partly completed
+journey_status,Outcome of the same anchored task at interview,3,Unresolved or abandoned
+journey_status,Outcome of the same anchored task at interview,9,Still pending
+journey_completed,Completed task among known final outcomes,0,Not completed
+journey_completed,Completed task among known final outcomes,1,Completed
+journey_csat5,Overall satisfaction with the end to end anchored task,1,Very dissatisfied
+journey_csat5,Overall satisfaction with the end to end anchored task,2,Dissatisfied
+journey_csat5,Overall satisfaction with the end to end anchored task,3,Neither satisfied nor dissatisfied
+journey_csat5,Overall satisfaction with the end to end anchored task,4,Satisfied
+journey_csat5,Overall satisfaction with the end to end anchored task,5,Very satisfied
+journey_csat5,Overall satisfaction with the end to end anchored task,99,Do not know
+journey_reassured5,Anchored journey left customer reassured,1,Not at all
+journey_reassured5,Anchored journey left customer reassured,2,A little
+journey_reassured5,Anchored journey left customer reassured,3,Moderately
+journey_reassured5,Anchored journey left customer reassured,4,Very
+journey_reassured5,Anchored journey left customer reassured,5,Extremely
+journey_reassured5,Anchored journey left customer reassured,99,Do not know
+journey_valued5,Anchored journey left customer valued,1,Not at all
+journey_valued5,Anchored journey left customer valued,2,A little
+journey_valued5,Anchored journey left customer valued,3,Moderately
+journey_valued5,Anchored journey left customer valued,4,Very
+journey_valued5,Anchored journey left customer valued,5,Extremely
+journey_valued5,Anchored journey left customer valued,99,Do not know
+journey_frustrated5,Anchored journey left customer frustrated,1,Not at all
+journey_frustrated5,Anchored journey left customer frustrated,2,A little
+journey_frustrated5,Anchored journey left customer frustrated,3,Moderately
+journey_frustrated5,Anchored journey left customer frustrated,4,Very
+journey_frustrated5,Anchored journey left customer frustrated,5,Extremely
+journey_frustrated5,Anchored journey left customer frustrated,99,Do not know
+journey_anxious5,Anchored journey left customer anxious,1,Not at all
+journey_anxious5,Anchored journey left customer anxious,2,A little
+journey_anxious5,Anchored journey left customer anxious,3,Moderately
+journey_anxious5,Anchored journey left customer anxious,4,Very
+journey_anxious5,Anchored journey left customer anxious,5,Extremely
+journey_anxious5,Anchored journey left customer anxious,99,Do not know
+journey_preference5,Anchored journey gives a reason to choose this provider,1,Strongly disagree
+journey_preference5,Anchored journey gives a reason to choose this provider,2,Disagree
+journey_preference5,Anchored journey gives a reason to choose this provider,3,Neither agree nor disagree
+journey_preference5,Anchored journey gives a reason to choose this provider,4,Agree
+journey_preference5,Anchored journey gives a reason to choose this provider,5,Strongly agree
+journey_preference5,Anchored journey gives a reason to choose this provider,99,Do not know
+benchmark_recent_same_task30,Personally used another provider for same task type in past 30 days,0,No
+benchmark_recent_same_task30,Personally used another provider for same task type in past 30 days,1,Yes
+benchmark_recent_same_task30,Personally used another provider for same task type in past 30 days,99,Do not know
+benchmark_provider,Other provider personally used for comparable task,1,FNB
+benchmark_provider,Other provider personally used for comparable task,2,Standard Bank
+benchmark_provider,Other provider personally used for comparable task,3,Absa
+benchmark_provider,Other provider personally used for comparable task,4,Nedbank
+benchmark_provider,Other provider personally used for comparable task,5,Capitec
+benchmark_provider,Other provider personally used for comparable task,6,Discovery Bank
+benchmark_provider,Other provider personally used for comparable task,7,GoTyme Bank (formerly TymeBank)
+benchmark_task,Task type personally attempted with other provider,1,Payment or transfer
+benchmark_task,Task type personally attempted with other provider,2,Account balance or information
+benchmark_task,Task type personally attempted with other provider,3,Account or personal detail change
+benchmark_task,Task type personally attempted with other provider,4,Problem complaint or fraud concern
+benchmark_task,Task type personally attempted with other provider,5,Product advice or application
+benchmark_task,Task type personally attempted with other provider,6,Other
+benchmark_channel,Channel of comparable other provider task experience,1,Call centre
+benchmark_channel,Channel of comparable other provider task experience,2,Branch
+benchmark_channel,Channel of comparable other provider task experience,3,Digital self service
+benchmark_channel,Channel of comparable other provider task experience,4,Messaging or live chat
+benchmark_csat5,Overall satisfaction with other provider comparable task,1,Very dissatisfied
+benchmark_csat5,Overall satisfaction with other provider comparable task,2,Dissatisfied
+benchmark_csat5,Overall satisfaction with other provider comparable task,3,Neither satisfied nor dissatisfied
+benchmark_csat5,Overall satisfaction with other provider comparable task,4,Satisfied
+benchmark_csat5,Overall satisfaction with other provider comparable task,5,Very satisfied
+benchmark_csat5,Overall satisfaction with other provider comparable task,99,Do not know
+journey_angry5,Anchored journey left customer angry,1,Not at all
+journey_angry5,Anchored journey left customer angry,2,A little
+journey_angry5,Anchored journey left customer angry,3,Moderately
+journey_angry5,Anchored journey left customer angry,4,Very
+journey_angry5,Anchored journey left customer angry,5,Extremely
+journey_angry5,Anchored journey left customer angry,99,Do not know
+journey_disappointed5,Anchored journey left customer disappointed,1,Not at all
+journey_disappointed5,Anchored journey left customer disappointed,2,A little
+journey_disappointed5,Anchored journey left customer disappointed,3,Moderately
+journey_disappointed5,Anchored journey left customer disappointed,4,Very
+journey_disappointed5,Anchored journey left customer disappointed,5,Extremely
+journey_disappointed5,Anchored journey left customer disappointed,99,Do not know
+ch01_channel,Call centre — Channel,1,Call centre
+ch01_channel,Call centre — Channel,2,Branch
+ch01_channel,Call centre — Channel,3,Digital self service
+ch01_channel,Call centre — Channel,4,Messaging or live chat
+ch01_digital_mode,Call centre — Digital mode,1,App
+ch01_digital_mode,Call centre — Digital mode,2,Website
+ch01_staff_contact,Call centre — Staff contact,0,No
+ch01_staff_contact,Call centre — Staff contact,1,Yes
+ch01_primary_reason,Call centre — Primary need,1,Payment or transfer
+ch01_primary_reason,Call centre — Primary need,2,Account balance or information
+ch01_primary_reason,Call centre — Primary need,3,Account or personal detail change
+ch01_primary_reason,Call centre — Primary need,4,Problem complaint or fraud concern
+ch01_primary_reason,Call centre — Primary need,5,Product advice or application
+ch01_primary_reason,Call centre — Primary need,6,Other
+ch01_reasons_r01,Call centre — Payment or transfer,0,No
+ch01_reasons_r01,Call centre — Payment or transfer,1,Yes
+ch01_reasons_r02,Call centre — Account balance or information,0,No
+ch01_reasons_r02,Call centre — Account balance or information,1,Yes
+ch01_reasons_r03,Call centre — Account or personal detail change,0,No
+ch01_reasons_r03,Call centre — Account or personal detail change,1,Yes
+ch01_reasons_r04,Call centre — Problem complaint or fraud concern,0,No
+ch01_reasons_r04,Call centre — Problem complaint or fraud concern,1,Yes
+ch01_reasons_r05,Call centre — Product advice or application,0,No
+ch01_reasons_r05,Call centre — Product advice or application,1,Yes
+ch01_reasons_r06,Call centre — Other,0,No
+ch01_reasons_r06,Call centre — Other,1,Yes
+ch01_channel_csat5,Call centre — Satisfaction with this experience,1,Very dissatisfied
+ch01_channel_csat5,Call centre — Satisfaction with this experience,2,Dissatisfied
+ch01_channel_csat5,Call centre — Satisfaction with this experience,3,Neither satisfied nor dissatisfied
+ch01_channel_csat5,Call centre — Satisfaction with this experience,4,Satisfied
+ch01_channel_csat5,Call centre — Satisfaction with this experience,5,Very satisfied
+ch01_channel_csat5,Call centre — Satisfaction with this experience,99,Do not know
+ch01_ease7,Call centre — Ease of getting what was needed,1,Very difficult
+ch01_ease7,Call centre — Ease of getting what was needed,2,Difficult
+ch01_ease7,Call centre — Ease of getting what was needed,3,Somewhat difficult
+ch01_ease7,Call centre — Ease of getting what was needed,4,Neither
+ch01_ease7,Call centre — Ease of getting what was needed,5,Somewhat easy
+ch01_ease7,Call centre — Ease of getting what was needed,6,Easy
+ch01_ease7,Call centre — Ease of getting what was needed,7,Very easy
+ch01_ease7,Call centre — Ease of getting what was needed,99,Do not know
+ch01_task_completed,Call centre — Task completed,0,No
+ch01_task_completed,Call centre — Task completed,1,Yes
+ch01_task_completed,Call centre — Task completed,9,Pending
+ch01_problem_present,Call centre — Problem to resolve,0,No
+ch01_problem_present,Call centre — Problem to resolve,1,Yes
+ch01_problem_resolution,Call centre — Problem resolution,1,Fully
+ch01_problem_resolution,Call centre — Problem resolution,2,Partly
+ch01_problem_resolution,Call centre — Problem resolution,3,Unresolved
+ch01_problem_resolution,Call centre — Problem resolution,9,Pending
+ch01_first_contact_resolution,Call centre — First contact resolution,0,No
+ch01_first_contact_resolution,Call centre — First contact resolution,1,Yes
+ch01_driver_reliable_accurate,Call centre — Accuracy of information,1,Very poor
+ch01_driver_reliable_accurate,Call centre — Accuracy of information,2,Poor
+ch01_driver_reliable_accurate,Call centre — Accuracy of information,3,Adequate
+ch01_driver_reliable_accurate,Call centre — Accuracy of information,4,Good
+ch01_driver_reliable_accurate,Call centre — Accuracy of information,5,Excellent
+ch01_driver_reliable_accurate,Call centre — Accuracy of information,98,Not applicable
+ch01_driver_reliable_accurate,Call centre — Accuracy of information,99,Do not know
+ch01_driver_reliable_correct,Call centre — Correct handling of the task,1,Very poor
+ch01_driver_reliable_correct,Call centre — Correct handling of the task,2,Poor
+ch01_driver_reliable_correct,Call centre — Correct handling of the task,3,Adequate
+ch01_driver_reliable_correct,Call centre — Correct handling of the task,4,Good
+ch01_driver_reliable_correct,Call centre — Correct handling of the task,5,Excellent
+ch01_driver_reliable_correct,Call centre — Correct handling of the task,98,Not applicable
+ch01_driver_reliable_correct,Call centre — Correct handling of the task,99,Do not know
+ch01_driver_responsive_speed,Call centre — Speed of response,1,Very poor
+ch01_driver_responsive_speed,Call centre — Speed of response,2,Poor
+ch01_driver_responsive_speed,Call centre — Speed of response,3,Adequate
+ch01_driver_responsive_speed,Call centre — Speed of response,4,Good
+ch01_driver_responsive_speed,Call centre — Speed of response,5,Excellent
+ch01_driver_responsive_speed,Call centre — Speed of response,98,Not applicable
+ch01_driver_responsive_speed,Call centre — Speed of response,99,Do not know
+ch01_driver_responsive_updates,Call centre — Kept informed about progress,1,Very poor
+ch01_driver_responsive_updates,Call centre — Kept informed about progress,2,Poor
+ch01_driver_responsive_updates,Call centre — Kept informed about progress,3,Adequate
+ch01_driver_responsive_updates,Call centre — Kept informed about progress,4,Good
+ch01_driver_responsive_updates,Call centre — Kept informed about progress,5,Excellent
+ch01_driver_responsive_updates,Call centre — Kept informed about progress,98,Not applicable
+ch01_driver_responsive_updates,Call centre — Kept informed about progress,99,Do not know
+ch01_driver_assurance_knowledge,Call centre — Staff knowledge and competence,1,Very poor
+ch01_driver_assurance_knowledge,Call centre — Staff knowledge and competence,2,Poor
+ch01_driver_assurance_knowledge,Call centre — Staff knowledge and competence,3,Adequate
+ch01_driver_assurance_knowledge,Call centre — Staff knowledge and competence,4,Good
+ch01_driver_assurance_knowledge,Call centre — Staff knowledge and competence,5,Excellent
+ch01_driver_assurance_knowledge,Call centre — Staff knowledge and competence,98,Not applicable
+ch01_driver_assurance_knowledge,Call centre — Staff knowledge and competence,99,Do not know
+ch01_driver_assurance_confidence,Call centre — Confidence in safe handling,1,Very poor
+ch01_driver_assurance_confidence,Call centre — Confidence in safe handling,2,Poor
+ch01_driver_assurance_confidence,Call centre — Confidence in safe handling,3,Adequate
+ch01_driver_assurance_confidence,Call centre — Confidence in safe handling,4,Good
+ch01_driver_assurance_confidence,Call centre — Confidence in safe handling,5,Excellent
+ch01_driver_assurance_confidence,Call centre — Confidence in safe handling,98,Not applicable
+ch01_driver_assurance_confidence,Call centre — Confidence in safe handling,99,Do not know
+ch01_driver_empathy_understood,Call centre — Understanding of my needs,1,Very poor
+ch01_driver_empathy_understood,Call centre — Understanding of my needs,2,Poor
+ch01_driver_empathy_understood,Call centre — Understanding of my needs,3,Adequate
+ch01_driver_empathy_understood,Call centre — Understanding of my needs,4,Good
+ch01_driver_empathy_understood,Call centre — Understanding of my needs,5,Excellent
+ch01_driver_empathy_understood,Call centre — Understanding of my needs,98,Not applicable
+ch01_driver_empathy_understood,Call centre — Understanding of my needs,99,Do not know
+ch01_driver_empathy_respect,Call centre — Respectful treatment,1,Very poor
+ch01_driver_empathy_respect,Call centre — Respectful treatment,2,Poor
+ch01_driver_empathy_respect,Call centre — Respectful treatment,3,Adequate
+ch01_driver_empathy_respect,Call centre — Respectful treatment,4,Good
+ch01_driver_empathy_respect,Call centre — Respectful treatment,5,Excellent
+ch01_driver_empathy_respect,Call centre — Respectful treatment,98,Not applicable
+ch01_driver_empathy_respect,Call centre — Respectful treatment,99,Do not know
+ch01_driver_access_ease,Call centre — Ease of accessing the channel,1,Very poor
+ch01_driver_access_ease,Call centre — Ease of accessing the channel,2,Poor
+ch01_driver_access_ease,Call centre — Ease of accessing the channel,3,Adequate
+ch01_driver_access_ease,Call centre — Ease of accessing the channel,4,Good
+ch01_driver_access_ease,Call centre — Ease of accessing the channel,5,Excellent
+ch01_driver_access_ease,Call centre — Ease of accessing the channel,98,Not applicable
+ch01_driver_access_ease,Call centre — Ease of accessing the channel,99,Do not know
+ch01_driver_access_clarity,Call centre — Clarity of communication or interface,1,Very poor
+ch01_driver_access_clarity,Call centre — Clarity of communication or interface,2,Poor
+ch01_driver_access_clarity,Call centre — Clarity of communication or interface,3,Adequate
+ch01_driver_access_clarity,Call centre — Clarity of communication or interface,4,Good
+ch01_driver_access_clarity,Call centre — Clarity of communication or interface,5,Excellent
+ch01_driver_access_clarity,Call centre — Clarity of communication or interface,98,Not applicable
+ch01_driver_access_clarity,Call centre — Clarity of communication or interface,99,Do not know
+ch01_transferred,Call centre — Transferred,0,No
+ch01_transferred,Call centre — Transferred,1,Yes
+ch01_put_on_hold,Call centre — Put on hold,0,No
+ch01_put_on_hold,Call centre — Put on hold,1,Yes
+ch01_callback_promised,Call centre — Callback promised,0,No
+ch01_callback_promised,Call centre — Callback promised,1,Yes
+ch01_used_ivr,Call centre — Used IVR,0,No
+ch01_used_ivr,Call centre — Used IVR,1,Yes
+ch01_callback_outcome,Call centre — Callback outcome,1,On time
+ch01_callback_outcome,Call centre — Callback outcome,2,Late
+ch01_callback_outcome,Call centre — Callback outcome,3,Not received
+ch01_callback_outcome,Call centre — Callback outcome,9,Not yet due
+ch01_ivr_csat5,Call centre — IVR satisfaction,1,Very dissatisfied
+ch01_ivr_csat5,Call centre — IVR satisfaction,2,Dissatisfied
+ch01_ivr_csat5,Call centre — IVR satisfaction,3,Neither satisfied nor dissatisfied
+ch01_ivr_csat5,Call centre — IVR satisfaction,4,Satisfied
+ch01_ivr_csat5,Call centre — IVR satisfaction,5,Very satisfied
+ch01_ivr_csat5,Call centre — IVR satisfaction,99,Do not know
+ch01_ivr_clarity5,Call centre — IVR clarity,1,Very poor
+ch01_ivr_clarity5,Call centre — IVR clarity,2,Poor
+ch01_ivr_clarity5,Call centre — IVR clarity,3,Adequate
+ch01_ivr_clarity5,Call centre — IVR clarity,4,Good
+ch01_ivr_clarity5,Call centre — IVR clarity,5,Excellent
+ch01_ivr_clarity5,Call centre — IVR clarity,98,Not applicable
+ch01_ivr_clarity5,Call centre — IVR clarity,99,Do not know
+ch01_agent_introduced,Call centre — Staff introduced themselves,0,No
+ch01_agent_introduced,Call centre — Staff introduced themselves,1,Yes
+ch01_agent_polite,Call centre — Polite staff,0,No
+ch01_agent_polite,Call centre — Polite staff,1,Yes
+ch01_preferred_language_assisted,Call centre — Preferred language assistance,0,No
+ch01_preferred_language_assisted,Call centre — Preferred language assistance,1,Yes
+ch01_branch_tidy5,Call centre — Physical facilities tidy,1,Very poor
+ch01_branch_tidy5,Call centre — Physical facilities tidy,2,Poor
+ch01_branch_tidy5,Call centre — Physical facilities tidy,3,Adequate
+ch01_branch_tidy5,Call centre — Physical facilities tidy,4,Good
+ch01_branch_tidy5,Call centre — Physical facilities tidy,5,Excellent
+ch01_branch_tidy5,Call centre — Physical facilities tidy,98,Not applicable
+ch01_branch_tidy5,Call centre — Physical facilities tidy,99,Do not know
+ch01_branch_accessible5,Call centre — Physical facilities accessible,1,Very poor
+ch01_branch_accessible5,Call centre — Physical facilities accessible,2,Poor
+ch01_branch_accessible5,Call centre — Physical facilities accessible,3,Adequate
+ch01_branch_accessible5,Call centre — Physical facilities accessible,4,Good
+ch01_branch_accessible5,Call centre — Physical facilities accessible,5,Excellent
+ch01_branch_accessible5,Call centre — Physical facilities accessible,98,Not applicable
+ch01_branch_accessible5,Call centre — Physical facilities accessible,99,Do not know
+ch01_channel_reassured5,Call centre — This latest channel experience left customer reassured,1,Not at all
+ch01_channel_reassured5,Call centre — This latest channel experience left customer reassured,2,A little
+ch01_channel_reassured5,Call centre — This latest channel experience left customer reassured,3,Moderately
+ch01_channel_reassured5,Call centre — This latest channel experience left customer reassured,4,Very
+ch01_channel_reassured5,Call centre — This latest channel experience left customer reassured,5,Extremely
+ch01_channel_reassured5,Call centre — This latest channel experience left customer reassured,99,Do not know
+ch01_channel_valued5,Call centre — This latest channel experience left customer valued,1,Not at all
+ch01_channel_valued5,Call centre — This latest channel experience left customer valued,2,A little
+ch01_channel_valued5,Call centre — This latest channel experience left customer valued,3,Moderately
+ch01_channel_valued5,Call centre — This latest channel experience left customer valued,4,Very
+ch01_channel_valued5,Call centre — This latest channel experience left customer valued,5,Extremely
+ch01_channel_valued5,Call centre — This latest channel experience left customer valued,99,Do not know
+ch01_channel_frustrated5,Call centre — This latest channel experience left customer frustrated,1,Not at all
+ch01_channel_frustrated5,Call centre — This latest channel experience left customer frustrated,2,A little
+ch01_channel_frustrated5,Call centre — This latest channel experience left customer frustrated,3,Moderately
+ch01_channel_frustrated5,Call centre — This latest channel experience left customer frustrated,4,Very
+ch01_channel_frustrated5,Call centre — This latest channel experience left customer frustrated,5,Extremely
+ch01_channel_frustrated5,Call centre — This latest channel experience left customer frustrated,99,Do not know
+ch01_channel_anxious5,Call centre — This latest channel experience left customer anxious,1,Not at all
+ch01_channel_anxious5,Call centre — This latest channel experience left customer anxious,2,A little
+ch01_channel_anxious5,Call centre — This latest channel experience left customer anxious,3,Moderately
+ch01_channel_anxious5,Call centre — This latest channel experience left customer anxious,4,Very
+ch01_channel_anxious5,Call centre — This latest channel experience left customer anxious,5,Extremely
+ch01_channel_anxious5,Call centre — This latest channel experience left customer anxious,99,Do not know
+ch01_channel_preference5,Call centre — This latest channel experience gives reason to choose provider,1,Strongly disagree
+ch01_channel_preference5,Call centre — This latest channel experience gives reason to choose provider,2,Disagree
+ch01_channel_preference5,Call centre — This latest channel experience gives reason to choose provider,3,Neither agree nor disagree
+ch01_channel_preference5,Call centre — This latest channel experience gives reason to choose provider,4,Agree
+ch01_channel_preference5,Call centre — This latest channel experience gives reason to choose provider,5,Strongly agree
+ch01_channel_preference5,Call centre — This latest channel experience gives reason to choose provider,99,Do not know
+ch01_channel_angry5,Call centre — This latest channel experience left customer angry,1,Not at all
+ch01_channel_angry5,Call centre — This latest channel experience left customer angry,2,A little
+ch01_channel_angry5,Call centre — This latest channel experience left customer angry,3,Moderately
+ch01_channel_angry5,Call centre — This latest channel experience left customer angry,4,Very
+ch01_channel_angry5,Call centre — This latest channel experience left customer angry,5,Extremely
+ch01_channel_angry5,Call centre — This latest channel experience left customer angry,99,Do not know
+ch01_channel_disappointed5,Call centre — This latest channel experience left customer disappointed,1,Not at all
+ch01_channel_disappointed5,Call centre — This latest channel experience left customer disappointed,2,A little
+ch01_channel_disappointed5,Call centre — This latest channel experience left customer disappointed,3,Moderately
+ch01_channel_disappointed5,Call centre — This latest channel experience left customer disappointed,4,Very
+ch01_channel_disappointed5,Call centre — This latest channel experience left customer disappointed,5,Extremely
+ch01_channel_disappointed5,Call centre — This latest channel experience left customer disappointed,99,Do not know
+ch01_call_agent_contact,Call centre — Spoke with a live agent during this call,0,No
+ch01_call_agent_contact,Call centre — Spoke with a live agent during this call,1,Yes
+ch01_call_agent_contact,Call centre — Spoke with a live agent during this call,99,Do not know
+ch01_queue_wait_csat5,Call centre — Satisfaction with wait to speak to a live agent including no wait,1,Very dissatisfied
+ch01_queue_wait_csat5,Call centre — Satisfaction with wait to speak to a live agent including no wait,2,Dissatisfied
+ch01_queue_wait_csat5,Call centre — Satisfaction with wait to speak to a live agent including no wait,3,Neither satisfied nor dissatisfied
+ch01_queue_wait_csat5,Call centre — Satisfaction with wait to speak to a live agent including no wait,4,Satisfied
+ch01_queue_wait_csat5,Call centre — Satisfaction with wait to speak to a live agent including no wait,5,Very satisfied
+ch01_queue_wait_csat5,Call centre — Satisfaction with wait to speak to a live agent including no wait,99,Do not know
+ch01_total_call_time_csat5,Call centre — Satisfaction with total duration of this call,1,Very dissatisfied
+ch01_total_call_time_csat5,Call centre — Satisfaction with total duration of this call,2,Dissatisfied
+ch01_total_call_time_csat5,Call centre — Satisfaction with total duration of this call,3,Neither satisfied nor dissatisfied
+ch01_total_call_time_csat5,Call centre — Satisfaction with total duration of this call,4,Satisfied
+ch01_total_call_time_csat5,Call centre — Satisfaction with total duration of this call,5,Very satisfied
+ch01_total_call_time_csat5,Call centre — Satisfaction with total duration of this call,99,Do not know
+ch01_agent_overall_csat5,Call centre — Overall satisfaction with the live agent on this call,1,Very dissatisfied
+ch01_agent_overall_csat5,Call centre — Overall satisfaction with the live agent on this call,2,Dissatisfied
+ch01_agent_overall_csat5,Call centre — Overall satisfaction with the live agent on this call,3,Neither satisfied nor dissatisfied
+ch01_agent_overall_csat5,Call centre — Overall satisfaction with the live agent on this call,4,Satisfied
+ch01_agent_overall_csat5,Call centre — Overall satisfaction with the live agent on this call,5,Very satisfied
+ch01_agent_overall_csat5,Call centre — Overall satisfaction with the live agent on this call,99,Do not know
+ch01_correct_person_first_transfer,Call centre — Reached the right person on the first transfer,0,No
+ch01_correct_person_first_transfer,Call centre — Reached the right person on the first transfer,1,Yes
+ch01_correct_person_first_transfer,Call centre — Reached the right person on the first transfer,99,Do not know
+ch01_agent_ownership5,Call centre — The agent took ownership of helping resolve the need,1,Strongly disagree
+ch01_agent_ownership5,Call centre — The agent took ownership of helping resolve the need,2,Disagree
+ch01_agent_ownership5,Call centre — The agent took ownership of helping resolve the need,3,Neither agree nor disagree
+ch01_agent_ownership5,Call centre — The agent took ownership of helping resolve the need,4,Agree
+ch01_agent_ownership5,Call centre — The agent took ownership of helping resolve the need,5,Strongly agree
+ch01_agent_ownership5,Call centre — The agent took ownership of helping resolve the need,98,Not applicable
+ch01_agent_ownership5,Call centre — The agent took ownership of helping resolve the need,99,Do not know
+ch01_agent_promise_made,Call centre — Agent made a specific promise about something to happen after the call,0,No
+ch01_agent_promise_made,Call centre — Agent made a specific promise about something to happen after the call,1,Yes
+ch01_agent_promise_made,Call centre — Agent made a specific promise about something to happen after the call,99,Do not know
+ch01_agent_promises_kept5,Call centre — The agent kept the promises that were due by now,1,Strongly disagree
+ch01_agent_promises_kept5,Call centre — The agent kept the promises that were due by now,2,Disagree
+ch01_agent_promises_kept5,Call centre — The agent kept the promises that were due by now,3,Neither agree nor disagree
+ch01_agent_promises_kept5,Call centre — The agent kept the promises that were due by now,4,Agree
+ch01_agent_promises_kept5,Call centre — The agent kept the promises that were due by now,5,Strongly agree
+ch01_agent_promises_kept5,Call centre — The agent kept the promises that were due by now,98,Not applicable
+ch01_agent_promises_kept5,Call centre — The agent kept the promises that were due by now,99,Do not know
+ch01_agent_promises_kept5,Call centre — The agent kept the promises that were due by now,9,Not yet due or too early to tell
+ch01_agent_patience5,Call centre — The agent was patient with me,1,Strongly disagree
+ch01_agent_patience5,Call centre — The agent was patient with me,2,Disagree
+ch01_agent_patience5,Call centre — The agent was patient with me,3,Neither agree nor disagree
+ch01_agent_patience5,Call centre — The agent was patient with me,4,Agree
+ch01_agent_patience5,Call centre — The agent was patient with me,5,Strongly agree
+ch01_agent_patience5,Call centre — The agent was patient with me,98,Not applicable
+ch01_agent_patience5,Call centre — The agent was patient with me,99,Do not know
+ch01_urgency_need,Call centre — Told the agent that the need was urgent,0,No
+ch01_urgency_need,Call centre — Told the agent that the need was urgent,1,Yes
+ch01_urgency_need,Call centre — Told the agent that the need was urgent,99,Do not know
+ch01_agent_urgency5,Call centre — The agent responded appropriately to the urgency of my need,1,Strongly disagree
+ch01_agent_urgency5,Call centre — The agent responded appropriately to the urgency of my need,2,Disagree
+ch01_agent_urgency5,Call centre — The agent responded appropriately to the urgency of my need,3,Neither agree nor disagree
+ch01_agent_urgency5,Call centre — The agent responded appropriately to the urgency of my need,4,Agree
+ch01_agent_urgency5,Call centre — The agent responded appropriately to the urgency of my need,5,Strongly agree
+ch01_agent_urgency5,Call centre — The agent responded appropriately to the urgency of my need,98,Not applicable
+ch01_agent_urgency5,Call centre — The agent responded appropriately to the urgency of my need,99,Do not know
+ch01_ivr_availability5,Call centre — Availability of the automated telephone service when needed,1,Very poor
+ch01_ivr_availability5,Call centre — Availability of the automated telephone service when needed,2,Poor
+ch01_ivr_availability5,Call centre — Availability of the automated telephone service when needed,3,Adequate
+ch01_ivr_availability5,Call centre — Availability of the automated telephone service when needed,4,Good
+ch01_ivr_availability5,Call centre — Availability of the automated telephone service when needed,5,Excellent
+ch01_ivr_availability5,Call centre — Availability of the automated telephone service when needed,98,Not applicable
+ch01_ivr_availability5,Call centre — Availability of the automated telephone service when needed,99,Do not know
+ch01_ivr_response_speed5,Call centre — Speed of the automated telephone service responses,1,Very poor
+ch01_ivr_response_speed5,Call centre — Speed of the automated telephone service responses,2,Poor
+ch01_ivr_response_speed5,Call centre — Speed of the automated telephone service responses,3,Adequate
+ch01_ivr_response_speed5,Call centre — Speed of the automated telephone service responses,4,Good
+ch01_ivr_response_speed5,Call centre — Speed of the automated telephone service responses,5,Excellent
+ch01_ivr_response_speed5,Call centre — Speed of the automated telephone service responses,98,Not applicable
+ch01_ivr_response_speed5,Call centre — Speed of the automated telephone service responses,99,Do not know
+ch01_ivr_information_accuracy5,Call centre — Accuracy of information supplied by the automated telephone service,1,Very poor
+ch01_ivr_information_accuracy5,Call centre — Accuracy of information supplied by the automated telephone service,2,Poor
+ch01_ivr_information_accuracy5,Call centre — Accuracy of information supplied by the automated telephone service,3,Adequate
+ch01_ivr_information_accuracy5,Call centre — Accuracy of information supplied by the automated telephone service,4,Good
+ch01_ivr_information_accuracy5,Call centre — Accuracy of information supplied by the automated telephone service,5,Excellent
+ch01_ivr_information_accuracy5,Call centre — Accuracy of information supplied by the automated telephone service,98,Not applicable
+ch01_ivr_information_accuracy5,Call centre — Accuracy of information supplied by the automated telephone service,99,Do not know
+ch01_ivr_ease5,Call centre — Ease of using the automated telephone service,1,Very poor
+ch01_ivr_ease5,Call centre — Ease of using the automated telephone service,2,Poor
+ch01_ivr_ease5,Call centre — Ease of using the automated telephone service,3,Adequate
+ch01_ivr_ease5,Call centre — Ease of using the automated telephone service,4,Good
+ch01_ivr_ease5,Call centre — Ease of using the automated telephone service,5,Excellent
+ch01_ivr_ease5,Call centre — Ease of using the automated telephone service,98,Not applicable
+ch01_ivr_ease5,Call centre — Ease of using the automated telephone service,99,Do not know
+ch02_channel,Branch — Channel,1,Call centre
+ch02_channel,Branch — Channel,2,Branch
+ch02_channel,Branch — Channel,3,Digital self service
+ch02_channel,Branch — Channel,4,Messaging or live chat
+ch02_digital_mode,Branch — Digital mode,1,App
+ch02_digital_mode,Branch — Digital mode,2,Website
+ch02_staff_contact,Branch — Staff contact,0,No
+ch02_staff_contact,Branch — Staff contact,1,Yes
+ch02_primary_reason,Branch — Primary need,1,Payment or transfer
+ch02_primary_reason,Branch — Primary need,2,Account balance or information
+ch02_primary_reason,Branch — Primary need,3,Account or personal detail change
+ch02_primary_reason,Branch — Primary need,4,Problem complaint or fraud concern
+ch02_primary_reason,Branch — Primary need,5,Product advice or application
+ch02_primary_reason,Branch — Primary need,6,Other
+ch02_reasons_r01,Branch — Payment or transfer,0,No
+ch02_reasons_r01,Branch — Payment or transfer,1,Yes
+ch02_reasons_r02,Branch — Account balance or information,0,No
+ch02_reasons_r02,Branch — Account balance or information,1,Yes
+ch02_reasons_r03,Branch — Account or personal detail change,0,No
+ch02_reasons_r03,Branch — Account or personal detail change,1,Yes
+ch02_reasons_r04,Branch — Problem complaint or fraud concern,0,No
+ch02_reasons_r04,Branch — Problem complaint or fraud concern,1,Yes
+ch02_reasons_r05,Branch — Product advice or application,0,No
+ch02_reasons_r05,Branch — Product advice or application,1,Yes
+ch02_reasons_r06,Branch — Other,0,No
+ch02_reasons_r06,Branch — Other,1,Yes
+ch02_channel_csat5,Branch — Satisfaction with this experience,1,Very dissatisfied
+ch02_channel_csat5,Branch — Satisfaction with this experience,2,Dissatisfied
+ch02_channel_csat5,Branch — Satisfaction with this experience,3,Neither satisfied nor dissatisfied
+ch02_channel_csat5,Branch — Satisfaction with this experience,4,Satisfied
+ch02_channel_csat5,Branch — Satisfaction with this experience,5,Very satisfied
+ch02_channel_csat5,Branch — Satisfaction with this experience,99,Do not know
+ch02_ease7,Branch — Ease of getting what was needed,1,Very difficult
+ch02_ease7,Branch — Ease of getting what was needed,2,Difficult
+ch02_ease7,Branch — Ease of getting what was needed,3,Somewhat difficult
+ch02_ease7,Branch — Ease of getting what was needed,4,Neither
+ch02_ease7,Branch — Ease of getting what was needed,5,Somewhat easy
+ch02_ease7,Branch — Ease of getting what was needed,6,Easy
+ch02_ease7,Branch — Ease of getting what was needed,7,Very easy
+ch02_ease7,Branch — Ease of getting what was needed,99,Do not know
+ch02_task_completed,Branch — Task completed,0,No
+ch02_task_completed,Branch — Task completed,1,Yes
+ch02_task_completed,Branch — Task completed,9,Pending
+ch02_problem_present,Branch — Problem to resolve,0,No
+ch02_problem_present,Branch — Problem to resolve,1,Yes
+ch02_problem_resolution,Branch — Problem resolution,1,Fully
+ch02_problem_resolution,Branch — Problem resolution,2,Partly
+ch02_problem_resolution,Branch — Problem resolution,3,Unresolved
+ch02_problem_resolution,Branch — Problem resolution,9,Pending
+ch02_first_contact_resolution,Branch — First contact resolution,0,No
+ch02_first_contact_resolution,Branch — First contact resolution,1,Yes
+ch02_driver_reliable_accurate,Branch — Accuracy of information,1,Very poor
+ch02_driver_reliable_accurate,Branch — Accuracy of information,2,Poor
+ch02_driver_reliable_accurate,Branch — Accuracy of information,3,Adequate
+ch02_driver_reliable_accurate,Branch — Accuracy of information,4,Good
+ch02_driver_reliable_accurate,Branch — Accuracy of information,5,Excellent
+ch02_driver_reliable_accurate,Branch — Accuracy of information,98,Not applicable
+ch02_driver_reliable_accurate,Branch — Accuracy of information,99,Do not know
+ch02_driver_reliable_correct,Branch — Correct handling of the task,1,Very poor
+ch02_driver_reliable_correct,Branch — Correct handling of the task,2,Poor
+ch02_driver_reliable_correct,Branch — Correct handling of the task,3,Adequate
+ch02_driver_reliable_correct,Branch — Correct handling of the task,4,Good
+ch02_driver_reliable_correct,Branch — Correct handling of the task,5,Excellent
+ch02_driver_reliable_correct,Branch — Correct handling of the task,98,Not applicable
+ch02_driver_reliable_correct,Branch — Correct handling of the task,99,Do not know
+ch02_driver_responsive_speed,Branch — Speed of response,1,Very poor
+ch02_driver_responsive_speed,Branch — Speed of response,2,Poor
+ch02_driver_responsive_speed,Branch — Speed of response,3,Adequate
+ch02_driver_responsive_speed,Branch — Speed of response,4,Good
+ch02_driver_responsive_speed,Branch — Speed of response,5,Excellent
+ch02_driver_responsive_speed,Branch — Speed of response,98,Not applicable
+ch02_driver_responsive_speed,Branch — Speed of response,99,Do not know
+ch02_driver_responsive_updates,Branch — Kept informed about progress,1,Very poor
+ch02_driver_responsive_updates,Branch — Kept informed about progress,2,Poor
+ch02_driver_responsive_updates,Branch — Kept informed about progress,3,Adequate
+ch02_driver_responsive_updates,Branch — Kept informed about progress,4,Good
+ch02_driver_responsive_updates,Branch — Kept informed about progress,5,Excellent
+ch02_driver_responsive_updates,Branch — Kept informed about progress,98,Not applicable
+ch02_driver_responsive_updates,Branch — Kept informed about progress,99,Do not know
+ch02_driver_assurance_knowledge,Branch — Staff knowledge and competence,1,Very poor
+ch02_driver_assurance_knowledge,Branch — Staff knowledge and competence,2,Poor
+ch02_driver_assurance_knowledge,Branch — Staff knowledge and competence,3,Adequate
+ch02_driver_assurance_knowledge,Branch — Staff knowledge and competence,4,Good
+ch02_driver_assurance_knowledge,Branch — Staff knowledge and competence,5,Excellent
+ch02_driver_assurance_knowledge,Branch — Staff knowledge and competence,98,Not applicable
+ch02_driver_assurance_knowledge,Branch — Staff knowledge and competence,99,Do not know
+ch02_driver_assurance_confidence,Branch — Confidence in safe handling,1,Very poor
+ch02_driver_assurance_confidence,Branch — Confidence in safe handling,2,Poor
+ch02_driver_assurance_confidence,Branch — Confidence in safe handling,3,Adequate
+ch02_driver_assurance_confidence,Branch — Confidence in safe handling,4,Good
+ch02_driver_assurance_confidence,Branch — Confidence in safe handling,5,Excellent
+ch02_driver_assurance_confidence,Branch — Confidence in safe handling,98,Not applicable
+ch02_driver_assurance_confidence,Branch — Confidence in safe handling,99,Do not know
+ch02_driver_empathy_understood,Branch — Understanding of my needs,1,Very poor
+ch02_driver_empathy_understood,Branch — Understanding of my needs,2,Poor
+ch02_driver_empathy_understood,Branch — Understanding of my needs,3,Adequate
+ch02_driver_empathy_understood,Branch — Understanding of my needs,4,Good
+ch02_driver_empathy_understood,Branch — Understanding of my needs,5,Excellent
+ch02_driver_empathy_understood,Branch — Understanding of my needs,98,Not applicable
+ch02_driver_empathy_understood,Branch — Understanding of my needs,99,Do not know
+ch02_driver_empathy_respect,Branch — Respectful treatment,1,Very poor
+ch02_driver_empathy_respect,Branch — Respectful treatment,2,Poor
+ch02_driver_empathy_respect,Branch — Respectful treatment,3,Adequate
+ch02_driver_empathy_respect,Branch — Respectful treatment,4,Good
+ch02_driver_empathy_respect,Branch — Respectful treatment,5,Excellent
+ch02_driver_empathy_respect,Branch — Respectful treatment,98,Not applicable
+ch02_driver_empathy_respect,Branch — Respectful treatment,99,Do not know
+ch02_driver_access_ease,Branch — Ease of accessing the channel,1,Very poor
+ch02_driver_access_ease,Branch — Ease of accessing the channel,2,Poor
+ch02_driver_access_ease,Branch — Ease of accessing the channel,3,Adequate
+ch02_driver_access_ease,Branch — Ease of accessing the channel,4,Good
+ch02_driver_access_ease,Branch — Ease of accessing the channel,5,Excellent
+ch02_driver_access_ease,Branch — Ease of accessing the channel,98,Not applicable
+ch02_driver_access_ease,Branch — Ease of accessing the channel,99,Do not know
+ch02_driver_access_clarity,Branch — Clarity of communication or interface,1,Very poor
+ch02_driver_access_clarity,Branch — Clarity of communication or interface,2,Poor
+ch02_driver_access_clarity,Branch — Clarity of communication or interface,3,Adequate
+ch02_driver_access_clarity,Branch — Clarity of communication or interface,4,Good
+ch02_driver_access_clarity,Branch — Clarity of communication or interface,5,Excellent
+ch02_driver_access_clarity,Branch — Clarity of communication or interface,98,Not applicable
+ch02_driver_access_clarity,Branch — Clarity of communication or interface,99,Do not know
+ch02_transferred,Branch — Transferred,0,No
+ch02_transferred,Branch — Transferred,1,Yes
+ch02_put_on_hold,Branch — Put on hold,0,No
+ch02_put_on_hold,Branch — Put on hold,1,Yes
+ch02_callback_promised,Branch — Callback promised,0,No
+ch02_callback_promised,Branch — Callback promised,1,Yes
+ch02_used_ivr,Branch — Used IVR,0,No
+ch02_used_ivr,Branch — Used IVR,1,Yes
+ch02_callback_outcome,Branch — Callback outcome,1,On time
+ch02_callback_outcome,Branch — Callback outcome,2,Late
+ch02_callback_outcome,Branch — Callback outcome,3,Not received
+ch02_callback_outcome,Branch — Callback outcome,9,Not yet due
+ch02_ivr_csat5,Branch — IVR satisfaction,1,Very dissatisfied
+ch02_ivr_csat5,Branch — IVR satisfaction,2,Dissatisfied
+ch02_ivr_csat5,Branch — IVR satisfaction,3,Neither satisfied nor dissatisfied
+ch02_ivr_csat5,Branch — IVR satisfaction,4,Satisfied
+ch02_ivr_csat5,Branch — IVR satisfaction,5,Very satisfied
+ch02_ivr_csat5,Branch — IVR satisfaction,99,Do not know
+ch02_ivr_clarity5,Branch — IVR clarity,1,Very poor
+ch02_ivr_clarity5,Branch — IVR clarity,2,Poor
+ch02_ivr_clarity5,Branch — IVR clarity,3,Adequate
+ch02_ivr_clarity5,Branch — IVR clarity,4,Good
+ch02_ivr_clarity5,Branch — IVR clarity,5,Excellent
+ch02_ivr_clarity5,Branch — IVR clarity,98,Not applicable
+ch02_ivr_clarity5,Branch — IVR clarity,99,Do not know
+ch02_agent_introduced,Branch — Staff introduced themselves,0,No
+ch02_agent_introduced,Branch — Staff introduced themselves,1,Yes
+ch02_agent_polite,Branch — Polite staff,0,No
+ch02_agent_polite,Branch — Polite staff,1,Yes
+ch02_preferred_language_assisted,Branch — Preferred language assistance,0,No
+ch02_preferred_language_assisted,Branch — Preferred language assistance,1,Yes
+ch02_branch_tidy5,Branch — Physical facilities tidy,1,Very poor
+ch02_branch_tidy5,Branch — Physical facilities tidy,2,Poor
+ch02_branch_tidy5,Branch — Physical facilities tidy,3,Adequate
+ch02_branch_tidy5,Branch — Physical facilities tidy,4,Good
+ch02_branch_tidy5,Branch — Physical facilities tidy,5,Excellent
+ch02_branch_tidy5,Branch — Physical facilities tidy,98,Not applicable
+ch02_branch_tidy5,Branch — Physical facilities tidy,99,Do not know
+ch02_branch_accessible5,Branch — Physical facilities accessible,1,Very poor
+ch02_branch_accessible5,Branch — Physical facilities accessible,2,Poor
+ch02_branch_accessible5,Branch — Physical facilities accessible,3,Adequate
+ch02_branch_accessible5,Branch — Physical facilities accessible,4,Good
+ch02_branch_accessible5,Branch — Physical facilities accessible,5,Excellent
+ch02_branch_accessible5,Branch — Physical facilities accessible,98,Not applicable
+ch02_branch_accessible5,Branch — Physical facilities accessible,99,Do not know
+ch02_channel_reassured5,Branch — This latest channel experience left customer reassured,1,Not at all
+ch02_channel_reassured5,Branch — This latest channel experience left customer reassured,2,A little
+ch02_channel_reassured5,Branch — This latest channel experience left customer reassured,3,Moderately
+ch02_channel_reassured5,Branch — This latest channel experience left customer reassured,4,Very
+ch02_channel_reassured5,Branch — This latest channel experience left customer reassured,5,Extremely
+ch02_channel_reassured5,Branch — This latest channel experience left customer reassured,99,Do not know
+ch02_channel_valued5,Branch — This latest channel experience left customer valued,1,Not at all
+ch02_channel_valued5,Branch — This latest channel experience left customer valued,2,A little
+ch02_channel_valued5,Branch — This latest channel experience left customer valued,3,Moderately
+ch02_channel_valued5,Branch — This latest channel experience left customer valued,4,Very
+ch02_channel_valued5,Branch — This latest channel experience left customer valued,5,Extremely
+ch02_channel_valued5,Branch — This latest channel experience left customer valued,99,Do not know
+ch02_channel_frustrated5,Branch — This latest channel experience left customer frustrated,1,Not at all
+ch02_channel_frustrated5,Branch — This latest channel experience left customer frustrated,2,A little
+ch02_channel_frustrated5,Branch — This latest channel experience left customer frustrated,3,Moderately
+ch02_channel_frustrated5,Branch — This latest channel experience left customer frustrated,4,Very
+ch02_channel_frustrated5,Branch — This latest channel experience left customer frustrated,5,Extremely
+ch02_channel_frustrated5,Branch — This latest channel experience left customer frustrated,99,Do not know
+ch02_channel_anxious5,Branch — This latest channel experience left customer anxious,1,Not at all
+ch02_channel_anxious5,Branch — This latest channel experience left customer anxious,2,A little
+ch02_channel_anxious5,Branch — This latest channel experience left customer anxious,3,Moderately
+ch02_channel_anxious5,Branch — This latest channel experience left customer anxious,4,Very
+ch02_channel_anxious5,Branch — This latest channel experience left customer anxious,5,Extremely
+ch02_channel_anxious5,Branch — This latest channel experience left customer anxious,99,Do not know
+ch02_channel_preference5,Branch — This latest channel experience gives reason to choose provider,1,Strongly disagree
+ch02_channel_preference5,Branch — This latest channel experience gives reason to choose provider,2,Disagree
+ch02_channel_preference5,Branch — This latest channel experience gives reason to choose provider,3,Neither agree nor disagree
+ch02_channel_preference5,Branch — This latest channel experience gives reason to choose provider,4,Agree
+ch02_channel_preference5,Branch — This latest channel experience gives reason to choose provider,5,Strongly agree
+ch02_channel_preference5,Branch — This latest channel experience gives reason to choose provider,99,Do not know
+ch02_channel_angry5,Branch — This latest channel experience left customer angry,1,Not at all
+ch02_channel_angry5,Branch — This latest channel experience left customer angry,2,A little
+ch02_channel_angry5,Branch — This latest channel experience left customer angry,3,Moderately
+ch02_channel_angry5,Branch — This latest channel experience left customer angry,4,Very
+ch02_channel_angry5,Branch — This latest channel experience left customer angry,5,Extremely
+ch02_channel_angry5,Branch — This latest channel experience left customer angry,99,Do not know
+ch02_channel_disappointed5,Branch — This latest channel experience left customer disappointed,1,Not at all
+ch02_channel_disappointed5,Branch — This latest channel experience left customer disappointed,2,A little
+ch02_channel_disappointed5,Branch — This latest channel experience left customer disappointed,3,Moderately
+ch02_channel_disappointed5,Branch — This latest channel experience left customer disappointed,4,Very
+ch02_channel_disappointed5,Branch — This latest channel experience left customer disappointed,5,Extremely
+ch02_channel_disappointed5,Branch — This latest channel experience left customer disappointed,99,Do not know
+ch02_call_agent_contact,Branch — Spoke with a live agent during this call,0,No
+ch02_call_agent_contact,Branch — Spoke with a live agent during this call,1,Yes
+ch02_call_agent_contact,Branch — Spoke with a live agent during this call,99,Do not know
+ch02_queue_wait_csat5,Branch — Satisfaction with wait to speak to a live agent including no wait,1,Very dissatisfied
+ch02_queue_wait_csat5,Branch — Satisfaction with wait to speak to a live agent including no wait,2,Dissatisfied
+ch02_queue_wait_csat5,Branch — Satisfaction with wait to speak to a live agent including no wait,3,Neither satisfied nor dissatisfied
+ch02_queue_wait_csat5,Branch — Satisfaction with wait to speak to a live agent including no wait,4,Satisfied
+ch02_queue_wait_csat5,Branch — Satisfaction with wait to speak to a live agent including no wait,5,Very satisfied
+ch02_queue_wait_csat5,Branch — Satisfaction with wait to speak to a live agent including no wait,99,Do not know
+ch02_total_call_time_csat5,Branch — Satisfaction with total duration of this call,1,Very dissatisfied
+ch02_total_call_time_csat5,Branch — Satisfaction with total duration of this call,2,Dissatisfied
+ch02_total_call_time_csat5,Branch — Satisfaction with total duration of this call,3,Neither satisfied nor dissatisfied
+ch02_total_call_time_csat5,Branch — Satisfaction with total duration of this call,4,Satisfied
+ch02_total_call_time_csat5,Branch — Satisfaction with total duration of this call,5,Very satisfied
+ch02_total_call_time_csat5,Branch — Satisfaction with total duration of this call,99,Do not know
+ch02_agent_overall_csat5,Branch — Overall satisfaction with the live agent on this call,1,Very dissatisfied
+ch02_agent_overall_csat5,Branch — Overall satisfaction with the live agent on this call,2,Dissatisfied
+ch02_agent_overall_csat5,Branch — Overall satisfaction with the live agent on this call,3,Neither satisfied nor dissatisfied
+ch02_agent_overall_csat5,Branch — Overall satisfaction with the live agent on this call,4,Satisfied
+ch02_agent_overall_csat5,Branch — Overall satisfaction with the live agent on this call,5,Very satisfied
+ch02_agent_overall_csat5,Branch — Overall satisfaction with the live agent on this call,99,Do not know
+ch02_correct_person_first_transfer,Branch — Reached the right person on the first transfer,0,No
+ch02_correct_person_first_transfer,Branch — Reached the right person on the first transfer,1,Yes
+ch02_correct_person_first_transfer,Branch — Reached the right person on the first transfer,99,Do not know
+ch02_agent_ownership5,Branch — The agent took ownership of helping resolve the need,1,Strongly disagree
+ch02_agent_ownership5,Branch — The agent took ownership of helping resolve the need,2,Disagree
+ch02_agent_ownership5,Branch — The agent took ownership of helping resolve the need,3,Neither agree nor disagree
+ch02_agent_ownership5,Branch — The agent took ownership of helping resolve the need,4,Agree
+ch02_agent_ownership5,Branch — The agent took ownership of helping resolve the need,5,Strongly agree
+ch02_agent_ownership5,Branch — The agent took ownership of helping resolve the need,98,Not applicable
+ch02_agent_ownership5,Branch — The agent took ownership of helping resolve the need,99,Do not know
+ch02_agent_promise_made,Branch — Agent made a specific promise about something to happen after the call,0,No
+ch02_agent_promise_made,Branch — Agent made a specific promise about something to happen after the call,1,Yes
+ch02_agent_promise_made,Branch — Agent made a specific promise about something to happen after the call,99,Do not know
+ch02_agent_promises_kept5,Branch — The agent kept the promises that were due by now,1,Strongly disagree
+ch02_agent_promises_kept5,Branch — The agent kept the promises that were due by now,2,Disagree
+ch02_agent_promises_kept5,Branch — The agent kept the promises that were due by now,3,Neither agree nor disagree
+ch02_agent_promises_kept5,Branch — The agent kept the promises that were due by now,4,Agree
+ch02_agent_promises_kept5,Branch — The agent kept the promises that were due by now,5,Strongly agree
+ch02_agent_promises_kept5,Branch — The agent kept the promises that were due by now,98,Not applicable
+ch02_agent_promises_kept5,Branch — The agent kept the promises that were due by now,99,Do not know
+ch02_agent_promises_kept5,Branch — The agent kept the promises that were due by now,9,Not yet due or too early to tell
+ch02_agent_patience5,Branch — The agent was patient with me,1,Strongly disagree
+ch02_agent_patience5,Branch — The agent was patient with me,2,Disagree
+ch02_agent_patience5,Branch — The agent was patient with me,3,Neither agree nor disagree
+ch02_agent_patience5,Branch — The agent was patient with me,4,Agree
+ch02_agent_patience5,Branch — The agent was patient with me,5,Strongly agree
+ch02_agent_patience5,Branch — The agent was patient with me,98,Not applicable
+ch02_agent_patience5,Branch — The agent was patient with me,99,Do not know
+ch02_urgency_need,Branch — Told the agent that the need was urgent,0,No
+ch02_urgency_need,Branch — Told the agent that the need was urgent,1,Yes
+ch02_urgency_need,Branch — Told the agent that the need was urgent,99,Do not know
+ch02_agent_urgency5,Branch — The agent responded appropriately to the urgency of my need,1,Strongly disagree
+ch02_agent_urgency5,Branch — The agent responded appropriately to the urgency of my need,2,Disagree
+ch02_agent_urgency5,Branch — The agent responded appropriately to the urgency of my need,3,Neither agree nor disagree
+ch02_agent_urgency5,Branch — The agent responded appropriately to the urgency of my need,4,Agree
+ch02_agent_urgency5,Branch — The agent responded appropriately to the urgency of my need,5,Strongly agree
+ch02_agent_urgency5,Branch — The agent responded appropriately to the urgency of my need,98,Not applicable
+ch02_agent_urgency5,Branch — The agent responded appropriately to the urgency of my need,99,Do not know
+ch02_ivr_availability5,Branch — Availability of the automated telephone service when needed,1,Very poor
+ch02_ivr_availability5,Branch — Availability of the automated telephone service when needed,2,Poor
+ch02_ivr_availability5,Branch — Availability of the automated telephone service when needed,3,Adequate
+ch02_ivr_availability5,Branch — Availability of the automated telephone service when needed,4,Good
+ch02_ivr_availability5,Branch — Availability of the automated telephone service when needed,5,Excellent
+ch02_ivr_availability5,Branch — Availability of the automated telephone service when needed,98,Not applicable
+ch02_ivr_availability5,Branch — Availability of the automated telephone service when needed,99,Do not know
+ch02_ivr_response_speed5,Branch — Speed of the automated telephone service responses,1,Very poor
+ch02_ivr_response_speed5,Branch — Speed of the automated telephone service responses,2,Poor
+ch02_ivr_response_speed5,Branch — Speed of the automated telephone service responses,3,Adequate
+ch02_ivr_response_speed5,Branch — Speed of the automated telephone service responses,4,Good
+ch02_ivr_response_speed5,Branch — Speed of the automated telephone service responses,5,Excellent
+ch02_ivr_response_speed5,Branch — Speed of the automated telephone service responses,98,Not applicable
+ch02_ivr_response_speed5,Branch — Speed of the automated telephone service responses,99,Do not know
+ch02_ivr_information_accuracy5,Branch — Accuracy of information supplied by the automated telephone service,1,Very poor
+ch02_ivr_information_accuracy5,Branch — Accuracy of information supplied by the automated telephone service,2,Poor
+ch02_ivr_information_accuracy5,Branch — Accuracy of information supplied by the automated telephone service,3,Adequate
+ch02_ivr_information_accuracy5,Branch — Accuracy of information supplied by the automated telephone service,4,Good
+ch02_ivr_information_accuracy5,Branch — Accuracy of information supplied by the automated telephone service,5,Excellent
+ch02_ivr_information_accuracy5,Branch — Accuracy of information supplied by the automated telephone service,98,Not applicable
+ch02_ivr_information_accuracy5,Branch — Accuracy of information supplied by the automated telephone service,99,Do not know
+ch02_ivr_ease5,Branch — Ease of using the automated telephone service,1,Very poor
+ch02_ivr_ease5,Branch — Ease of using the automated telephone service,2,Poor
+ch02_ivr_ease5,Branch — Ease of using the automated telephone service,3,Adequate
+ch02_ivr_ease5,Branch — Ease of using the automated telephone service,4,Good
+ch02_ivr_ease5,Branch — Ease of using the automated telephone service,5,Excellent
+ch02_ivr_ease5,Branch — Ease of using the automated telephone service,98,Not applicable
+ch02_ivr_ease5,Branch — Ease of using the automated telephone service,99,Do not know
+ch03_channel,Digital self service — Channel,1,Call centre
+ch03_channel,Digital self service — Channel,2,Branch
+ch03_channel,Digital self service — Channel,3,Digital self service
+ch03_channel,Digital self service — Channel,4,Messaging or live chat
+ch03_digital_mode,Digital self service — Digital mode,1,App
+ch03_digital_mode,Digital self service — Digital mode,2,Website
+ch03_staff_contact,Digital self service — Staff contact,0,No
+ch03_staff_contact,Digital self service — Staff contact,1,Yes
+ch03_primary_reason,Digital self service — Primary need,1,Payment or transfer
+ch03_primary_reason,Digital self service — Primary need,2,Account balance or information
+ch03_primary_reason,Digital self service — Primary need,3,Account or personal detail change
+ch03_primary_reason,Digital self service — Primary need,4,Problem complaint or fraud concern
+ch03_primary_reason,Digital self service — Primary need,5,Product advice or application
+ch03_primary_reason,Digital self service — Primary need,6,Other
+ch03_reasons_r01,Digital self service — Payment or transfer,0,No
+ch03_reasons_r01,Digital self service — Payment or transfer,1,Yes
+ch03_reasons_r02,Digital self service — Account balance or information,0,No
+ch03_reasons_r02,Digital self service — Account balance or information,1,Yes
+ch03_reasons_r03,Digital self service — Account or personal detail change,0,No
+ch03_reasons_r03,Digital self service — Account or personal detail change,1,Yes
+ch03_reasons_r04,Digital self service — Problem complaint or fraud concern,0,No
+ch03_reasons_r04,Digital self service — Problem complaint or fraud concern,1,Yes
+ch03_reasons_r05,Digital self service — Product advice or application,0,No
+ch03_reasons_r05,Digital self service — Product advice or application,1,Yes
+ch03_reasons_r06,Digital self service — Other,0,No
+ch03_reasons_r06,Digital self service — Other,1,Yes
+ch03_channel_csat5,Digital self service — Satisfaction with this experience,1,Very dissatisfied
+ch03_channel_csat5,Digital self service — Satisfaction with this experience,2,Dissatisfied
+ch03_channel_csat5,Digital self service — Satisfaction with this experience,3,Neither satisfied nor dissatisfied
+ch03_channel_csat5,Digital self service — Satisfaction with this experience,4,Satisfied
+ch03_channel_csat5,Digital self service — Satisfaction with this experience,5,Very satisfied
+ch03_channel_csat5,Digital self service — Satisfaction with this experience,99,Do not know
+ch03_ease7,Digital self service — Ease of getting what was needed,1,Very difficult
+ch03_ease7,Digital self service — Ease of getting what was needed,2,Difficult
+ch03_ease7,Digital self service — Ease of getting what was needed,3,Somewhat difficult
+ch03_ease7,Digital self service — Ease of getting what was needed,4,Neither
+ch03_ease7,Digital self service — Ease of getting what was needed,5,Somewhat easy
+ch03_ease7,Digital self service — Ease of getting what was needed,6,Easy
+ch03_ease7,Digital self service — Ease of getting what was needed,7,Very easy
+ch03_ease7,Digital self service — Ease of getting what was needed,99,Do not know
+ch03_task_completed,Digital self service — Task completed,0,No
+ch03_task_completed,Digital self service — Task completed,1,Yes
+ch03_task_completed,Digital self service — Task completed,9,Pending
+ch03_problem_present,Digital self service — Problem to resolve,0,No
+ch03_problem_present,Digital self service — Problem to resolve,1,Yes
+ch03_problem_resolution,Digital self service — Problem resolution,1,Fully
+ch03_problem_resolution,Digital self service — Problem resolution,2,Partly
+ch03_problem_resolution,Digital self service — Problem resolution,3,Unresolved
+ch03_problem_resolution,Digital self service — Problem resolution,9,Pending
+ch03_first_contact_resolution,Digital self service — First contact resolution,0,No
+ch03_first_contact_resolution,Digital self service — First contact resolution,1,Yes
+ch03_driver_reliable_accurate,Digital self service — Accuracy of information,1,Very poor
+ch03_driver_reliable_accurate,Digital self service — Accuracy of information,2,Poor
+ch03_driver_reliable_accurate,Digital self service — Accuracy of information,3,Adequate
+ch03_driver_reliable_accurate,Digital self service — Accuracy of information,4,Good
+ch03_driver_reliable_accurate,Digital self service — Accuracy of information,5,Excellent
+ch03_driver_reliable_accurate,Digital self service — Accuracy of information,98,Not applicable
+ch03_driver_reliable_accurate,Digital self service — Accuracy of information,99,Do not know
+ch03_driver_reliable_correct,Digital self service — Correct handling of the task,1,Very poor
+ch03_driver_reliable_correct,Digital self service — Correct handling of the task,2,Poor
+ch03_driver_reliable_correct,Digital self service — Correct handling of the task,3,Adequate
+ch03_driver_reliable_correct,Digital self service — Correct handling of the task,4,Good
+ch03_driver_reliable_correct,Digital self service — Correct handling of the task,5,Excellent
+ch03_driver_reliable_correct,Digital self service — Correct handling of the task,98,Not applicable
+ch03_driver_reliable_correct,Digital self service — Correct handling of the task,99,Do not know
+ch03_driver_responsive_speed,Digital self service — Speed of response,1,Very poor
+ch03_driver_responsive_speed,Digital self service — Speed of response,2,Poor
+ch03_driver_responsive_speed,Digital self service — Speed of response,3,Adequate
+ch03_driver_responsive_speed,Digital self service — Speed of response,4,Good
+ch03_driver_responsive_speed,Digital self service — Speed of response,5,Excellent
+ch03_driver_responsive_speed,Digital self service — Speed of response,98,Not applicable
+ch03_driver_responsive_speed,Digital self service — Speed of response,99,Do not know
+ch03_driver_responsive_updates,Digital self service — Kept informed about progress,1,Very poor
+ch03_driver_responsive_updates,Digital self service — Kept informed about progress,2,Poor
+ch03_driver_responsive_updates,Digital self service — Kept informed about progress,3,Adequate
+ch03_driver_responsive_updates,Digital self service — Kept informed about progress,4,Good
+ch03_driver_responsive_updates,Digital self service — Kept informed about progress,5,Excellent
+ch03_driver_responsive_updates,Digital self service — Kept informed about progress,98,Not applicable
+ch03_driver_responsive_updates,Digital self service — Kept informed about progress,99,Do not know
+ch03_driver_assurance_knowledge,Digital self service — Staff knowledge and competence,1,Very poor
+ch03_driver_assurance_knowledge,Digital self service — Staff knowledge and competence,2,Poor
+ch03_driver_assurance_knowledge,Digital self service — Staff knowledge and competence,3,Adequate
+ch03_driver_assurance_knowledge,Digital self service — Staff knowledge and competence,4,Good
+ch03_driver_assurance_knowledge,Digital self service — Staff knowledge and competence,5,Excellent
+ch03_driver_assurance_knowledge,Digital self service — Staff knowledge and competence,98,Not applicable
+ch03_driver_assurance_knowledge,Digital self service — Staff knowledge and competence,99,Do not know
+ch03_driver_assurance_confidence,Digital self service — Confidence in safe handling,1,Very poor
+ch03_driver_assurance_confidence,Digital self service — Confidence in safe handling,2,Poor
+ch03_driver_assurance_confidence,Digital self service — Confidence in safe handling,3,Adequate
+ch03_driver_assurance_confidence,Digital self service — Confidence in safe handling,4,Good
+ch03_driver_assurance_confidence,Digital self service — Confidence in safe handling,5,Excellent
+ch03_driver_assurance_confidence,Digital self service — Confidence in safe handling,98,Not applicable
+ch03_driver_assurance_confidence,Digital self service — Confidence in safe handling,99,Do not know
+ch03_driver_empathy_understood,Digital self service — Understanding of my needs,1,Very poor
+ch03_driver_empathy_understood,Digital self service — Understanding of my needs,2,Poor
+ch03_driver_empathy_understood,Digital self service — Understanding of my needs,3,Adequate
+ch03_driver_empathy_understood,Digital self service — Understanding of my needs,4,Good
+ch03_driver_empathy_understood,Digital self service — Understanding of my needs,5,Excellent
+ch03_driver_empathy_understood,Digital self service — Understanding of my needs,98,Not applicable
+ch03_driver_empathy_understood,Digital self service — Understanding of my needs,99,Do not know
+ch03_driver_empathy_respect,Digital self service — Respectful treatment,1,Very poor
+ch03_driver_empathy_respect,Digital self service — Respectful treatment,2,Poor
+ch03_driver_empathy_respect,Digital self service — Respectful treatment,3,Adequate
+ch03_driver_empathy_respect,Digital self service — Respectful treatment,4,Good
+ch03_driver_empathy_respect,Digital self service — Respectful treatment,5,Excellent
+ch03_driver_empathy_respect,Digital self service — Respectful treatment,98,Not applicable
+ch03_driver_empathy_respect,Digital self service — Respectful treatment,99,Do not know
+ch03_driver_access_ease,Digital self service — Ease of accessing the channel,1,Very poor
+ch03_driver_access_ease,Digital self service — Ease of accessing the channel,2,Poor
+ch03_driver_access_ease,Digital self service — Ease of accessing the channel,3,Adequate
+ch03_driver_access_ease,Digital self service — Ease of accessing the channel,4,Good
+ch03_driver_access_ease,Digital self service — Ease of accessing the channel,5,Excellent
+ch03_driver_access_ease,Digital self service — Ease of accessing the channel,98,Not applicable
+ch03_driver_access_ease,Digital self service — Ease of accessing the channel,99,Do not know
+ch03_driver_access_clarity,Digital self service — Clarity of communication or interface,1,Very poor
+ch03_driver_access_clarity,Digital self service — Clarity of communication or interface,2,Poor
+ch03_driver_access_clarity,Digital self service — Clarity of communication or interface,3,Adequate
+ch03_driver_access_clarity,Digital self service — Clarity of communication or interface,4,Good
+ch03_driver_access_clarity,Digital self service — Clarity of communication or interface,5,Excellent
+ch03_driver_access_clarity,Digital self service — Clarity of communication or interface,98,Not applicable
+ch03_driver_access_clarity,Digital self service — Clarity of communication or interface,99,Do not know
+ch03_transferred,Digital self service — Transferred,0,No
+ch03_transferred,Digital self service — Transferred,1,Yes
+ch03_put_on_hold,Digital self service — Put on hold,0,No
+ch03_put_on_hold,Digital self service — Put on hold,1,Yes
+ch03_callback_promised,Digital self service — Callback promised,0,No
+ch03_callback_promised,Digital self service — Callback promised,1,Yes
+ch03_used_ivr,Digital self service — Used IVR,0,No
+ch03_used_ivr,Digital self service — Used IVR,1,Yes
+ch03_callback_outcome,Digital self service — Callback outcome,1,On time
+ch03_callback_outcome,Digital self service — Callback outcome,2,Late
+ch03_callback_outcome,Digital self service — Callback outcome,3,Not received
+ch03_callback_outcome,Digital self service — Callback outcome,9,Not yet due
+ch03_ivr_csat5,Digital self service — IVR satisfaction,1,Very dissatisfied
+ch03_ivr_csat5,Digital self service — IVR satisfaction,2,Dissatisfied
+ch03_ivr_csat5,Digital self service — IVR satisfaction,3,Neither satisfied nor dissatisfied
+ch03_ivr_csat5,Digital self service — IVR satisfaction,4,Satisfied
+ch03_ivr_csat5,Digital self service — IVR satisfaction,5,Very satisfied
+ch03_ivr_csat5,Digital self service — IVR satisfaction,99,Do not know
+ch03_ivr_clarity5,Digital self service — IVR clarity,1,Very poor
+ch03_ivr_clarity5,Digital self service — IVR clarity,2,Poor
+ch03_ivr_clarity5,Digital self service — IVR clarity,3,Adequate
+ch03_ivr_clarity5,Digital self service — IVR clarity,4,Good
+ch03_ivr_clarity5,Digital self service — IVR clarity,5,Excellent
+ch03_ivr_clarity5,Digital self service — IVR clarity,98,Not applicable
+ch03_ivr_clarity5,Digital self service — IVR clarity,99,Do not know
+ch03_agent_introduced,Digital self service — Staff introduced themselves,0,No
+ch03_agent_introduced,Digital self service — Staff introduced themselves,1,Yes
+ch03_agent_polite,Digital self service — Polite staff,0,No
+ch03_agent_polite,Digital self service — Polite staff,1,Yes
+ch03_preferred_language_assisted,Digital self service — Preferred language assistance,0,No
+ch03_preferred_language_assisted,Digital self service — Preferred language assistance,1,Yes
+ch03_branch_tidy5,Digital self service — Physical facilities tidy,1,Very poor
+ch03_branch_tidy5,Digital self service — Physical facilities tidy,2,Poor
+ch03_branch_tidy5,Digital self service — Physical facilities tidy,3,Adequate
+ch03_branch_tidy5,Digital self service — Physical facilities tidy,4,Good
+ch03_branch_tidy5,Digital self service — Physical facilities tidy,5,Excellent
+ch03_branch_tidy5,Digital self service — Physical facilities tidy,98,Not applicable
+ch03_branch_tidy5,Digital self service — Physical facilities tidy,99,Do not know
+ch03_branch_accessible5,Digital self service — Physical facilities accessible,1,Very poor
+ch03_branch_accessible5,Digital self service — Physical facilities accessible,2,Poor
+ch03_branch_accessible5,Digital self service — Physical facilities accessible,3,Adequate
+ch03_branch_accessible5,Digital self service — Physical facilities accessible,4,Good
+ch03_branch_accessible5,Digital self service — Physical facilities accessible,5,Excellent
+ch03_branch_accessible5,Digital self service — Physical facilities accessible,98,Not applicable
+ch03_branch_accessible5,Digital self service — Physical facilities accessible,99,Do not know
+ch03_channel_reassured5,Digital self service — This latest channel experience left customer reassured,1,Not at all
+ch03_channel_reassured5,Digital self service — This latest channel experience left customer reassured,2,A little
+ch03_channel_reassured5,Digital self service — This latest channel experience left customer reassured,3,Moderately
+ch03_channel_reassured5,Digital self service — This latest channel experience left customer reassured,4,Very
+ch03_channel_reassured5,Digital self service — This latest channel experience left customer reassured,5,Extremely
+ch03_channel_reassured5,Digital self service — This latest channel experience left customer reassured,99,Do not know
+ch03_channel_valued5,Digital self service — This latest channel experience left customer valued,1,Not at all
+ch03_channel_valued5,Digital self service — This latest channel experience left customer valued,2,A little
+ch03_channel_valued5,Digital self service — This latest channel experience left customer valued,3,Moderately
+ch03_channel_valued5,Digital self service — This latest channel experience left customer valued,4,Very
+ch03_channel_valued5,Digital self service — This latest channel experience left customer valued,5,Extremely
+ch03_channel_valued5,Digital self service — This latest channel experience left customer valued,99,Do not know
+ch03_channel_frustrated5,Digital self service — This latest channel experience left customer frustrated,1,Not at all
+ch03_channel_frustrated5,Digital self service — This latest channel experience left customer frustrated,2,A little
+ch03_channel_frustrated5,Digital self service — This latest channel experience left customer frustrated,3,Moderately
+ch03_channel_frustrated5,Digital self service — This latest channel experience left customer frustrated,4,Very
+ch03_channel_frustrated5,Digital self service — This latest channel experience left customer frustrated,5,Extremely
+ch03_channel_frustrated5,Digital self service — This latest channel experience left customer frustrated,99,Do not know
+ch03_channel_anxious5,Digital self service — This latest channel experience left customer anxious,1,Not at all
+ch03_channel_anxious5,Digital self service — This latest channel experience left customer anxious,2,A little
+ch03_channel_anxious5,Digital self service — This latest channel experience left customer anxious,3,Moderately
+ch03_channel_anxious5,Digital self service — This latest channel experience left customer anxious,4,Very
+ch03_channel_anxious5,Digital self service — This latest channel experience left customer anxious,5,Extremely
+ch03_channel_anxious5,Digital self service — This latest channel experience left customer anxious,99,Do not know
+ch03_channel_preference5,Digital self service — This latest channel experience gives reason to choose provider,1,Strongly disagree
+ch03_channel_preference5,Digital self service — This latest channel experience gives reason to choose provider,2,Disagree
+ch03_channel_preference5,Digital self service — This latest channel experience gives reason to choose provider,3,Neither agree nor disagree
+ch03_channel_preference5,Digital self service — This latest channel experience gives reason to choose provider,4,Agree
+ch03_channel_preference5,Digital self service — This latest channel experience gives reason to choose provider,5,Strongly agree
+ch03_channel_preference5,Digital self service — This latest channel experience gives reason to choose provider,99,Do not know
+ch03_channel_angry5,Digital self service — This latest channel experience left customer angry,1,Not at all
+ch03_channel_angry5,Digital self service — This latest channel experience left customer angry,2,A little
+ch03_channel_angry5,Digital self service — This latest channel experience left customer angry,3,Moderately
+ch03_channel_angry5,Digital self service — This latest channel experience left customer angry,4,Very
+ch03_channel_angry5,Digital self service — This latest channel experience left customer angry,5,Extremely
+ch03_channel_angry5,Digital self service — This latest channel experience left customer angry,99,Do not know
+ch03_channel_disappointed5,Digital self service — This latest channel experience left customer disappointed,1,Not at all
+ch03_channel_disappointed5,Digital self service — This latest channel experience left customer disappointed,2,A little
+ch03_channel_disappointed5,Digital self service — This latest channel experience left customer disappointed,3,Moderately
+ch03_channel_disappointed5,Digital self service — This latest channel experience left customer disappointed,4,Very
+ch03_channel_disappointed5,Digital self service — This latest channel experience left customer disappointed,5,Extremely
+ch03_channel_disappointed5,Digital self service — This latest channel experience left customer disappointed,99,Do not know
+ch03_call_agent_contact,Digital self service — Spoke with a live agent during this call,0,No
+ch03_call_agent_contact,Digital self service — Spoke with a live agent during this call,1,Yes
+ch03_call_agent_contact,Digital self service — Spoke with a live agent during this call,99,Do not know
+ch03_queue_wait_csat5,Digital self service — Satisfaction with wait to speak to a live agent including no wait,1,Very dissatisfied
+ch03_queue_wait_csat5,Digital self service — Satisfaction with wait to speak to a live agent including no wait,2,Dissatisfied
+ch03_queue_wait_csat5,Digital self service — Satisfaction with wait to speak to a live agent including no wait,3,Neither satisfied nor dissatisfied
+ch03_queue_wait_csat5,Digital self service — Satisfaction with wait to speak to a live agent including no wait,4,Satisfied
+ch03_queue_wait_csat5,Digital self service — Satisfaction with wait to speak to a live agent including no wait,5,Very satisfied
+ch03_queue_wait_csat5,Digital self service — Satisfaction with wait to speak to a live agent including no wait,99,Do not know
+ch03_total_call_time_csat5,Digital self service — Satisfaction with total duration of this call,1,Very dissatisfied
+ch03_total_call_time_csat5,Digital self service — Satisfaction with total duration of this call,2,Dissatisfied
+ch03_total_call_time_csat5,Digital self service — Satisfaction with total duration of this call,3,Neither satisfied nor dissatisfied
+ch03_total_call_time_csat5,Digital self service — Satisfaction with total duration of this call,4,Satisfied
+ch03_total_call_time_csat5,Digital self service — Satisfaction with total duration of this call,5,Very satisfied
+ch03_total_call_time_csat5,Digital self service — Satisfaction with total duration of this call,99,Do not know
+ch03_agent_overall_csat5,Digital self service — Overall satisfaction with the live agent on this call,1,Very dissatisfied
+ch03_agent_overall_csat5,Digital self service — Overall satisfaction with the live agent on this call,2,Dissatisfied
+ch03_agent_overall_csat5,Digital self service — Overall satisfaction with the live agent on this call,3,Neither satisfied nor dissatisfied
+ch03_agent_overall_csat5,Digital self service — Overall satisfaction with the live agent on this call,4,Satisfied
+ch03_agent_overall_csat5,Digital self service — Overall satisfaction with the live agent on this call,5,Very satisfied
+ch03_agent_overall_csat5,Digital self service — Overall satisfaction with the live agent on this call,99,Do not know
+ch03_correct_person_first_transfer,Digital self service — Reached the right person on the first transfer,0,No
+ch03_correct_person_first_transfer,Digital self service — Reached the right person on the first transfer,1,Yes
+ch03_correct_person_first_transfer,Digital self service — Reached the right person on the first transfer,99,Do not know
+ch03_agent_ownership5,Digital self service — The agent took ownership of helping resolve the need,1,Strongly disagree
+ch03_agent_ownership5,Digital self service — The agent took ownership of helping resolve the need,2,Disagree
+ch03_agent_ownership5,Digital self service — The agent took ownership of helping resolve the need,3,Neither agree nor disagree
+ch03_agent_ownership5,Digital self service — The agent took ownership of helping resolve the need,4,Agree
+ch03_agent_ownership5,Digital self service — The agent took ownership of helping resolve the need,5,Strongly agree
+ch03_agent_ownership5,Digital self service — The agent took ownership of helping resolve the need,98,Not applicable
+ch03_agent_ownership5,Digital self service — The agent took ownership of helping resolve the need,99,Do not know
+ch03_agent_promise_made,Digital self service — Agent made a specific promise about something to happen after the call,0,No
+ch03_agent_promise_made,Digital self service — Agent made a specific promise about something to happen after the call,1,Yes
+ch03_agent_promise_made,Digital self service — Agent made a specific promise about something to happen after the call,99,Do not know
+ch03_agent_promises_kept5,Digital self service — The agent kept the promises that were due by now,1,Strongly disagree
+ch03_agent_promises_kept5,Digital self service — The agent kept the promises that were due by now,2,Disagree
+ch03_agent_promises_kept5,Digital self service — The agent kept the promises that were due by now,3,Neither agree nor disagree
+ch03_agent_promises_kept5,Digital self service — The agent kept the promises that were due by now,4,Agree
+ch03_agent_promises_kept5,Digital self service — The agent kept the promises that were due by now,5,Strongly agree
+ch03_agent_promises_kept5,Digital self service — The agent kept the promises that were due by now,98,Not applicable
+ch03_agent_promises_kept5,Digital self service — The agent kept the promises that were due by now,99,Do not know
+ch03_agent_promises_kept5,Digital self service — The agent kept the promises that were due by now,9,Not yet due or too early to tell
+ch03_agent_patience5,Digital self service — The agent was patient with me,1,Strongly disagree
+ch03_agent_patience5,Digital self service — The agent was patient with me,2,Disagree
+ch03_agent_patience5,Digital self service — The agent was patient with me,3,Neither agree nor disagree
+ch03_agent_patience5,Digital self service — The agent was patient with me,4,Agree
+ch03_agent_patience5,Digital self service — The agent was patient with me,5,Strongly agree
+ch03_agent_patience5,Digital self service — The agent was patient with me,98,Not applicable
+ch03_agent_patience5,Digital self service — The agent was patient with me,99,Do not know
+ch03_urgency_need,Digital self service — Told the agent that the need was urgent,0,No
+ch03_urgency_need,Digital self service — Told the agent that the need was urgent,1,Yes
+ch03_urgency_need,Digital self service — Told the agent that the need was urgent,99,Do not know
+ch03_agent_urgency5,Digital self service — The agent responded appropriately to the urgency of my need,1,Strongly disagree
+ch03_agent_urgency5,Digital self service — The agent responded appropriately to the urgency of my need,2,Disagree
+ch03_agent_urgency5,Digital self service — The agent responded appropriately to the urgency of my need,3,Neither agree nor disagree
+ch03_agent_urgency5,Digital self service — The agent responded appropriately to the urgency of my need,4,Agree
+ch03_agent_urgency5,Digital self service — The agent responded appropriately to the urgency of my need,5,Strongly agree
+ch03_agent_urgency5,Digital self service — The agent responded appropriately to the urgency of my need,98,Not applicable
+ch03_agent_urgency5,Digital self service — The agent responded appropriately to the urgency of my need,99,Do not know
+ch03_ivr_availability5,Digital self service — Availability of the automated telephone service when needed,1,Very poor
+ch03_ivr_availability5,Digital self service — Availability of the automated telephone service when needed,2,Poor
+ch03_ivr_availability5,Digital self service — Availability of the automated telephone service when needed,3,Adequate
+ch03_ivr_availability5,Digital self service — Availability of the automated telephone service when needed,4,Good
+ch03_ivr_availability5,Digital self service — Availability of the automated telephone service when needed,5,Excellent
+ch03_ivr_availability5,Digital self service — Availability of the automated telephone service when needed,98,Not applicable
+ch03_ivr_availability5,Digital self service — Availability of the automated telephone service when needed,99,Do not know
+ch03_ivr_response_speed5,Digital self service — Speed of the automated telephone service responses,1,Very poor
+ch03_ivr_response_speed5,Digital self service — Speed of the automated telephone service responses,2,Poor
+ch03_ivr_response_speed5,Digital self service — Speed of the automated telephone service responses,3,Adequate
+ch03_ivr_response_speed5,Digital self service — Speed of the automated telephone service responses,4,Good
+ch03_ivr_response_speed5,Digital self service — Speed of the automated telephone service responses,5,Excellent
+ch03_ivr_response_speed5,Digital self service — Speed of the automated telephone service responses,98,Not applicable
+ch03_ivr_response_speed5,Digital self service — Speed of the automated telephone service responses,99,Do not know
+ch03_ivr_information_accuracy5,Digital self service — Accuracy of information supplied by the automated telephone service,1,Very poor
+ch03_ivr_information_accuracy5,Digital self service — Accuracy of information supplied by the automated telephone service,2,Poor
+ch03_ivr_information_accuracy5,Digital self service — Accuracy of information supplied by the automated telephone service,3,Adequate
+ch03_ivr_information_accuracy5,Digital self service — Accuracy of information supplied by the automated telephone service,4,Good
+ch03_ivr_information_accuracy5,Digital self service — Accuracy of information supplied by the automated telephone service,5,Excellent
+ch03_ivr_information_accuracy5,Digital self service — Accuracy of information supplied by the automated telephone service,98,Not applicable
+ch03_ivr_information_accuracy5,Digital self service — Accuracy of information supplied by the automated telephone service,99,Do not know
+ch03_ivr_ease5,Digital self service — Ease of using the automated telephone service,1,Very poor
+ch03_ivr_ease5,Digital self service — Ease of using the automated telephone service,2,Poor
+ch03_ivr_ease5,Digital self service — Ease of using the automated telephone service,3,Adequate
+ch03_ivr_ease5,Digital self service — Ease of using the automated telephone service,4,Good
+ch03_ivr_ease5,Digital self service — Ease of using the automated telephone service,5,Excellent
+ch03_ivr_ease5,Digital self service — Ease of using the automated telephone service,98,Not applicable
+ch03_ivr_ease5,Digital self service — Ease of using the automated telephone service,99,Do not know
+ch04_channel,Messaging or live chat — Channel,1,Call centre
+ch04_channel,Messaging or live chat — Channel,2,Branch
+ch04_channel,Messaging or live chat — Channel,3,Digital self service
+ch04_channel,Messaging or live chat — Channel,4,Messaging or live chat
+ch04_digital_mode,Messaging or live chat — Digital mode,1,App
+ch04_digital_mode,Messaging or live chat — Digital mode,2,Website
+ch04_staff_contact,Messaging or live chat — Staff contact,0,No
+ch04_staff_contact,Messaging or live chat — Staff contact,1,Yes
+ch04_primary_reason,Messaging or live chat — Primary need,1,Payment or transfer
+ch04_primary_reason,Messaging or live chat — Primary need,2,Account balance or information
+ch04_primary_reason,Messaging or live chat — Primary need,3,Account or personal detail change
+ch04_primary_reason,Messaging or live chat — Primary need,4,Problem complaint or fraud concern
+ch04_primary_reason,Messaging or live chat — Primary need,5,Product advice or application
+ch04_primary_reason,Messaging or live chat — Primary need,6,Other
+ch04_reasons_r01,Messaging or live chat — Payment or transfer,0,No
+ch04_reasons_r01,Messaging or live chat — Payment or transfer,1,Yes
+ch04_reasons_r02,Messaging or live chat — Account balance or information,0,No
+ch04_reasons_r02,Messaging or live chat — Account balance or information,1,Yes
+ch04_reasons_r03,Messaging or live chat — Account or personal detail change,0,No
+ch04_reasons_r03,Messaging or live chat — Account or personal detail change,1,Yes
+ch04_reasons_r04,Messaging or live chat — Problem complaint or fraud concern,0,No
+ch04_reasons_r04,Messaging or live chat — Problem complaint or fraud concern,1,Yes
+ch04_reasons_r05,Messaging or live chat — Product advice or application,0,No
+ch04_reasons_r05,Messaging or live chat — Product advice or application,1,Yes
+ch04_reasons_r06,Messaging or live chat — Other,0,No
+ch04_reasons_r06,Messaging or live chat — Other,1,Yes
+ch04_channel_csat5,Messaging or live chat — Satisfaction with this experience,1,Very dissatisfied
+ch04_channel_csat5,Messaging or live chat — Satisfaction with this experience,2,Dissatisfied
+ch04_channel_csat5,Messaging or live chat — Satisfaction with this experience,3,Neither satisfied nor dissatisfied
+ch04_channel_csat5,Messaging or live chat — Satisfaction with this experience,4,Satisfied
+ch04_channel_csat5,Messaging or live chat — Satisfaction with this experience,5,Very satisfied
+ch04_channel_csat5,Messaging or live chat — Satisfaction with this experience,99,Do not know
+ch04_ease7,Messaging or live chat — Ease of getting what was needed,1,Very difficult
+ch04_ease7,Messaging or live chat — Ease of getting what was needed,2,Difficult
+ch04_ease7,Messaging or live chat — Ease of getting what was needed,3,Somewhat difficult
+ch04_ease7,Messaging or live chat — Ease of getting what was needed,4,Neither
+ch04_ease7,Messaging or live chat — Ease of getting what was needed,5,Somewhat easy
+ch04_ease7,Messaging or live chat — Ease of getting what was needed,6,Easy
+ch04_ease7,Messaging or live chat — Ease of getting what was needed,7,Very easy
+ch04_ease7,Messaging or live chat — Ease of getting what was needed,99,Do not know
+ch04_task_completed,Messaging or live chat — Task completed,0,No
+ch04_task_completed,Messaging or live chat — Task completed,1,Yes
+ch04_task_completed,Messaging or live chat — Task completed,9,Pending
+ch04_problem_present,Messaging or live chat — Problem to resolve,0,No
+ch04_problem_present,Messaging or live chat — Problem to resolve,1,Yes
+ch04_problem_resolution,Messaging or live chat — Problem resolution,1,Fully
+ch04_problem_resolution,Messaging or live chat — Problem resolution,2,Partly
+ch04_problem_resolution,Messaging or live chat — Problem resolution,3,Unresolved
+ch04_problem_resolution,Messaging or live chat — Problem resolution,9,Pending
+ch04_first_contact_resolution,Messaging or live chat — First contact resolution,0,No
+ch04_first_contact_resolution,Messaging or live chat — First contact resolution,1,Yes
+ch04_driver_reliable_accurate,Messaging or live chat — Accuracy of information,1,Very poor
+ch04_driver_reliable_accurate,Messaging or live chat — Accuracy of information,2,Poor
+ch04_driver_reliable_accurate,Messaging or live chat — Accuracy of information,3,Adequate
+ch04_driver_reliable_accurate,Messaging or live chat — Accuracy of information,4,Good
+ch04_driver_reliable_accurate,Messaging or live chat — Accuracy of information,5,Excellent
+ch04_driver_reliable_accurate,Messaging or live chat — Accuracy of information,98,Not applicable
+ch04_driver_reliable_accurate,Messaging or live chat — Accuracy of information,99,Do not know
+ch04_driver_reliable_correct,Messaging or live chat — Correct handling of the task,1,Very poor
+ch04_driver_reliable_correct,Messaging or live chat — Correct handling of the task,2,Poor
+ch04_driver_reliable_correct,Messaging or live chat — Correct handling of the task,3,Adequate
+ch04_driver_reliable_correct,Messaging or live chat — Correct handling of the task,4,Good
+ch04_driver_reliable_correct,Messaging or live chat — Correct handling of the task,5,Excellent
+ch04_driver_reliable_correct,Messaging or live chat — Correct handling of the task,98,Not applicable
+ch04_driver_reliable_correct,Messaging or live chat — Correct handling of the task,99,Do not know
+ch04_driver_responsive_speed,Messaging or live chat — Speed of response,1,Very poor
+ch04_driver_responsive_speed,Messaging or live chat — Speed of response,2,Poor
+ch04_driver_responsive_speed,Messaging or live chat — Speed of response,3,Adequate
+ch04_driver_responsive_speed,Messaging or live chat — Speed of response,4,Good
+ch04_driver_responsive_speed,Messaging or live chat — Speed of response,5,Excellent
+ch04_driver_responsive_speed,Messaging or live chat — Speed of response,98,Not applicable
+ch04_driver_responsive_speed,Messaging or live chat — Speed of response,99,Do not know
+ch04_driver_responsive_updates,Messaging or live chat — Kept informed about progress,1,Very poor
+ch04_driver_responsive_updates,Messaging or live chat — Kept informed about progress,2,Poor
+ch04_driver_responsive_updates,Messaging or live chat — Kept informed about progress,3,Adequate
+ch04_driver_responsive_updates,Messaging or live chat — Kept informed about progress,4,Good
+ch04_driver_responsive_updates,Messaging or live chat — Kept informed about progress,5,Excellent
+ch04_driver_responsive_updates,Messaging or live chat — Kept informed about progress,98,Not applicable
+ch04_driver_responsive_updates,Messaging or live chat — Kept informed about progress,99,Do not know
+ch04_driver_assurance_knowledge,Messaging or live chat — Staff knowledge and competence,1,Very poor
+ch04_driver_assurance_knowledge,Messaging or live chat — Staff knowledge and competence,2,Poor
+ch04_driver_assurance_knowledge,Messaging or live chat — Staff knowledge and competence,3,Adequate
+ch04_driver_assurance_knowledge,Messaging or live chat — Staff knowledge and competence,4,Good
+ch04_driver_assurance_knowledge,Messaging or live chat — Staff knowledge and competence,5,Excellent
+ch04_driver_assurance_knowledge,Messaging or live chat — Staff knowledge and competence,98,Not applicable
+ch04_driver_assurance_knowledge,Messaging or live chat — Staff knowledge and competence,99,Do not know
+ch04_driver_assurance_confidence,Messaging or live chat — Confidence in safe handling,1,Very poor
+ch04_driver_assurance_confidence,Messaging or live chat — Confidence in safe handling,2,Poor
+ch04_driver_assurance_confidence,Messaging or live chat — Confidence in safe handling,3,Adequate
+ch04_driver_assurance_confidence,Messaging or live chat — Confidence in safe handling,4,Good
+ch04_driver_assurance_confidence,Messaging or live chat — Confidence in safe handling,5,Excellent
+ch04_driver_assurance_confidence,Messaging or live chat — Confidence in safe handling,98,Not applicable
+ch04_driver_assurance_confidence,Messaging or live chat — Confidence in safe handling,99,Do not know
+ch04_driver_empathy_understood,Messaging or live chat — Understanding of my needs,1,Very poor
+ch04_driver_empathy_understood,Messaging or live chat — Understanding of my needs,2,Poor
+ch04_driver_empathy_understood,Messaging or live chat — Understanding of my needs,3,Adequate
+ch04_driver_empathy_understood,Messaging or live chat — Understanding of my needs,4,Good
+ch04_driver_empathy_understood,Messaging or live chat — Understanding of my needs,5,Excellent
+ch04_driver_empathy_understood,Messaging or live chat — Understanding of my needs,98,Not applicable
+ch04_driver_empathy_understood,Messaging or live chat — Understanding of my needs,99,Do not know
+ch04_driver_empathy_respect,Messaging or live chat — Respectful treatment,1,Very poor
+ch04_driver_empathy_respect,Messaging or live chat — Respectful treatment,2,Poor
+ch04_driver_empathy_respect,Messaging or live chat — Respectful treatment,3,Adequate
+ch04_driver_empathy_respect,Messaging or live chat — Respectful treatment,4,Good
+ch04_driver_empathy_respect,Messaging or live chat — Respectful treatment,5,Excellent
+ch04_driver_empathy_respect,Messaging or live chat — Respectful treatment,98,Not applicable
+ch04_driver_empathy_respect,Messaging or live chat — Respectful treatment,99,Do not know
+ch04_driver_access_ease,Messaging or live chat — Ease of accessing the channel,1,Very poor
+ch04_driver_access_ease,Messaging or live chat — Ease of accessing the channel,2,Poor
+ch04_driver_access_ease,Messaging or live chat — Ease of accessing the channel,3,Adequate
+ch04_driver_access_ease,Messaging or live chat — Ease of accessing the channel,4,Good
+ch04_driver_access_ease,Messaging or live chat — Ease of accessing the channel,5,Excellent
+ch04_driver_access_ease,Messaging or live chat — Ease of accessing the channel,98,Not applicable
+ch04_driver_access_ease,Messaging or live chat — Ease of accessing the channel,99,Do not know
+ch04_driver_access_clarity,Messaging or live chat — Clarity of communication or interface,1,Very poor
+ch04_driver_access_clarity,Messaging or live chat — Clarity of communication or interface,2,Poor
+ch04_driver_access_clarity,Messaging or live chat — Clarity of communication or interface,3,Adequate
+ch04_driver_access_clarity,Messaging or live chat — Clarity of communication or interface,4,Good
+ch04_driver_access_clarity,Messaging or live chat — Clarity of communication or interface,5,Excellent
+ch04_driver_access_clarity,Messaging or live chat — Clarity of communication or interface,98,Not applicable
+ch04_driver_access_clarity,Messaging or live chat — Clarity of communication or interface,99,Do not know
+ch04_transferred,Messaging or live chat — Transferred,0,No
+ch04_transferred,Messaging or live chat — Transferred,1,Yes
+ch04_put_on_hold,Messaging or live chat — Put on hold,0,No
+ch04_put_on_hold,Messaging or live chat — Put on hold,1,Yes
+ch04_callback_promised,Messaging or live chat — Callback promised,0,No
+ch04_callback_promised,Messaging or live chat — Callback promised,1,Yes
+ch04_used_ivr,Messaging or live chat — Used IVR,0,No
+ch04_used_ivr,Messaging or live chat — Used IVR,1,Yes
+ch04_callback_outcome,Messaging or live chat — Callback outcome,1,On time
+ch04_callback_outcome,Messaging or live chat — Callback outcome,2,Late
+ch04_callback_outcome,Messaging or live chat — Callback outcome,3,Not received
+ch04_callback_outcome,Messaging or live chat — Callback outcome,9,Not yet due
+ch04_ivr_csat5,Messaging or live chat — IVR satisfaction,1,Very dissatisfied
+ch04_ivr_csat5,Messaging or live chat — IVR satisfaction,2,Dissatisfied
+ch04_ivr_csat5,Messaging or live chat — IVR satisfaction,3,Neither satisfied nor dissatisfied
+ch04_ivr_csat5,Messaging or live chat — IVR satisfaction,4,Satisfied
+ch04_ivr_csat5,Messaging or live chat — IVR satisfaction,5,Very satisfied
+ch04_ivr_csat5,Messaging or live chat — IVR satisfaction,99,Do not know
+ch04_ivr_clarity5,Messaging or live chat — IVR clarity,1,Very poor
+ch04_ivr_clarity5,Messaging or live chat — IVR clarity,2,Poor
+ch04_ivr_clarity5,Messaging or live chat — IVR clarity,3,Adequate
+ch04_ivr_clarity5,Messaging or live chat — IVR clarity,4,Good
+ch04_ivr_clarity5,Messaging or live chat — IVR clarity,5,Excellent
+ch04_ivr_clarity5,Messaging or live chat — IVR clarity,98,Not applicable
+ch04_ivr_clarity5,Messaging or live chat — IVR clarity,99,Do not know
+ch04_agent_introduced,Messaging or live chat — Staff introduced themselves,0,No
+ch04_agent_introduced,Messaging or live chat — Staff introduced themselves,1,Yes
+ch04_agent_polite,Messaging or live chat — Polite staff,0,No
+ch04_agent_polite,Messaging or live chat — Polite staff,1,Yes
+ch04_preferred_language_assisted,Messaging or live chat — Preferred language assistance,0,No
+ch04_preferred_language_assisted,Messaging or live chat — Preferred language assistance,1,Yes
+ch04_branch_tidy5,Messaging or live chat — Physical facilities tidy,1,Very poor
+ch04_branch_tidy5,Messaging or live chat — Physical facilities tidy,2,Poor
+ch04_branch_tidy5,Messaging or live chat — Physical facilities tidy,3,Adequate
+ch04_branch_tidy5,Messaging or live chat — Physical facilities tidy,4,Good
+ch04_branch_tidy5,Messaging or live chat — Physical facilities tidy,5,Excellent
+ch04_branch_tidy5,Messaging or live chat — Physical facilities tidy,98,Not applicable
+ch04_branch_tidy5,Messaging or live chat — Physical facilities tidy,99,Do not know
+ch04_branch_accessible5,Messaging or live chat — Physical facilities accessible,1,Very poor
+ch04_branch_accessible5,Messaging or live chat — Physical facilities accessible,2,Poor
+ch04_branch_accessible5,Messaging or live chat — Physical facilities accessible,3,Adequate
+ch04_branch_accessible5,Messaging or live chat — Physical facilities accessible,4,Good
+ch04_branch_accessible5,Messaging or live chat — Physical facilities accessible,5,Excellent
+ch04_branch_accessible5,Messaging or live chat — Physical facilities accessible,98,Not applicable
+ch04_branch_accessible5,Messaging or live chat — Physical facilities accessible,99,Do not know
+ch04_channel_reassured5,Messaging or live chat — This latest channel experience left customer reassured,1,Not at all
+ch04_channel_reassured5,Messaging or live chat — This latest channel experience left customer reassured,2,A little
+ch04_channel_reassured5,Messaging or live chat — This latest channel experience left customer reassured,3,Moderately
+ch04_channel_reassured5,Messaging or live chat — This latest channel experience left customer reassured,4,Very
+ch04_channel_reassured5,Messaging or live chat — This latest channel experience left customer reassured,5,Extremely
+ch04_channel_reassured5,Messaging or live chat — This latest channel experience left customer reassured,99,Do not know
+ch04_channel_valued5,Messaging or live chat — This latest channel experience left customer valued,1,Not at all
+ch04_channel_valued5,Messaging or live chat — This latest channel experience left customer valued,2,A little
+ch04_channel_valued5,Messaging or live chat — This latest channel experience left customer valued,3,Moderately
+ch04_channel_valued5,Messaging or live chat — This latest channel experience left customer valued,4,Very
+ch04_channel_valued5,Messaging or live chat — This latest channel experience left customer valued,5,Extremely
+ch04_channel_valued5,Messaging or live chat — This latest channel experience left customer valued,99,Do not know
+ch04_channel_frustrated5,Messaging or live chat — This latest channel experience left customer frustrated,1,Not at all
+ch04_channel_frustrated5,Messaging or live chat — This latest channel experience left customer frustrated,2,A little
+ch04_channel_frustrated5,Messaging or live chat — This latest channel experience left customer frustrated,3,Moderately
+ch04_channel_frustrated5,Messaging or live chat — This latest channel experience left customer frustrated,4,Very
+ch04_channel_frustrated5,Messaging or live chat — This latest channel experience left customer frustrated,5,Extremely
+ch04_channel_frustrated5,Messaging or live chat — This latest channel experience left customer frustrated,99,Do not know
+ch04_channel_anxious5,Messaging or live chat — This latest channel experience left customer anxious,1,Not at all
+ch04_channel_anxious5,Messaging or live chat — This latest channel experience left customer anxious,2,A little
+ch04_channel_anxious5,Messaging or live chat — This latest channel experience left customer anxious,3,Moderately
+ch04_channel_anxious5,Messaging or live chat — This latest channel experience left customer anxious,4,Very
+ch04_channel_anxious5,Messaging or live chat — This latest channel experience left customer anxious,5,Extremely
+ch04_channel_anxious5,Messaging or live chat — This latest channel experience left customer anxious,99,Do not know
+ch04_channel_preference5,Messaging or live chat — This latest channel experience gives reason to choose provider,1,Strongly disagree
+ch04_channel_preference5,Messaging or live chat — This latest channel experience gives reason to choose provider,2,Disagree
+ch04_channel_preference5,Messaging or live chat — This latest channel experience gives reason to choose provider,3,Neither agree nor disagree
+ch04_channel_preference5,Messaging or live chat — This latest channel experience gives reason to choose provider,4,Agree
+ch04_channel_preference5,Messaging or live chat — This latest channel experience gives reason to choose provider,5,Strongly agree
+ch04_channel_preference5,Messaging or live chat — This latest channel experience gives reason to choose provider,99,Do not know
+ch04_channel_angry5,Messaging or live chat — This latest channel experience left customer angry,1,Not at all
+ch04_channel_angry5,Messaging or live chat — This latest channel experience left customer angry,2,A little
+ch04_channel_angry5,Messaging or live chat — This latest channel experience left customer angry,3,Moderately
+ch04_channel_angry5,Messaging or live chat — This latest channel experience left customer angry,4,Very
+ch04_channel_angry5,Messaging or live chat — This latest channel experience left customer angry,5,Extremely
+ch04_channel_angry5,Messaging or live chat — This latest channel experience left customer angry,99,Do not know
+ch04_channel_disappointed5,Messaging or live chat — This latest channel experience left customer disappointed,1,Not at all
+ch04_channel_disappointed5,Messaging or live chat — This latest channel experience left customer disappointed,2,A little
+ch04_channel_disappointed5,Messaging or live chat — This latest channel experience left customer disappointed,3,Moderately
+ch04_channel_disappointed5,Messaging or live chat — This latest channel experience left customer disappointed,4,Very
+ch04_channel_disappointed5,Messaging or live chat — This latest channel experience left customer disappointed,5,Extremely
+ch04_channel_disappointed5,Messaging or live chat — This latest channel experience left customer disappointed,99,Do not know
+ch04_call_agent_contact,Messaging or live chat — Spoke with a live agent during this call,0,No
+ch04_call_agent_contact,Messaging or live chat — Spoke with a live agent during this call,1,Yes
+ch04_call_agent_contact,Messaging or live chat — Spoke with a live agent during this call,99,Do not know
+ch04_queue_wait_csat5,Messaging or live chat — Satisfaction with wait to speak to a live agent including no wait,1,Very dissatisfied
+ch04_queue_wait_csat5,Messaging or live chat — Satisfaction with wait to speak to a live agent including no wait,2,Dissatisfied
+ch04_queue_wait_csat5,Messaging or live chat — Satisfaction with wait to speak to a live agent including no wait,3,Neither satisfied nor dissatisfied
+ch04_queue_wait_csat5,Messaging or live chat — Satisfaction with wait to speak to a live agent including no wait,4,Satisfied
+ch04_queue_wait_csat5,Messaging or live chat — Satisfaction with wait to speak to a live agent including no wait,5,Very satisfied
+ch04_queue_wait_csat5,Messaging or live chat — Satisfaction with wait to speak to a live agent including no wait,99,Do not know
+ch04_total_call_time_csat5,Messaging or live chat — Satisfaction with total duration of this call,1,Very dissatisfied
+ch04_total_call_time_csat5,Messaging or live chat — Satisfaction with total duration of this call,2,Dissatisfied
+ch04_total_call_time_csat5,Messaging or live chat — Satisfaction with total duration of this call,3,Neither satisfied nor dissatisfied
+ch04_total_call_time_csat5,Messaging or live chat — Satisfaction with total duration of this call,4,Satisfied
+ch04_total_call_time_csat5,Messaging or live chat — Satisfaction with total duration of this call,5,Very satisfied
+ch04_total_call_time_csat5,Messaging or live chat — Satisfaction with total duration of this call,99,Do not know
+ch04_agent_overall_csat5,Messaging or live chat — Overall satisfaction with the live agent on this call,1,Very dissatisfied
+ch04_agent_overall_csat5,Messaging or live chat — Overall satisfaction with the live agent on this call,2,Dissatisfied
+ch04_agent_overall_csat5,Messaging or live chat — Overall satisfaction with the live agent on this call,3,Neither satisfied nor dissatisfied
+ch04_agent_overall_csat5,Messaging or live chat — Overall satisfaction with the live agent on this call,4,Satisfied
+ch04_agent_overall_csat5,Messaging or live chat — Overall satisfaction with the live agent on this call,5,Very satisfied
+ch04_agent_overall_csat5,Messaging or live chat — Overall satisfaction with the live agent on this call,99,Do not know
+ch04_correct_person_first_transfer,Messaging or live chat — Reached the right person on the first transfer,0,No
+ch04_correct_person_first_transfer,Messaging or live chat — Reached the right person on the first transfer,1,Yes
+ch04_correct_person_first_transfer,Messaging or live chat — Reached the right person on the first transfer,99,Do not know
+ch04_agent_ownership5,Messaging or live chat — The agent took ownership of helping resolve the need,1,Strongly disagree
+ch04_agent_ownership5,Messaging or live chat — The agent took ownership of helping resolve the need,2,Disagree
+ch04_agent_ownership5,Messaging or live chat — The agent took ownership of helping resolve the need,3,Neither agree nor disagree
+ch04_agent_ownership5,Messaging or live chat — The agent took ownership of helping resolve the need,4,Agree
+ch04_agent_ownership5,Messaging or live chat — The agent took ownership of helping resolve the need,5,Strongly agree
+ch04_agent_ownership5,Messaging or live chat — The agent took ownership of helping resolve the need,98,Not applicable
+ch04_agent_ownership5,Messaging or live chat — The agent took ownership of helping resolve the need,99,Do not know
+ch04_agent_promise_made,Messaging or live chat — Agent made a specific promise about something to happen after the call,0,No
+ch04_agent_promise_made,Messaging or live chat — Agent made a specific promise about something to happen after the call,1,Yes
+ch04_agent_promise_made,Messaging or live chat — Agent made a specific promise about something to happen after the call,99,Do not know
+ch04_agent_promises_kept5,Messaging or live chat — The agent kept the promises that were due by now,1,Strongly disagree
+ch04_agent_promises_kept5,Messaging or live chat — The agent kept the promises that were due by now,2,Disagree
+ch04_agent_promises_kept5,Messaging or live chat — The agent kept the promises that were due by now,3,Neither agree nor disagree
+ch04_agent_promises_kept5,Messaging or live chat — The agent kept the promises that were due by now,4,Agree
+ch04_agent_promises_kept5,Messaging or live chat — The agent kept the promises that were due by now,5,Strongly agree
+ch04_agent_promises_kept5,Messaging or live chat — The agent kept the promises that were due by now,98,Not applicable
+ch04_agent_promises_kept5,Messaging or live chat — The agent kept the promises that were due by now,99,Do not know
+ch04_agent_promises_kept5,Messaging or live chat — The agent kept the promises that were due by now,9,Not yet due or too early to tell
+ch04_agent_patience5,Messaging or live chat — The agent was patient with me,1,Strongly disagree
+ch04_agent_patience5,Messaging or live chat — The agent was patient with me,2,Disagree
+ch04_agent_patience5,Messaging or live chat — The agent was patient with me,3,Neither agree nor disagree
+ch04_agent_patience5,Messaging or live chat — The agent was patient with me,4,Agree
+ch04_agent_patience5,Messaging or live chat — The agent was patient with me,5,Strongly agree
+ch04_agent_patience5,Messaging or live chat — The agent was patient with me,98,Not applicable
+ch04_agent_patience5,Messaging or live chat — The agent was patient with me,99,Do not know
+ch04_urgency_need,Messaging or live chat — Told the agent that the need was urgent,0,No
+ch04_urgency_need,Messaging or live chat — Told the agent that the need was urgent,1,Yes
+ch04_urgency_need,Messaging or live chat — Told the agent that the need was urgent,99,Do not know
+ch04_agent_urgency5,Messaging or live chat — The agent responded appropriately to the urgency of my need,1,Strongly disagree
+ch04_agent_urgency5,Messaging or live chat — The agent responded appropriately to the urgency of my need,2,Disagree
+ch04_agent_urgency5,Messaging or live chat — The agent responded appropriately to the urgency of my need,3,Neither agree nor disagree
+ch04_agent_urgency5,Messaging or live chat — The agent responded appropriately to the urgency of my need,4,Agree
+ch04_agent_urgency5,Messaging or live chat — The agent responded appropriately to the urgency of my need,5,Strongly agree
+ch04_agent_urgency5,Messaging or live chat — The agent responded appropriately to the urgency of my need,98,Not applicable
+ch04_agent_urgency5,Messaging or live chat — The agent responded appropriately to the urgency of my need,99,Do not know
+ch04_ivr_availability5,Messaging or live chat — Availability of the automated telephone service when needed,1,Very poor
+ch04_ivr_availability5,Messaging or live chat — Availability of the automated telephone service when needed,2,Poor
+ch04_ivr_availability5,Messaging or live chat — Availability of the automated telephone service when needed,3,Adequate
+ch04_ivr_availability5,Messaging or live chat — Availability of the automated telephone service when needed,4,Good
+ch04_ivr_availability5,Messaging or live chat — Availability of the automated telephone service when needed,5,Excellent
+ch04_ivr_availability5,Messaging or live chat — Availability of the automated telephone service when needed,98,Not applicable
+ch04_ivr_availability5,Messaging or live chat — Availability of the automated telephone service when needed,99,Do not know
+ch04_ivr_response_speed5,Messaging or live chat — Speed of the automated telephone service responses,1,Very poor
+ch04_ivr_response_speed5,Messaging or live chat — Speed of the automated telephone service responses,2,Poor
+ch04_ivr_response_speed5,Messaging or live chat — Speed of the automated telephone service responses,3,Adequate
+ch04_ivr_response_speed5,Messaging or live chat — Speed of the automated telephone service responses,4,Good
+ch04_ivr_response_speed5,Messaging or live chat — Speed of the automated telephone service responses,5,Excellent
+ch04_ivr_response_speed5,Messaging or live chat — Speed of the automated telephone service responses,98,Not applicable
+ch04_ivr_response_speed5,Messaging or live chat — Speed of the automated telephone service responses,99,Do not know
+ch04_ivr_information_accuracy5,Messaging or live chat — Accuracy of information supplied by the automated telephone service,1,Very poor
+ch04_ivr_information_accuracy5,Messaging or live chat — Accuracy of information supplied by the automated telephone service,2,Poor
+ch04_ivr_information_accuracy5,Messaging or live chat — Accuracy of information supplied by the automated telephone service,3,Adequate
+ch04_ivr_information_accuracy5,Messaging or live chat — Accuracy of information supplied by the automated telephone service,4,Good
+ch04_ivr_information_accuracy5,Messaging or live chat — Accuracy of information supplied by the automated telephone service,5,Excellent
+ch04_ivr_information_accuracy5,Messaging or live chat — Accuracy of information supplied by the automated telephone service,98,Not applicable
+ch04_ivr_information_accuracy5,Messaging or live chat — Accuracy of information supplied by the automated telephone service,99,Do not know
+ch04_ivr_ease5,Messaging or live chat — Ease of using the automated telephone service,1,Very poor
+ch04_ivr_ease5,Messaging or live chat — Ease of using the automated telephone service,2,Poor
+ch04_ivr_ease5,Messaging or live chat — Ease of using the automated telephone service,3,Adequate
+ch04_ivr_ease5,Messaging or live chat — Ease of using the automated telephone service,4,Good
+ch04_ivr_ease5,Messaging or live chat — Ease of using the automated telephone service,5,Excellent
+ch04_ivr_ease5,Messaging or live chat — Ease of using the automated telephone service,98,Not applicable
+ch04_ivr_ease5,Messaging or live chat — Ease of using the automated telephone service,99,Do not know

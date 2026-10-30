@@ -1,0 +1,8 @@
+{
+  "seed": "combined_csm_testing_20261030_v1",
+  "method": "Independent deterministic RNG by sector, wave, respondent and channel; correlated but distinct synthetic additions; no original values edited",
+  "added_company_variables": 2,
+  "added_channel_variables": 17,
+  "new_reference_metrics": 966,
+  "live_agent_scope": "All preserved call-centre records already had staff_contact=1 and agent answers. IVR-only skip routes are documented for future collection and tested on a disposable route case, not fabricated by altering old responses."
+}

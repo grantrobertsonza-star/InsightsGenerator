@@ -1,0 +1,1326 @@
+{
+  "sector": "banking",
+  "prefix": "Banking",
+  "brands": [
+    "FNB",
+    "Standard Bank",
+    "Absa",
+    "Nedbank",
+    "Capitec",
+    "Discovery Bank",
+    "GoTyme Bank (formerly TymeBank)"
+  ],
+  "channels": [
+    "Call centre",
+    "Branch",
+    "Digital self service",
+    "Messaging or live chat"
+  ],
+  "noncustomer_specs": [
+    {
+      "variable": "respondent_id",
+      "label": "Separate anonymous noncustomer ID",
+      "question": "SYS",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "interview_date",
+      "label": "Interview date",
+      "question": "SYS",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "wave",
+      "label": "Wave",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "company",
+      "label": "Current main alternative provider",
+      "question": "N1a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "weight",
+      "label": "Synthetic supplemental sample weight",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "relative weight"
+    },
+    {
+      "variable": "age",
+      "label": "Age",
+      "question": "N1c",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "years"
+    },
+    {
+      "variable": "age_band",
+      "label": "Age group",
+      "question": "N1c",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "From age: 18-24=1; 25-34=2; 35-49=3; 50-69=4",
+      "unit": "code"
+    },
+    {
+      "variable": "gender",
+      "label": "Gender",
+      "question": "D1",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "province",
+      "label": "Province",
+      "question": "D2",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "income",
+      "label": "Monthly household income",
+      "question": "D3",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "settlement",
+      "label": "Settlement",
+      "question": "D4",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All noncustomer records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "focal_company",
+      "label": "Provider the respondent does not currently use",
+      "question": "SYS",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "current_focal_use",
+      "label": "Any current use of focal provider screened out",
+      "question": "N1b",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "focal_awareness",
+      "label": "Aware of focal provider before this interview",
+      "question": "N2",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "focal_consider5",
+      "label": "Would consider focal provider if choosing today",
+      "question": "N3",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_preferred_channel",
+      "label": "Preferred channel for future service task",
+      "question": "N4",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d01",
+      "label": "Expected focal performance Services work accurately and reliably",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d01",
+      "label": "Importance for future provider Services work accurately and reliably",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d02",
+      "label": "Expected focal performance Help is provided promptly",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d02",
+      "label": "Importance for future provider Help is provided promptly",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d03",
+      "label": "Expected focal performance I feel confident about security",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d03",
+      "label": "Importance for future provider I feel confident about security",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d04",
+      "label": "Expected focal performance The bank understands my needs",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d04",
+      "label": "Importance for future provider The bank understands my needs",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d05",
+      "label": "Expected focal performance Banking channels are easy to access",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d05",
+      "label": "Importance for future provider Banking channels are easy to access",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_level_d06",
+      "label": "Expected focal performance Fees represent good value",
+      "question": "N5",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "focal_awareness=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_importance_d06",
+      "label": "Importance for future provider Fees represent good value",
+      "question": "N6",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "expect_reason_text",
+      "label": "What the respondent would need from a future provider",
+      "question": "N7",
+      "data_type": "text",
+      "question_type": "text",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "alternative_recent30",
+      "label": "Personally attempted task with current alternative in past 30 days",
+      "question": "N8",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "All records",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "alternative_task",
+      "label": "Task personally attempted with current alternative",
+      "question": "N9a",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "alternative_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "alternative_days_ago",
+      "label": "Days since alternative task experience",
+      "question": "N9b",
+      "data_type": "numeric",
+      "question_type": "continuous",
+      "universe": "alternative_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "days"
+    },
+    {
+      "variable": "alternative_channel",
+      "label": "Channel used for alternative recent task",
+      "question": "N9c",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "alternative_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    },
+    {
+      "variable": "alternative_csat5",
+      "label": "CSAT with personally experienced alternative task only",
+      "question": "N10",
+      "data_type": "numeric",
+      "question_type": "categorical",
+      "universe": "alternative_recent30=1",
+      "mr_set": "",
+      "selected_value": null,
+      "derivation": "",
+      "unit": "code"
+    }
+  ],
+  "noncustomer_labels": [
+    [
+      "wave",
+      "Wave",
+      1,
+      "February 2026"
+    ],
+    [
+      "wave",
+      "Wave",
+      2,
+      "June 2026"
+    ],
+    [
+      "wave",
+      "Wave",
+      3,
+      "October 2026"
+    ],
+    [
+      "company",
+      "Main company",
+      1,
+      "FNB"
+    ],
+    [
+      "company",
+      "Main company",
+      2,
+      "Standard Bank"
+    ],
+    [
+      "company",
+      "Main company",
+      3,
+      "Absa"
+    ],
+    [
+      "company",
+      "Main company",
+      4,
+      "Nedbank"
+    ],
+    [
+      "company",
+      "Main company",
+      5,
+      "Capitec"
+    ],
+    [
+      "company",
+      "Main company",
+      6,
+      "Discovery Bank"
+    ],
+    [
+      "company",
+      "Main company",
+      7,
+      "GoTyme Bank (formerly TymeBank)"
+    ],
+    [
+      "age_band",
+      "Age group",
+      1,
+      "18–24"
+    ],
+    [
+      "age_band",
+      "Age group",
+      2,
+      "25–34"
+    ],
+    [
+      "age_band",
+      "Age group",
+      3,
+      "35–49"
+    ],
+    [
+      "age_band",
+      "Age group",
+      4,
+      "50–69"
+    ],
+    [
+      "gender",
+      "Gender",
+      1,
+      "Man"
+    ],
+    [
+      "gender",
+      "Gender",
+      2,
+      "Woman"
+    ],
+    [
+      "gender",
+      "Gender",
+      3,
+      "Another identity"
+    ],
+    [
+      "gender",
+      "Gender",
+      4,
+      "Prefer not to say"
+    ],
+    [
+      "province",
+      "Province",
+      1,
+      "Gauteng"
+    ],
+    [
+      "province",
+      "Province",
+      2,
+      "KwaZulu-Natal"
+    ],
+    [
+      "province",
+      "Province",
+      3,
+      "Western Cape"
+    ],
+    [
+      "province",
+      "Province",
+      4,
+      "Eastern Cape"
+    ],
+    [
+      "province",
+      "Province",
+      5,
+      "Limpopo"
+    ],
+    [
+      "province",
+      "Province",
+      6,
+      "Mpumalanga"
+    ],
+    [
+      "province",
+      "Province",
+      7,
+      "North West"
+    ],
+    [
+      "province",
+      "Province",
+      8,
+      "Free State"
+    ],
+    [
+      "province",
+      "Province",
+      9,
+      "Northern Cape"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      1,
+      "Below R15,000"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      2,
+      "R15,000–R29,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      3,
+      "R30,000–R49,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      4,
+      "R50,000–R79,999"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      5,
+      "R80,000 or more"
+    ],
+    [
+      "income",
+      "Monthly household income",
+      99,
+      "Prefer not to say"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      1,
+      "Metro or city"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      2,
+      "Town"
+    ],
+    [
+      "settlement",
+      "Settlement",
+      3,
+      "Rural area"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      1,
+      "FNB"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      2,
+      "Standard Bank"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      3,
+      "Absa"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      4,
+      "Nedbank"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      5,
+      "Capitec"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      6,
+      "Discovery Bank"
+    ],
+    [
+      "focal_company",
+      "Provider the respondent does not currently use",
+      7,
+      "GoTyme Bank (formerly TymeBank)"
+    ],
+    [
+      "current_focal_use",
+      "Any current use of focal provider screened out",
+      0,
+      "Not a current focal customer"
+    ],
+    [
+      "focal_awareness",
+      "Aware of focal provider before this interview",
+      0,
+      "No"
+    ],
+    [
+      "focal_awareness",
+      "Aware of focal provider before this interview",
+      1,
+      "Yes"
+    ],
+    [
+      "focal_awareness",
+      "Aware of focal provider before this interview",
+      99,
+      "Do not know"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      1,
+      "Definitely not"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      2,
+      "Probably not"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      3,
+      "Might or might not"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      4,
+      "Probably yes"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      5,
+      "Definitely yes"
+    ],
+    [
+      "focal_consider5",
+      "Would consider focal provider if choosing today",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_preferred_channel",
+      "Preferred channel for future service task",
+      1,
+      "Call centre"
+    ],
+    [
+      "expect_preferred_channel",
+      "Preferred channel for future service task",
+      2,
+      "Branch"
+    ],
+    [
+      "expect_preferred_channel",
+      "Preferred channel for future service task",
+      3,
+      "Digital self service"
+    ],
+    [
+      "expect_preferred_channel",
+      "Preferred channel for future service task",
+      4,
+      "Messaging or live chat"
+    ],
+    [
+      "expect_preferred_channel",
+      "Preferred channel for future service task",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d01",
+      "Expected focal performance Services work accurately and reliably",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d01",
+      "Importance for future provider Services work accurately and reliably",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d02",
+      "Expected focal performance Help is provided promptly",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d02",
+      "Importance for future provider Help is provided promptly",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d03",
+      "Expected focal performance I feel confident about security",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d03",
+      "Importance for future provider I feel confident about security",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d04",
+      "Expected focal performance The bank understands my needs",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d04",
+      "Importance for future provider The bank understands my needs",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d05",
+      "Expected focal performance Banking channels are easy to access",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d05",
+      "Importance for future provider Banking channels are easy to access",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      1,
+      "Very poor"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      2,
+      "Poor"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      3,
+      "Adequate"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      4,
+      "Good"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      5,
+      "Excellent"
+    ],
+    [
+      "expect_level_d06",
+      "Expected focal performance Fees represent good value",
+      99,
+      "Do not know"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      1,
+      "Not important"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      2,
+      "Slightly important"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      3,
+      "Moderately important"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      4,
+      "Very important"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      5,
+      "Extremely important"
+    ],
+    [
+      "expect_importance_d06",
+      "Importance for future provider Fees represent good value",
+      99,
+      "Do not know"
+    ],
+    [
+      "alternative_recent30",
+      "Personally attempted task with current alternative in past 30 days",
+      0,
+      "No"
+    ],
+    [
+      "alternative_recent30",
+      "Personally attempted task with current alternative in past 30 days",
+      1,
+      "Yes"
+    ],
+    [
+      "alternative_recent30",
+      "Personally attempted task with current alternative in past 30 days",
+      99,
+      "Do not know"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      1,
+      "Payment or transfer"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      2,
+      "Account balance or information"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      3,
+      "Account or personal detail change"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      4,
+      "Problem complaint or fraud concern"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      5,
+      "Product advice or application"
+    ],
+    [
+      "alternative_task",
+      "Task personally attempted with current alternative",
+      6,
+      "Other"
+    ],
+    [
+      "alternative_channel",
+      "Channel used for alternative recent task",
+      1,
+      "Call centre"
+    ],
+    [
+      "alternative_channel",
+      "Channel used for alternative recent task",
+      2,
+      "Branch"
+    ],
+    [
+      "alternative_channel",
+      "Channel used for alternative recent task",
+      3,
+      "Digital self service"
+    ],
+    [
+      "alternative_channel",
+      "Channel used for alternative recent task",
+      4,
+      "Messaging or live chat"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      1,
+      "Very dissatisfied"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      2,
+      "Dissatisfied"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      3,
+      "Neither satisfied nor dissatisfied"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      4,
+      "Satisfied"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      5,
+      "Very satisfied"
+    ],
+    [
+      "alternative_csat5",
+      "CSAT with personally experienced alternative task only",
+      99,
+      "Do not know"
+    ]
+  ],
+  "noncustomer_mr": []
+}

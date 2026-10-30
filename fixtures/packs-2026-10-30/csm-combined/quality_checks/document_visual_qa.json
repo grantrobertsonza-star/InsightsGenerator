@@ -1,0 +1,70 @@
+{
+  "status": "passed",
+  "documents": 9,
+  "pages": 69,
+  "files": [
+    {
+      "file": "banking/01_Combined_CSM_Questionnaire.docx",
+      "sha256": "6c1f6f4c07b41c896508777aeaf6ba64a18dca9b0a1a5a266c54411602da6041",
+      "pages": 22,
+      "all_pages_visually_verified": true,
+      "visual_method": "All prior pages inspected at native resolution; every final changed page re-inspected and unchanged PNGs verified pixel-identical"
+    },
+    {
+      "file": "mobile/01_Combined_CSM_Questionnaire.docx",
+      "sha256": "cfd1f473c7de1404f8143565f4d80290374dbea6744b6addc86336715d346471",
+      "pages": 22,
+      "all_pages_visually_verified": true,
+      "visual_method": "All prior pages inspected at native resolution; every final changed page re-inspected and unchanged PNGs verified pixel-identical"
+    },
+    {
+      "file": "Combined_CSM_Analysis_and_Import_Guide.docx",
+      "sha256": "debdb998ce4220349350628cc8d2434df2863dec843aae19f8803a8918214e16",
+      "pages": 5,
+      "all_pages_visually_verified": true,
+      "visual_method": "All prior pages inspected at native resolution; every final changed page re-inspected and unchanged PNGs verified pixel-identical"
+    },
+    {
+      "file": "banking/00_Combined_CSM_Research_Brief.docx",
+      "sha256": "3d8a022258edf6d77250cf4f8c7fdc91e0bd1d69c8ee96acc6ccfedade9a0072",
+      "pages": 2,
+      "all_pages_visually_verified": true,
+      "visual_method": "PASS all pages viewed at original resolution after final edits"
+    },
+    {
+      "file": "banking/02_Combined_Dashboard_and_Analysis_Guide.docx",
+      "sha256": "2176895c58938027ae9f15636aa48eb4b41d35d4451127f3d001f19d527d0c5f",
+      "pages": 4,
+      "all_pages_visually_verified": true,
+      "visual_method": "PASS all pages viewed at original resolution after final edits"
+    },
+    {
+      "file": "banking/03_Claude_Combined_Implementation_Instructions.docx",
+      "sha256": "e8ee79caedefe9610ac13e68bcc5629d4541d29b2482b407fbd3f392dbe54563",
+      "pages": 4,
+      "all_pages_visually_verified": true,
+      "visual_method": "PASS all pages viewed at original resolution after final edits"
+    },
+    {
+      "file": "mobile/00_Combined_CSM_Research_Brief.docx",
+      "sha256": "715ec49a30f3614904c8cc368c6d6a5770d5055aa94bb964f32a16ad887777fb",
+      "pages": 2,
+      "all_pages_visually_verified": true,
+      "visual_method": "PASS all pages viewed at original resolution after final edits"
+    },
+    {
+      "file": "mobile/02_Combined_Dashboard_and_Analysis_Guide.docx",
+      "sha256": "5ada2063b3c19d0ef683c5ef0a54546437735ba91ed5d69472174c854d9b3884",
+      "pages": 4,
+      "all_pages_visually_verified": true,
+      "visual_method": "PASS all pages viewed at original resolution after final edits"
+    },
+    {
+      "file": "mobile/03_Claude_Combined_Implementation_Instructions.docx",
+      "sha256": "b768f8ce2644e93479fa934aaec5e371367f1b2beb895114652d2e8794dd524c",
+      "pages": 4,
+      "all_pages_visually_verified": true,
+      "visual_method": "PASS all pages viewed at original resolution after final edits"
+    }
+  ]
+}
